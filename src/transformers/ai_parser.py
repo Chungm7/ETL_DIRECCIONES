@@ -115,13 +115,20 @@ class AIAddressParser:
                     tipo_via_detectado = "CALLE"
                 heuristica_aplicada = True
 
-        # 5. Respaldo Heurístico para numeración de vía
-        if not num_via:
-            if re.search(r"\bS/N\b", raw_text):
+        # 5. Respaldo Heurístico para numeración de vía (SOLO si existe una vía)
+        if not nom_via:
+            num_via = None
+        elif not num_via:
+            if re.search(r"\bS/N\b", raw_text, re.IGNORECASE):
                 num_via = "S/N"
                 heuristica_aplicada = True
             else:
-                match_num = re.search(r"\b(?:N°?\s*|NUM°?\s*|N\s*)?(\d+)\b", raw_text)
+                # Buscar número explícito tras prefijos como N°, NUM, NRO, o pegado al nombre de vía
+                match_num = re.search(r"\b(?:N°\.?\s*|NUM°?\.?\s*|NRO\.?\s*|N\s*)(\d+)\b", raw_text, re.IGNORECASE)
+                if not match_num and nom_via:
+                    pat_after_via = rf"{re.escape(nom_via)}\s+(?:N°?\s*)?(\d+)\b"
+                    match_num = re.search(pat_after_via, raw_text, re.IGNORECASE)
+
                 if match_num:
                     num_via = match_num.group(1)
                     heuristica_aplicada = True
@@ -137,6 +144,19 @@ class AIAddressParser:
                 if num_via and interior_val not in num_via:
                     num_via = f"{num_via} {interior_val}".strip()
                     heuristica_aplicada = True
+
+        # 6b. Respaldo Heurístico para Manzana y Lote
+        if not manzana:
+            match_mz = re.search(r"\b(?:MZ\.?|MANZANA)\s*[:\-]?\s*([A-Z0-9]+)\b", raw_text, re.IGNORECASE)
+            if match_mz:
+                manzana = match_mz.group(1).upper()
+                heuristica_aplicada = True
+
+        if not lote:
+            match_lt = re.search(r"\b(?:LT\.?|LOTE)\s*[:\-]?\s*([A-Z0-9]+)\b", raw_text, re.IGNORECASE)
+            if match_lt:
+                lote = match_lt.group(1).upper()
+                heuristica_aplicada = True
 
         # 7. Respaldo Heurístico Dinámico para zonas y referencias
         # 7a. Extraer referencia entre paréntesis
@@ -212,6 +232,10 @@ class AIAddressParser:
             if nom_via and referencia in nom_via.upper():
                 nom_via = re.sub(re.escape(referencia), "", nom_via, flags=re.IGNORECASE).strip(" ,.-")
 
+        # Si no existe una vía identificada, num_via no corresponde
+        if not nom_via or not nom_via.strip():
+            num_via = None
+
         # Determinar etiqueta del método utilizado
         if ia_exitosa and not heuristica_aplicada:
             metodo = f"IA ({self.ollama.model_name})"
@@ -225,10 +249,28 @@ class AIAddressParser:
         id_tipo_zona = CatalogMatcher.match_tipo_zona(tipo_zona_detectada)
 
         via_detectada_en_texto = bool(nom_via and nom_via.strip())
-        matched_via = CatalogMatcher.match_physical_via(nom_via, id_tipo_via) if via_detectada_en_texto else None
+        matched_via = (
+            CatalogMatcher.match_physical_via(
+                text=nom_via,
+                tipo_via_hint=id_tipo_via,
+                raw_text=raw_text,
+                ollama_service=self.ollama,
+            )
+            if via_detectada_en_texto
+            else None
+        )
 
         zona_detectada_en_texto = bool(nom_zona and nom_zona.strip())
-        matched_zona = CatalogMatcher.match_physical_zona(nom_zona, id_tipo_zona) if zona_detectada_en_texto else None
+        matched_zona = (
+            CatalogMatcher.match_physical_zona(
+                text=nom_zona,
+                tipo_zona_hint=id_tipo_zona,
+                raw_text=raw_text,
+                ollama_service=self.ollama,
+            )
+            if zona_detectada_en_texto
+            else None
+        )
 
         observaciones = []
 

@@ -58,3 +58,19 @@ class OllamaBatchExtractionResponse(BaseModel):
     """Estructura de respuesta para procesamiento por lotes con Ollama."""
     id_licencia: int
     resultado: OllamaAddressExtraction
+
+
+class OllamaCandidateDisambiguation(BaseModel):
+    """Estructura de respuesta de Ollama al evaluar candidatos y desambiguar variantes viales o de zonas."""
+    id_seleccionado: Optional[int] = Field(
+        default=None,
+        description="ID del candidato oficial de Chiclayo seleccionado, o null si ninguno corresponde",
+    )
+    nombre_oficial: Optional[str] = Field(
+        default=None,
+        description="Nombre oficial exacto de la entidad seleccionada en el catálogo",
+    )
+    motivo: Optional[str] = Field(
+        default=None,
+        description="Explicación breve del razonamiento semántico para la selección o descarte",
+    )

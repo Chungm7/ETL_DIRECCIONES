@@ -144,6 +144,81 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertEqual(destino.id_via, 2905)
         self.assertEqual(destino.id_zona, 18)
 
+    def test_parse_remigio_silva_generic_maps_to_remigio_b_silva(self):
+        """Verifica que 'URB REMIGIO SILVA MZ A LT 12' se homologue a REMIGIO B. SILVA (ID 92)."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+        self.mock_ollama.disambiguate_candidate.return_value = None
+
+        record = DireccionOrigen(
+            id_licencia=10,
+            emp_direccion="URB REMIGIO SILVA MZ A LT 12",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_zona, 92)  # REMIGIO B. SILVA
+        self.assertEqual(destino.nom_zona, "REMIGIO B. SILVA")
+        self.assertEqual(destino.manzana, "A")
+        self.assertEqual(destino.lote, "12")
+        self.assertIsNone(destino.observacion)
+
+    def test_parse_remigio_silva_etapa_1_maps_to_primera_etapa(self):
+        """Verifica que 'URB REMIGIO SILVA ETAPA 1 MZ B LT 4' resuelva a REMIGIO B. SILVA PRIMERA ETAPA (ID 90)."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+        self.mock_ollama.disambiguate_candidate.return_value = None
+
+        record = DireccionOrigen(
+            id_licencia=11,
+            emp_direccion="URB REMIGIO SILVA ETAPA 1 MZ B LT 4",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_zona, 90)  # REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA
+        self.assertIn("PRIMERA ETAPA", destino.nom_zona)
+        self.assertEqual(destino.manzana, "B")
+        self.assertEqual(destino.lote, "4")
+        self.assertIsNone(destino.observacion)
+
+    def test_parse_remigio_silva_ai_disambiguation(self):
+        """Verifica que si la IA desambigua un candidato específico, se respete su selección."""
+        from src.models.llm_schemas import OllamaCandidateDisambiguation
+
+        self.mock_ollama.parse_address_with_ai.return_value = None
+        self.mock_ollama.disambiguate_candidate.return_value = OllamaCandidateDisambiguation(
+            id_seleccionado=94,
+            nombre_oficial="REMIGIO B. SILVA II ETAPA",
+            motivo="La dirección se refiere a la Segunda Etapa de Remigio B. Silva.",
+        )
+
+        record = DireccionOrigen(
+            id_licencia=12,
+            emp_direccion="URB REMIGIO SILVA SECTOR 2 MZ C LT 1",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_zona, 94)
+        self.assertEqual(destino.nom_zona, "REMIGIO B. SILVA II ETAPA")
+        self.assertIsNone(destino.observacion)
+
+    def test_parse_carretera_pimentel_remains_observed(self):
+        """Verifica que carreteras o zonas inexistentes permanezcan en observación con campos en NULL."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+        self.mock_ollama.disambiguate_candidate.return_value = None
+
+        record = DireccionOrigen(
+            id_licencia=13,
+            emp_direccion="CARRETERA PIMENTEL KM 5 FUNDO LA ESPERANZA",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertFalse(destino.es_procesado)
+        self.assertIsNone(destino.id_via)
+        self.assertIsNone(destino.id_zona)
+        self.assertIsNotNone(destino.observacion)
+        self.assertIn("PIMENTEL", destino.observacion)
+
 
 if __name__ == "__main__":
     unittest.main()

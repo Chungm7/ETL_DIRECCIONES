@@ -12,7 +12,7 @@ except ImportError:
     OLLAMA_LIB_AVAILABLE = False
 
 from src.config.settings import OllamaSettings, get_settings
-from src.models.llm_schemas import OllamaAddressExtraction
+from src.models.llm_schemas import OllamaAddressExtraction, OllamaCandidateDisambiguation
 from src.utils.prompts import (
     SYSTEM_PROMPT_ADDRESS_PARSER,
     build_user_prompt_for_address,
@@ -224,23 +224,79 @@ class OllamaService:
             )
             return None
 
+    def disambiguate_candidate(
+        self,
+        raw_text: str,
+        entity_type: str,
+        search_term: str,
+        candidates: List[Dict[str, Any]],
+    ) -> Optional[OllamaCandidateDisambiguation]:
+        """Evalúa semánticamente mediante Ollama una lista de candidatos oficiales de Chiclayo
+        frente a una dirección cruda con un término mal redactado o variante
+        (etapas, omisión de iniciales, abreviaturas, etc.).
+        """
+        if not candidates:
+            return None
+
+        cands_formatted = "\n".join(
+            f"{i+1}. ID {c['id']}: {c['nom_via'] if 'nom_via' in c else c.get('nom_zona', '')}"
+            for i, c in enumerate(candidates)
+        )
+
+        system_prompt = (
+            "Eres un experto normalizador catastral de la Municipalidad Provincial de Chiclayo (Perú).\n"
+            "Tu objetivo es determinar si una dirección con redacción informal, abreviada o variante\n"
+            "(omisión de iniciales intermedias, redacción de etapas como 'Etapa 1' = 'Primera Etapa', etc.)\n"
+            f"corresponde inequívocamente a alguno de los candidatos oficiales de {entity_type} en Chiclayo.\n"
+            "Si la dirección se refiere inequívocamente a uno de los candidatos oficiales, selecciona su ID y nombre oficial exacto.\n"
+            "Si NO corresponde a ninguno de los candidatos oficiales de Chiclayo (es una vía o zona distinta, o inventada), responde con id_seleccionado: null."
+        )
+
+        user_prompt = (
+            f'Dirección original cruda: "{raw_text}"\n'
+            f'Término buscado ({entity_type}): "{search_term}"\n\n'
+            f"Candidatos oficiales disponibles en Chiclayo:\n{cands_formatted}\n\n"
+            "Responde ÚNICAMENTE un objeto JSON válido con este formato:\n"
+            '{\n  "id_seleccionado": <número_id o null>,\n  "nombre_oficial": <string_nombre o null>,\n  "motivo": <string_explicación>\n}'
+        )
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            raw_response = self._call_ollama_messages(messages, temperature=0.0)
+            if not raw_response:
+                return None
+            parsed_json = json.loads(raw_response)
+            return OllamaCandidateDisambiguation(**parsed_json)
+        except Exception as ex:
+            logger.warning("Error en desambiguación semántica con Ollama para '%s': %s", search_term, ex)
+            return None
+
     def _call_ollama_chat(self, user_prompt: str) -> Optional[str]:
         """Ejecuta la llamada a la API de Chat de Ollama forzando salida JSON."""
         messages = [
             {"role": "system", "content": get_system_prompt_address_parser()},
             {"role": "user", "content": user_prompt},
         ]
+        return self._call_ollama_messages(messages, temperature=self.temperature)
 
-
+    def _call_ollama_messages(self, messages: List[Dict[str, str]], temperature: float = 0.0) -> Optional[str]:
+        """Ejecuta una llamada estructurada de chat con mensajes arbitrarios hacia Ollama."""
         # Prioridad 1: Cliente oficial si está disponible
         if self._client is not None:
-            response = self._client.chat(
-                model=self.model_name,
-                messages=messages,
-                format="json",
-                options={"temperature": self.temperature},
-            )
-            return response.get("message", {}).get("content")
+            try:
+                response = self._client.chat(
+                    model=self.model_name,
+                    messages=messages,
+                    format="json",
+                    options={"temperature": temperature},
+                )
+                return response.get("message", {}).get("content")
+            except Exception as ex_client:
+                logger.debug("Fallo cliente ollama, intentando fallback httpx: %s", ex_client)
 
         # Prioridad 2: Solicitud HTTP directa mediante httpx
         with httpx.Client(timeout=float(self.timeout)) as client:
@@ -249,7 +305,7 @@ class OllamaService:
                 "messages": messages,
                 "format": "json",
                 "stream": False,
-                "options": {"temperature": self.temperature},
+                "options": {"temperature": temperature},
             }
             res = client.post(f"{self.base_url}/api/chat", json=payload)
             res.raise_for_status()
