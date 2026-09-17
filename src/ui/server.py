@@ -41,9 +41,9 @@ class ExecutionState:
         self.dynamic_db_service: Optional[DatabaseService] = None
         self.dynamic_db_settings: Optional[Any] = None
         self.recent_records: List[Dict[str, Any]] = []
-        self.max_recent_records: int = 150
+        self.max_recent_records: int = 500
         self.log_history: List[str] = []
-        self.max_log_history: int = 200
+        self.max_log_history: int = 1000
         self.stats: Dict[str, Any] = {
             "status": "IDLE",
             "total_to_process": 0,
@@ -91,10 +91,35 @@ class ExecutionState:
         self.broadcast({"type": "log", "payload": message})
 
     def add_record(self, record_data: Dict[str, Any]):
+        idx = record_data.get("index", 0)
+        tot = record_data.get("total", 0)
+        pk = record_data.get("id_licencia", "")
+        raw = record_data.get("raw_text", "")
+        motor = record_data.get("metodo", "IA")
+        es_proc = record_data.get("es_procesado", False)
+        obs = record_data.get("observacion", "")
+        via = record_data.get("via_desc") or f"{record_data.get('nom_via') or 'N/D'} N° {record_data.get('num_via') or 'S/N'}"
+        zona = record_data.get("zona_desc") or (record_data.get("nom_zona") or "N/D")
+        cat = record_data.get("catastro") or ""
+        ref = record_data.get("referencia") or ""
+        status_tag = "VALIDO" if es_proc else "OBSERVADO"
+
+        log_line = f"[{idx}/{tot} | ID: {pk}] [{status_tag}] [{motor}] \"{raw}\" -> {via} | {zona}"
+        if cat:
+            log_line += f" | {cat}"
+        if ref:
+            log_line += f" | Ref: {ref}"
+        if obs:
+            log_line += f" | Motivo: {obs}"
+
         with self._lock:
             self.recent_records.append(record_data)
             if len(self.recent_records) > self.max_recent_records:
                 self.recent_records.pop(0)
+
+            self.log_history.append(log_line)
+            if len(self.log_history) > self.max_log_history:
+                self.log_history.pop(0)
 
             total = self.stats.get("total_to_process", 0)
             processed = record_data.get("processed_count", 0)
@@ -117,6 +142,7 @@ class ExecutionState:
 
         self.broadcast({"type": "record", "payload": record_data})
         self.broadcast({"type": "stats", "payload": self.stats})
+        self.broadcast({"type": "log", "payload": log_line})
 
     def finish_run(self, summary_data: Optional[Dict[str, Any]] = None, error: Optional[str] = None):
         with self._lock:
@@ -262,7 +288,8 @@ async def get_system_status():
         },
         "table_counts": table_counts,
         "stats": state.stats,
-        "recent_records": state.recent_records[-30:],
+        "recent_records": state.recent_records[-100:],
+        "log_history": state.log_history[-200:],
     }
 
 

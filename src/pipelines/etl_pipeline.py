@@ -434,6 +434,20 @@ class ETLPipeline:
                         else:
                             summary.observed_records += 1
 
+                        # Calcular descripciones enriquecidas idénticas a consola
+                        via_name = CatalogMatcher.get_via_name(rec_dest.tipo_via)
+                        zona_name = CatalogMatcher.get_zona_name(rec_dest.tipo_zona)
+                        via_id_str = f"[{rec_dest.tipo_via}: {via_name}]" if rec_dest.tipo_via else "[SIN TIPO]"
+                        zona_id_str = f"[{rec_dest.tipo_zona}: {zona_name}]" if rec_dest.tipo_zona else "[SIN ZONA]"
+                        via_desc = f"{via_id_str} {rec_dest.nom_via or 'N/D'} N° {rec_dest.num_via or 'S/N'}"
+                        if getattr(rec_dest, "id_via", None):
+                            via_desc += f" [ID Vía: {rec_dest.id_via}]"
+                        zona_desc = f"{zona_id_str} {rec_dest.nom_zona or 'N/D'}"
+                        if getattr(rec_dest, "id_zona", None):
+                            zona_desc += f" [ID Zona: {rec_dest.id_zona}]"
+                        catastro = f"Mz: {rec_dest.manzana or '-'} | Lt: {rec_dest.lote or '-'} | Sublote: {rec_dest.slote or '-'}"
+                        status_str = "Cargado en BD ✅" if is_success else "Error en Carga ❌"
+
                         # Mostrar seguimiento visual en vivo al instante en consola
                         self._log_record_progress(
                             index=current_index,
@@ -452,18 +466,26 @@ class ETLPipeline:
                                     "id_licencia": rec_raw.id_licencia,
                                     "raw_text": rec_raw.emp_direccion or "",
                                     "metodo": metodo,
+                                    "tipo_via": rec_dest.tipo_via,
+                                    "tipo_via_name": via_name,
                                     "id_via": rec_dest.id_via,
                                     "nom_via": rec_dest.nom_via,
                                     "num_via": rec_dest.num_via,
+                                    "via_desc": via_desc,
+                                    "tipo_zona": rec_dest.tipo_zona,
+                                    "tipo_zona_name": zona_name,
                                     "id_zona": rec_dest.id_zona,
                                     "nom_zona": rec_dest.nom_zona,
+                                    "zona_desc": zona_desc,
                                     "manzana": rec_dest.manzana,
                                     "lote": rec_dest.lote,
                                     "slote": rec_dest.slote,
+                                    "catastro": catastro,
                                     "referencia": rec_dest.referencia,
                                     "es_procesado": bool(rec_dest.es_procesado),
                                     "observacion": rec_dest.observacion or "",
                                     "success": is_success,
+                                    "status_str": status_str,
                                     "valid_count": summary.valid_processed_records,
                                     "observed_count": summary.observed_records,
                                     "processed_count": summary.processed_records,
