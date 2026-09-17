@@ -447,7 +447,7 @@ class DatabaseService:
 
         try:
             with self.get_session() as session:
-                # 1. Tabla vias (Estructura simplificada: solo id_via y nom_via)
+                # 1. Tabla vias (id_via, id_tipo_via -> tipos_via, nom_via)
                 vias_check = session.execute(text("""
                     SELECT COUNT(*) 
                     FROM information_schema.tables 
@@ -458,23 +458,35 @@ class DatabaseService:
                     create_vias_sql = f"""
                     CREATE TABLE "{target_schema}"."{t_vias}" (
                         id_via              INTEGER NOT NULL,
+                        id_tipo_via         INTEGER,
                         nom_via             VARCHAR(150) NOT NULL,
-                        CONSTRAINT pk_{target_schema}_{t_vias} PRIMARY KEY (id_via)
+                        CONSTRAINT pk_{target_schema}_{t_vias} PRIMARY KEY (id_via),
+                        CONSTRAINT fk_{target_schema}_{t_vias}_tipo FOREIGN KEY (id_tipo_via) REFERENCES "{target_schema}"."{t_tipo_via}"(id_tipo_via) ON UPDATE CASCADE ON DELETE SET NULL
                     );
                     CREATE INDEX IF NOT EXISTS idx_{target_schema}_{t_vias}_nom ON "{target_schema}"."{t_vias}" (nom_via);
+                    CREATE INDEX IF NOT EXISTS idx_{target_schema}_{t_vias}_tipo ON "{target_schema}"."{t_vias}" (id_tipo_via);
                     """
                     session.execute(text(create_vias_sql))
                     results[t_vias]["table_created"] = True
                 else:
-                    # Depurar columnas accesorias y llaves si la tabla ya existía
+                    # Depurar columnas obsoletas y asegurar relación con tipos_via
                     session.execute(text(f"""
                         ALTER TABLE "{target_schema}"."{t_vias}"
-                            DROP CONSTRAINT IF EXISTS fk_{target_schema}_{t_vias}_tipo,
-                            DROP CONSTRAINT IF EXISTS fk_vias_tipo_via,
+                            ADD COLUMN IF NOT EXISTS id_tipo_via INTEGER,
                             DROP COLUMN IF EXISTS codigo_via,
-                            DROP COLUMN IF EXISTS id_tipo_via,
                             DROP COLUMN IF EXISTS clasificacion_vial,
                             DROP COLUMN IF EXISTS jurisdiccion;
+
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_{target_schema}_{t_vias}_tipo') THEN
+                                ALTER TABLE "{target_schema}"."{t_vias}"
+                                    ADD CONSTRAINT fk_{target_schema}_{t_vias}_tipo
+                                    FOREIGN KEY (id_tipo_via) REFERENCES "{target_schema}"."{t_tipo_via}"(id_tipo_via)
+                                    ON UPDATE CASCADE ON DELETE SET NULL;
+                            END IF;
+                        EXCEPTION WHEN OTHERS THEN NULL;
+                        END $$;
                     """))
 
                 # Verificar si tiene registros
@@ -482,20 +494,20 @@ class DatabaseService:
                 if vias_count == 0:
                     vias_tuples = CatalogManager.get_official_physical_vias_tuples()
                     insert_vias_sql = text(f"""
-                        INSERT INTO "{target_schema}"."{t_vias}" (id_via, nom_via)
-                        VALUES (:id_via, :nom_via)
+                        INSERT INTO "{target_schema}"."{t_vias}" (id_via, id_tipo_via, nom_via)
+                        VALUES (:id_via, :id_tipo_via, :nom_via)
                         ON CONFLICT (id_via) DO NOTHING;
                     """)
                     session.execute(
                         insert_vias_sql,
-                        [{"id_via": item[0], "nom_via": item[1]} for item in vias_tuples],
+                        [{"id_via": item[0], "id_tipo_via": item[1], "nom_via": item[2]} for item in vias_tuples],
                     )
                     results[t_vias]["records_seeded"] = len(vias_tuples)
                     results[t_vias]["total_records"] = len(vias_tuples)
                 else:
                     results[t_vias]["total_records"] = vias_count
 
-                # 2. Tabla zonas (Estructura simplificada: solo id_zona y nom_zona)
+                # 2. Tabla zonas (id_zona, id_tipo_zona -> tipos_zona, nom_zona)
                 zonas_check = session.execute(text("""
                     SELECT COUNT(*) 
                     FROM information_schema.tables 
@@ -506,36 +518,48 @@ class DatabaseService:
                     create_zonas_sql = f"""
                     CREATE TABLE "{target_schema}"."{t_zonas}" (
                         id_zona             INTEGER NOT NULL,
+                        id_tipo_zona        INTEGER,
                         nom_zona            VARCHAR(150) NOT NULL,
-                        CONSTRAINT pk_{target_schema}_{t_zonas} PRIMARY KEY (id_zona)
+                        CONSTRAINT pk_{target_schema}_{t_zonas} PRIMARY KEY (id_zona),
+                        CONSTRAINT fk_{target_schema}_{t_zonas}_tipo FOREIGN KEY (id_tipo_zona) REFERENCES "{target_schema}"."{t_tipo_zona}"(id_tipo_zona) ON UPDATE CASCADE ON DELETE SET NULL
                     );
                     CREATE INDEX IF NOT EXISTS idx_{target_schema}_{t_zonas}_nom ON "{target_schema}"."{t_zonas}" (nom_zona);
+                    CREATE INDEX IF NOT EXISTS idx_{target_schema}_{t_zonas}_tipo ON "{target_schema}"."{t_zonas}" (id_tipo_zona);
                     """
                     session.execute(text(create_zonas_sql))
                     results[t_zonas]["table_created"] = True
                 else:
-                    # Depurar columnas accesorias y llaves si la tabla ya existía
+                    # Depurar columnas obsoletas y asegurar relación con tipos_zona
                     session.execute(text(f"""
                         ALTER TABLE "{target_schema}"."{t_zonas}"
-                            DROP CONSTRAINT IF EXISTS fk_{target_schema}_{t_zonas}_tipo,
-                            DROP CONSTRAINT IF EXISTS fk_zonas_tipo_zona,
+                            ADD COLUMN IF NOT EXISTS id_tipo_zona INTEGER,
                             DROP COLUMN IF EXISTS codigo_zona,
-                            DROP COLUMN IF EXISTS id_tipo_zona,
                             DROP COLUMN IF EXISTS sector_catastral,
                             DROP COLUMN IF EXISTS condicion;
+
+                        DO $$
+                        BEGIN
+                            IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'fk_{target_schema}_{t_zonas}_tipo') THEN
+                                ALTER TABLE "{target_schema}"."{t_zonas}"
+                                    ADD CONSTRAINT fk_{target_schema}_{t_zonas}_tipo
+                                    FOREIGN KEY (id_tipo_zona) REFERENCES "{target_schema}"."{t_tipo_zona}"(id_tipo_zona)
+                                    ON UPDATE CASCADE ON DELETE SET NULL;
+                            END IF;
+                        EXCEPTION WHEN OTHERS THEN NULL;
+                        END $$;
                     """))
 
                 zonas_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."{t_zonas}";')).scalar() or 0
                 if zonas_count == 0:
                     zonas_tuples = CatalogManager.get_official_physical_zonas_tuples()
                     insert_zonas_sql = text(f"""
-                        INSERT INTO "{target_schema}"."{t_zonas}" (id_zona, nom_zona)
-                        VALUES (:id_zona, :nom_zona)
+                        INSERT INTO "{target_schema}"."{t_zonas}" (id_zona, id_tipo_zona, nom_zona)
+                        VALUES (:id_zona, :id_tipo_zona, :nom_zona)
                         ON CONFLICT (id_zona) DO NOTHING;
                     """)
                     session.execute(
                         insert_zonas_sql,
-                        [{"id_zona": item[0], "nom_zona": item[1]} for item in zonas_tuples],
+                        [{"id_zona": item[0], "id_tipo_zona": item[1], "nom_zona": item[2]} for item in zonas_tuples],
                     )
                     results[t_zonas]["records_seeded"] = len(zonas_tuples)
                     results[t_zonas]["total_records"] = len(zonas_tuples)
