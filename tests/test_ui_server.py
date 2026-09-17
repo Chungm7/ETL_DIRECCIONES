@@ -148,3 +148,46 @@ def test_execution_state_add_record_and_broadcast():
     assert test_state.stats["valid"] == 1
     assert test_state.stats["processed"] == 1
     assert test_state.stats["progress_pct"] == 10.0
+
+
+def test_run_pipeline_worker_with_limit_and_without_limit():
+    """Verifica que el worker de pipeline no falle con limit int o None y llame run correctamente."""
+    from src.ui.server import _run_pipeline_worker, StartPipelineRequest
+    with patch("src.ui.server.DatabaseService"), \
+         patch("src.ui.server.ETLPipeline") as mock_pipeline:
+        mock_pipe_inst = mock_pipeline.return_value
+        mock_pipe_inst.extractor.get_status_counts.return_value = {
+            "total": 10,
+            "pendientes": 5,
+            "validos": 4,
+            "observados": 1,
+        }
+        mock_pipe_inst.run.return_value = MagicMock(
+            total_records=5,
+            processed_records=5,
+            valid_processed_records=4,
+            observed_records=1,
+            successful_records=5,
+            failed_records=0,
+            ai_records=5,
+            hybrid_records=0,
+            heuristic_records=0,
+        )
+
+        req_with_limit = StartPipelineRequest(
+            schema_name="public",
+            table_name="direcciones_actual",
+            limit=2,
+            filter_mode="pending",
+        )
+        _run_pipeline_worker(req_with_limit)
+        mock_pipe_inst.run.assert_called_with(max_records=2, limit=2, filter_mode="pending")
+
+        req_no_limit = StartPipelineRequest(
+            schema_name="public",
+            table_name="direcciones_actual",
+            limit=None,
+            filter_mode="pending",
+        )
+        _run_pipeline_worker(req_no_limit)
+        mock_pipe_inst.run.assert_called_with(max_records=None, limit=None, filter_mode="pending")

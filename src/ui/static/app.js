@@ -125,9 +125,17 @@ document.addEventListener('DOMContentLoaded', () => {
         diagAiDetail.textContent = `⚠️ ${data.ai.message}`;
       }
 
+      // Esquema y Tabla activos
+      if (data.active_schema) {
+        schemaSelect.value = data.active_schema;
+      }
+      if (data.active_table) {
+        tableInput.value = data.active_table;
+      }
+
       // Conteos
       updateTableCountsDisplay(data.table_counts);
-      activeSchemaBadge.textContent = `Esquema: ${data.active_schema}`;
+      activeSchemaBadge.textContent = `Esquema: ${data.active_schema || 'public'} | Tabla: ${data.active_table || 'direcciones_actual'}`;
 
       // Si hay registros recientes recibidos previamente
       if (data.recent_records && data.recent_records.length > 0 && recordsList.length === 0) {
@@ -145,10 +153,54 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  let latestCounts = null;
+
   function updateTableCountsDisplay(counts) {
     if (!counts) return;
-    statTotalBd.textContent = counts.total != null ? Number(counts.total).toLocaleString() : '-';
-    progressPendingLabel.textContent = `Pendientes en BD: ${counts.pendientes != null ? Number(counts.pendientes).toLocaleString() : '-'}`;
+    latestCounts = counts;
+    const total = counts.total != null ? Number(counts.total) : 0;
+    const pendientes = counts.pendientes != null ? Number(counts.pendientes) : 0;
+    const validos = counts.validos != null ? Number(counts.validos) : 0;
+    const observados = counts.observados != null ? Number(counts.observados) : 0;
+
+    statTotalBd.textContent = total.toLocaleString();
+
+    if (!isRunning) {
+      statValid.textContent = validos.toLocaleString();
+      statObserved.textContent = observados.toLocaleString();
+
+      const validPct = total > 0 ? ((validos / total) * 100).toFixed(1) : '0.0';
+      const obsPct = total > 0 ? ((observados / total) * 100).toFixed(1) : '0.0';
+      statValidPct.textContent = `${validPct}%`;
+      statObservedPct.textContent = `${obsPct}%`;
+
+      // Calcular objetivo según filtro y límite
+      recalcTargetToProcess();
+    }
+
+    progressPendingLabel.textContent = `Pendientes en BD: ${pendientes.toLocaleString()}`;
+  }
+
+  function recalcTargetToProcess() {
+    if (!latestCounts || isRunning) return;
+    const total = latestCounts.total != null ? Number(latestCounts.total) : 0;
+    const pendientes = latestCounts.pendientes != null ? Number(latestCounts.pendientes) : 0;
+    const observados = latestCounts.observados != null ? Number(latestCounts.observados) : 0;
+
+    const filter = filterSelect ? filterSelect.value : 'pending';
+    let pool = pendientes;
+    if (filter === 'observed' || filter === 'unprocessed') {
+      pool = observados;
+    } else if (filter === 'all') {
+      pool = total;
+    }
+
+    const rawLimit = limitInput ? limitInput.value.trim() : '';
+    const limitNum = (rawLimit !== '' && !isNaN(rawLimit)) ? parseInt(rawLimit, 10) : null;
+    const target = limitNum ? Math.min(limitNum, pool) : pool;
+
+    statToProcess.textContent = target.toLocaleString();
+    progressCountLabel.textContent = `0 de ${target.toLocaleString()} registros`;
   }
 
   // ==========================================
@@ -431,12 +483,31 @@ document.addEventListener('DOMContentLoaded', () => {
   function setupEventHandlers() {
     // Cambio de esquema
     schemaSelect.addEventListener('change', () => {
-      activeSchemaBadge.textContent = `Esquema: ${schemaSelect.value}`;
+      activeSchemaBadge.textContent = `Esquema: ${schemaSelect.value} | Tabla: ${tableInput.value.trim()}`;
       refreshCounts();
     });
 
     tableInput.addEventListener('change', () => {
+      activeSchemaBadge.textContent = `Esquema: ${schemaSelect.value} | Tabla: ${tableInput.value.trim()}`;
       refreshCounts();
+    });
+
+    // Recalcular meta en vivo al cambiar filtro o límite
+    filterSelect.addEventListener('change', () => {
+      recalcTargetToProcess();
+    });
+
+    limitInput.addEventListener('input', () => {
+      recalcTargetToProcess();
+    });
+
+    // Atajos de límite rápido (10, 50, 100, Todos)
+    document.querySelectorAll('.limit-shortcut').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.getAttribute('data-limit');
+        limitInput.value = val;
+        recalcTargetToProcess();
+      });
     });
 
     // Envío del formulario (Iniciar)
@@ -444,11 +515,17 @@ document.addEventListener('DOMContentLoaded', () => {
       e.preventDefault();
       if (isRunning) return;
 
+      const rawLimit = limitInput.value.trim();
+      const parsedLimit = (rawLimit !== "" && !isNaN(rawLimit)) ? parseInt(rawLimit, 10) : null;
+
+      let filterMode = filterSelect.value;
+      if (filterMode === "unprocessed") filterMode = "observed";
+
       const payload = {
         schema_name: schemaSelect.value,
-        table_name: tableInput.value.trim(),
-        filter_mode: filterSelect.value,
-        limit: limitInput.value ? parseInt(limitInput.value, 10) : null,
+        table_name: tableInput.value.trim() || "direcciones_actual",
+        filter_mode: filterMode,
+        limit: parsedLimit,
         batch_size: parseInt(batchInput.value, 10) || 10,
         require_ai: requireAiCheckbox.checked,
       };
@@ -457,7 +534,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setRunningState(true);
         statusText.textContent = 'EJECUTANDO ⚡';
         statusText.className = 'text-blue-400 font-black';
-        progressStatusLabel.textContent = `Procesando en esquema [${payload.schema_name}]...`;
+        progressStatusLabel.textContent = `Procesando en [${payload.schema_name}.${payload.table_name}]...`;
 
         // Switch to records view
         switchView('records');
@@ -473,7 +550,8 @@ document.addEventListener('DOMContentLoaded', () => {
           throw new Error(errData.detail || 'Error al iniciar pipeline');
         }
 
-        appendLog(`[SISTEMA] Pipeline iniciado en lote de ${payload.batch_size} registros.`);
+        const limText = payload.limit ? `${payload.limit}` : 'Todos los pendientes';
+        appendLog(`[SISTEMA] Pipeline iniciado en [${payload.schema_name}.${payload.table_name}] (Filtro: ${payload.filter_mode}, Límite: ${limText}, Lote: ${payload.batch_size}).`);
       } catch (err) {
         setRunningState(false);
         alert(`No se pudo iniciar: ${err.message}`);

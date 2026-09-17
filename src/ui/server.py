@@ -31,11 +31,12 @@ class ExecutionState:
     """Estado compartido en memoria de la ejecución del pipeline."""
 
     def __init__(self):
+        settings = get_settings()
         self.is_running: bool = False
         self.pipeline: Optional[ETLPipeline] = None
         self.thread: Optional[threading.Thread] = None
-        self.active_schema: str = "public"
-        self.active_table: str = "direcciones_locales"
+        self.active_schema: str = settings.db.schema
+        self.active_table: str = settings.db.table
         self.recent_records: List[Dict[str, Any]] = []
         self.max_recent_records: int = 150
         self.log_history: List[str] = []
@@ -177,12 +178,12 @@ if STATIC_DIR.exists():
 
 
 class StartPipelineRequest(BaseModel):
-    schema_name: str = Field(default="public", description="Esquema destino en PostgreSQL")
-    table_name: str = Field(default="direcciones_locales", description="Nombre de tabla de direcciones")
+    schema_name: str = Field(default_factory=lambda: get_settings().db.schema, description="Esquema destino en PostgreSQL")
+    table_name: str = Field(default_factory=lambda: get_settings().db.table, description="Nombre de tabla de direcciones")
     limit: Optional[int] = Field(default=None, description="Límite máximo de registros a procesar")
-    batch_size: int = Field(default=10, ge=1, le=100, description="Tamaño de lote por transacción")
-    filter_mode: str = Field(default="pending", description="Filtro: pending, all, o unprocessed")
-    require_ai: bool = Field(default=True, description="Si es True, exige disponibilidad del modelo IA")
+    batch_size: int = Field(default_factory=lambda: get_settings().etl.batch_size, ge=1, le=100, description="Tamaño de lote por transacción")
+    filter_mode: str = Field(default="pending", description="Filtro: pending, all, o observed")
+    require_ai: bool = Field(default_factory=lambda: get_settings().etl.require_ai, description="Si es True, exige disponibilidad del modelo IA")
 
 
 @app.get("/", response_class=FileResponse)
@@ -304,12 +305,16 @@ async def test_ai_connection(sample_address: Optional[str] = None):
 
 def _run_pipeline_worker(req: StartPipelineRequest):
     """Función que ejecuta el pipeline ETL en un hilo secundario para no bloquear el servidor."""
-    state.add_log(f"Iniciando pipeline ETL en esquema [{req.schema_name}] tabla [{req.table_name}]...")
+    settings = get_settings()
+    target_schema = req.schema_name or settings.db.schema
+    target_table = req.table_name or settings.db.table
+    state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
+
     try:
         db_svc = DatabaseService()
         pipeline = ETLPipeline(
-            schema=req.schema_name,
-            table=req.table_name,
+            schema=target_schema,
+            table=target_table,
             batch_size=req.batch_size,
             db_service=db_svc,
             require_ai=req.require_ai,
@@ -327,18 +332,42 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         pending_avail = status_counts.get("pendientes", 0)
         observed_avail = status_counts.get("observados", 0)
 
-        if req.filter_mode == "pending":
+        # Normalizar modo de filtro (soporta 'pending', 'observed', 'all', 'unprocessed')
+        raw_filter = str(req.filter_mode or "pending").strip().lower()
+        if raw_filter in ("unprocessed", "observados", "observed"):
+            filter_mode = "observed"
+        elif raw_filter in ("pending", "pendientes"):
+            filter_mode = "pending"
+        else:
+            filter_mode = "all"
+
+        if filter_mode == "pending":
             target_pool = pending_avail
-        elif req.filter_mode == "unprocessed":
+        elif filter_mode == "observed":
             target_pool = observed_avail
         else:
             target_pool = total_avail
 
         to_process = min(req.limit, target_pool) if req.limit else target_pool
-        state.reset_for_run(total=to_process, schema=req.schema_name, table=req.table_name)
-        state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {req.filter_mode})")
+        state.reset_for_run(total=to_process, schema=target_schema, table=target_table)
+        state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()})")
 
-        summary = pipeline.run(limit=req.limit, filter_mode=req.filter_mode)
+        if to_process == 0:
+            state.add_log(f"🎉 No hay registros pendientes para procesar en [{target_schema}.{target_table}] con filtro '{filter_mode}'.")
+            state.finish_run(summary_data={
+                "total_records": 0,
+                "processed_records": 0,
+                "valid_processed_records": 0,
+                "observed_records": 0,
+                "successful_records": 0,
+                "failed_records": 0,
+                "ai_records": 0,
+                "hybrid_records": 0,
+                "heuristic_records": 0,
+            })
+            return
+
+        summary = pipeline.run(max_records=req.limit, limit=req.limit, filter_mode=filter_mode)
 
         summary_dict = {
             "total_records": summary.total_records,
@@ -355,7 +384,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         state.finish_run(summary_data=summary_dict)
 
     except Exception as e:
-        logger.exception("Error crítico durante la ejecución del pipeline: %s", e)
+        logger.exception("Error durante la ejecución del pipeline: %s", e)
         state.add_log(f"ERROR: {e}")
         state.finish_run(error=str(e))
 

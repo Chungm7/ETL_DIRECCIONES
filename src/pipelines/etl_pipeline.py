@@ -292,10 +292,14 @@ class ETLPipeline:
     def run(
         self,
         max_records: Optional[int] = None,
+        limit: Optional[int] = None,
         filter_mode: str = "pending",
         process_all: bool = False,
     ) -> ETLSummary:
         """Ejecuta el ciclo de vida del ETL por lotes con reanudación automática y seguimiento visual."""
+        # Soporta tanto limit como max_records para interoperabilidad transparente entre CLI y GUI
+        effective_limit = limit if limit is not None else max_records
+
         self.prepare_environment()
 
         summary = ETLSummary(mode=self.mode, ai_status_message=self.ai_status_message)
@@ -320,15 +324,19 @@ class ETLPipeline:
         valid_count = counts.get("validos", 0)
         observed_count = counts.get("observados", 0)
 
-        # Determinar universo objetivo según el filtro seleccionado
-        if filter_mode == "pending":
+        # Determinar universo objetivo normalizando variantes de filtro
+        norm_filter = str(filter_mode).lower().strip()
+        if norm_filter in ("pending", "pendientes"):
             target_pool = pending_count
-        elif filter_mode == "observed":
+            filter_mode = "pending"
+        elif norm_filter in ("observed", "observados", "unprocessed"):
             target_pool = observed_count
+            filter_mode = "observed"
         else:
             target_pool = total_available
+            filter_mode = "all"
 
-        if target_pool == 0 and not process_all and max_records is None:
+        if target_pool == 0 and not process_all and effective_limit is None:
             if RICH_AVAILABLE and console:
                 console.print(
                     f"\n[bold green]🎉 Todos los registros ({total_available}) ya se encuentran procesados en {self.schema}.{self.table}[/bold green]\n"
@@ -340,7 +348,7 @@ class ETLPipeline:
                 print(f"\n🎉 Todos los registros ({total_available}) ya han sido procesados. No hay registros pendientes.\n")
             return summary
 
-        records_to_process = target_pool if process_all else (min(target_pool, max_records) if max_records else target_pool)
+        records_to_process = target_pool if process_all else (min(target_pool, effective_limit) if effective_limit else target_pool)
         summary.total_records = records_to_process
 
         valid_pct = (valid_count / total_available * 100) if total_available else 0

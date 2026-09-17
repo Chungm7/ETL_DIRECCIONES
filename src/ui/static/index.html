@@ -119,7 +119,7 @@
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="table-input">
               Tabla Origen
             </label>
-            <input type="text" id="table-input" value="direcciones_locales" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border" />
+            <input type="text" id="table-input" value="direcciones_actual" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border font-mono" />
           </div>
 
           <!-- Filtro de Reanudación -->
@@ -127,10 +127,10 @@
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="filter-select">
               Filtro / Reanudar
             </label>
-            <select id="filter-select" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border">
-              <option value="pending" selected>Solo Pendientes (NULL)</option>
-              <option value="unprocessed">Solo Observados</option>
-              <option value="all">Todos los Registros</option>
+            <select id="filter-select" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border font-semibold">
+              <option value="pending" selected>⚡ Solo Pendientes (NULL) [Opción 3]</option>
+              <option value="observed">⚠️ Solo Observados</option>
+              <option value="all">🔄 Todos los Registros</option>
             </select>
           </div>
 
@@ -139,7 +139,14 @@
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="limit-input">
               Límite (Vacío=Todos)
             </label>
-            <input type="number" id="limit-input" placeholder="Ej: 10 o 50" min="1" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border" />
+            <input type="number" id="limit-input" placeholder="Todos (o ej: 10)" min="1" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border" />
+            <div class="flex items-center gap-1 mt-1 text-[11px] text-slate-400">
+              <span>Atajos:</span>
+              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="10">10</button>
+              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="50">50</button>
+              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="100">100</button>
+              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="">Todos</button>
+            </div>
           </div>
 
           <!-- Tamaño de Lote -->
