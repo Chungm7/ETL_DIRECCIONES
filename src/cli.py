@@ -452,7 +452,7 @@ def cmd_run_etl(
     limit: Optional[int] = None,
     batch_size: Optional[int] = None,
     mode: Optional[str] = None,
-    require_ai: bool = False,
+    require_ai: Optional[bool] = None,
     process_all: bool = False,
     reprocess_observed: bool = False,
     force: bool = False,
@@ -461,6 +461,7 @@ def cmd_run_etl(
     settings = get_settings()
     active_schema = schema or settings.db.schema
     active_table = settings.db.table
+    strict_ai = settings.etl.require_ai if require_ai is None else require_ai
 
     filter_mode = "pending"
     if reprocess_observed:
@@ -468,19 +469,21 @@ def cmd_run_etl(
     elif force:
         filter_mode = "all"
 
+    strict_desc = "Obligatorio (Fail-Fast) 🔒" if strict_ai else "Tolerante (Permite contingencia) ⚠️"
+    lim_desc = limit or ("Todos los pendientes" if process_all else "Todos los pendientes")
+
     _print_panel(
         "🚀 EJECUCIÓN DEL PIPELINE ETL MPCH (MÉTODO IN-PLACE CON REANUDACIÓN)",
-        f"Esquema: {active_schema}\n"
-        f"Tabla Objetivo: {active_schema}.{active_table} (Modificación en sitio preservando IDs)\n"
-        f"Filtro: {filter_mode.upper()} | Modo continuo (--all): {'Sí' if process_all else 'No'}\n"
-        f"Lote: {batch_size or settings.etl.batch_size} | Límite: {limit or ('Todos los pendientes' if process_all else 'Configurado')} | Requerir IA: {'Sí' if require_ai else 'No'}",
+        f"Esquema: {active_schema} | Tabla Objetivo: {active_schema}.{active_table} (In-Place)\n"
+        f"Filtro: {filter_mode.upper()} | Modo continuo (--all): {'Sí' if process_all else 'No'} | Lote: {batch_size or settings.etl.batch_size}\n"
+        f"Límite: {lim_desc} | Motor IA: {settings.ollama.model} | Modo Estricto IA: {strict_desc}",
     )
 
     pipeline = ETLPipeline(
         schema=active_schema,
         table=active_table,
         batch_size=batch_size,
-        require_ai=require_ai,
+        require_ai=strict_ai,
     )
     summary = pipeline.run(max_records=limit, filter_mode=filter_mode, process_all=process_all)
 
@@ -666,8 +669,14 @@ def main() -> None:
     run_parser.add_argument(
         "--require-ai",
         action="store_true",
+        default=None,
+        help="Exige estrictamente que la IA esté activa (comportamiento por defecto)",
+    )
+    run_parser.add_argument(
+        "--allow-fallback",
+        action="store_true",
         default=False,
-        help="Falla y detiene la ejecución si el modelo de IA no está disponible en memoria",
+        help="Permite degradación a heurística si el modelo IA se cae en vez de abortar",
     )
 
     run_parser.add_argument(
@@ -711,12 +720,18 @@ def main() -> None:
         elif args.catalog_action == "add-zona":
             cmd_catalog_add_zona(args.nombre, args.abreviatura, args.sinonimos)
     elif args.command == "run":
+        req_ai = None
+        if args.allow_fallback:
+            req_ai = False
+        elif args.require_ai:
+            req_ai = True
+
         cmd_run_etl(
             schema=args.schema,
             limit=args.limit,
             batch_size=args.batch_size,
             mode=args.mode,
-            require_ai=args.require_ai,
+            require_ai=req_ai,
             process_all=args.all,
             reprocess_observed=args.reprocess_observed,
             force=args.force,

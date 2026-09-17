@@ -462,6 +462,58 @@ class TestPipelineStructure(unittest.TestCase):
 
             self.assertIn("Ejecución abortada (--require-ai)", str(ctx.exception))
 
+    def test_etl_pipeline_require_ai_defaults_to_true_from_settings(self):
+        """Valida que ETLPipeline tome por defecto require_ai=True desde settings y aborte si está offline."""
+        mock_db = MagicMock()
+        mock_db.ensure_catalogs_exist.return_value = {}
+
+        pipeline = ETLPipeline(
+            db_service=mock_db,
+            schema="public",
+            table="direcciones_actual",
+        )
+        self.assertTrue(pipeline.require_ai)
+
+        with patch("src.services.ollama_service.OllamaService.test_model_inference") as mock_test:
+            mock_test.return_value = {
+                "connected": False,
+                "model_available": False,
+                "model_ready": False,
+                "latency_seconds": 0.0,
+                "error": "Connection refused",
+                "message": "Servidor Ollama no disponible",
+            }
+            with self.assertRaises(RuntimeError) as ctx:
+                pipeline.prepare_environment()
+
+            self.assertIn("Ejecución abortada (--require-ai)", str(ctx.exception))
+
+    def test_etl_pipeline_allows_heuristic_fallback_when_require_ai_false(self):
+        """Valida que con require_ai=False continúe en fallback heurístico sin lanzar excepción."""
+        mock_db = MagicMock()
+        mock_db.ensure_catalogs_exist.return_value = {}
+
+        pipeline = ETLPipeline(
+            db_service=mock_db,
+            schema="public",
+            table="direcciones_actual",
+            require_ai=False,
+        )
+        self.assertFalse(pipeline.require_ai)
+
+        with patch("src.services.ollama_service.OllamaService.test_model_inference") as mock_test:
+            mock_test.return_value = {
+                "connected": False,
+                "model_available": False,
+                "model_ready": False,
+                "latency_seconds": 0.0,
+                "error": "Connection refused",
+                "message": "Servidor Ollama no disponible",
+            }
+            # No debe lanzar excepción
+            pipeline.prepare_environment()
+            self.assertIn("NO DISPONIBLE", pipeline.ai_status_message)
+
 
 if __name__ == "__main__":
     unittest.main()

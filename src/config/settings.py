@@ -231,6 +231,11 @@ class ETLSettings(BaseSettings):
     batch_size: int = Field(default=50, alias="ETL_BATCH_SIZE")
     max_retries: int = Field(default=3, alias="ETL_MAX_RETRIES")
     use_ai_parser: bool = Field(default=True, alias="USE_AI_PARSER")
+    require_ai: bool = Field(
+        default=True,
+        alias="ETL_REQUIRE_AI",
+        description="Si es True, exige que Ollama esté operativo y detiene la ejecución si falla",
+    )
 
     path_codificador_vias: str = Field(
         default="docs/cod_vias_y_habilitaciones_urbanas/CODIFICADOR DE VIAS - CHICLAYO _ FINAL 26-02-2024 (1).xlsx",

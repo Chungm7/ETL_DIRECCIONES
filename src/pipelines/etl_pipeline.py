@@ -58,7 +58,7 @@ class ETLPipeline:
         batch_size: Optional[int] = None,
         db_service: Optional[DatabaseService] = None,
         mode: Optional[str] = None,
-        require_ai: bool = False,
+        require_ai: Optional[bool] = None,
     ):
         settings = get_settings()
         self.mode = "in_place"
@@ -66,7 +66,7 @@ class ETLPipeline:
         self.table = table or settings.db.table
         self.batch_size = batch_size or settings.etl.batch_size
         self.db = db_service or DatabaseService()
-        self.require_ai = require_ai
+        self.require_ai = settings.etl.require_ai if require_ai is None else require_ai
         self.ai_status_message = "Pendiente"
 
         # Extractor (extrae de la tabla de direcciones en el esquema configurado)
