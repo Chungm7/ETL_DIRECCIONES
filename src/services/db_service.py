@@ -596,6 +596,7 @@ class DatabaseService:
         }
 
         # 1. Crear las columnas consolidadas si no existen
+        col_id = self.settings.id_col
         ddl = f"""
         ALTER TABLE "{schema}"."{table}"
             ADD COLUMN IF NOT EXISTS "{cols['id_via']}" INTEGER,
@@ -605,8 +606,17 @@ class DatabaseService:
             ADD COLUMN IF NOT EXISTS "{cols['lote']}" VARCHAR(20),
             ADD COLUMN IF NOT EXISTS "{cols['slote']}" VARCHAR(20),
             ADD COLUMN IF NOT EXISTS "{cols['referencia']}" VARCHAR(255),
-            ADD COLUMN IF NOT EXISTS "{cols['es_procesado']}" BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS "{cols['es_procesado']}" BOOLEAN DEFAULT NULL,
             ADD COLUMN IF NOT EXISTS "{cols['observacion']}" TEXT;
+
+        -- Asegurar que es_procesado arranque como NULL (Pendiente) para registros no evaluados
+        ALTER TABLE "{schema}"."{table}"
+            ALTER COLUMN "{cols['es_procesado']}" DROP DEFAULT;
+
+        -- Partial Index para consultas ultrarrápidas de registros pendientes en tablas de 42,000+ filas
+        CREATE INDEX IF NOT EXISTS "idx_{table}_pendientes"
+            ON "{schema}"."{table}" ("{col_id}")
+            WHERE "{cols['es_procesado']}" IS NULL;
 
         -- Depurar columnas de texto redundantes para consolidar a 3NF
         ALTER TABLE "{schema}"."{table}"

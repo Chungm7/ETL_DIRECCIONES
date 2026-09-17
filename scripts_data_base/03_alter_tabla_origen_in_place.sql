@@ -18,8 +18,13 @@ ALTER TABLE IF EXISTS direcciones_actual
     ADD COLUMN IF NOT EXISTS lote VARCHAR(20),
     ADD COLUMN IF NOT EXISTS slote VARCHAR(20),
     ADD COLUMN IF NOT EXISTS referencia VARCHAR(255),
-    ADD COLUMN IF NOT EXISTS es_procesado BOOLEAN DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS es_procesado BOOLEAN DEFAULT NULL,
     ADD COLUMN IF NOT EXISTS observacion TEXT;
+
+-- Índice parcial condicional para acelerar la extracción de registros pendientes en tablas masivas (42,000+)
+CREATE INDEX IF NOT EXISTS idx_direcciones_pendientes
+    ON direcciones_actual (id_licencia)
+    WHERE es_procesado IS NULL;
 
 -- Depuración de columnas de texto redundantes (ya provistas por las tablas maestras)
 ALTER TABLE IF EXISTS direcciones_actual

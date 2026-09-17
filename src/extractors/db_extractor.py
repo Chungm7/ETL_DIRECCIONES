@@ -34,6 +34,7 @@ class DatabaseExtractor(BaseExtractor):
         self.table = table or settings.table
         self.id_col = id_col or settings.id_col
         self.dir_col = dir_col or settings.dir_col
+        self.col_es_procesado = settings.col_es_procesado
 
     def get_total_records(self) -> int:
         """Obtiene la cantidad total de registros en la tabla emisora."""
@@ -52,18 +53,67 @@ class DatabaseExtractor(BaseExtractor):
             )
             return 0
 
-    def extract_batch(self, offset: int, limit: int) -> List[DireccionOrigen]:
-        """Extrae un lote ordenado seleccionando únicamente las columnas emisoras configuradas.
+    def get_status_counts(self) -> dict:
+        """Obtiene el conteo clasificado de registros: total, pendientes, válidos y observados."""
+        if not SQLALCHEMY_AVAILABLE or not self.db._engine:
+            return {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
-        Cualquier otra columna que tenga la tabla origen se ignora por completo.
+        query = text(f"""
+            SELECT 
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE "{self.col_es_procesado}" IS NULL) AS pendientes,
+                COUNT(*) FILTER (WHERE "{self.col_es_procesado}" IS TRUE) AS validos,
+                COUNT(*) FILTER (WHERE "{self.col_es_procesado}" IS FALSE) AS observados
+            FROM "{self.schema}"."{self.table}";
+        """)
+        try:
+            with self.db.get_session() as session:
+                row = session.execute(query).fetchone()
+                if row:
+                    return {
+                        "total": int(row.total or 0),
+                        "pendientes": int(row.pendientes or 0),
+                        "validos": int(row.validos or 0),
+                        "observados": int(row.observados or 0),
+                    }
+        except Exception as e:
+            logger.debug("Aviso al consultar conteos clasificados en %s.%s: %s", self.schema, self.table, e)
+            total = self.get_total_records()
+            return {"total": total, "pendientes": total, "validos": 0, "observados": 0}
+
+        return {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
+
+    def get_pending_records_count(self) -> int:
+        """Obtiene la cantidad de registros pendientes (es_procesado IS NULL)."""
+        counts = self.get_status_counts()
+        return counts.get("pendientes", 0)
+
+    def extract_batch(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        filter_mode: str = "pending",
+    ) -> List[DireccionOrigen]:
+        """Extrae un lote aplicando filtro de estado para reanudación automática.
+
+        filter_mode:
+            - 'pending': Solo registros donde es_procesado IS NULL (por defecto).
+            - 'observed': Solo registros donde es_procesado = FALSE (reproceso de observados).
+            - 'all': Todos los registros sin filtrar por estado.
         """
         if not SQLALCHEMY_AVAILABLE or not self.db._engine:
             return []
 
-        # Consulta parametrizada con nombres dinámicos entre comillas dobles
+        where_clause = ""
+        if filter_mode == "pending":
+            where_clause = f'WHERE "{self.col_es_procesado}" IS NULL'
+        elif filter_mode == "observed":
+            where_clause = f'WHERE "{self.col_es_procesado}" = FALSE'
+
         query = text(f"""
             SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
             FROM "{self.schema}"."{self.table}"
+            {where_clause}
             ORDER BY "{self.id_col}" ASC
             LIMIT :limit OFFSET :offset;
         """)
@@ -81,11 +131,12 @@ class DatabaseExtractor(BaseExtractor):
                     )
         except Exception as e:
             logger.error(
-                "Error al extraer lote de %s.%s (offset=%d, limit=%d): %s",
+                "Error al extraer lote de %s.%s (offset=%d, limit=%d, filter=%s): %s",
                 self.schema,
                 self.table,
                 offset,
                 limit,
+                filter_mode,
                 e,
             )
 

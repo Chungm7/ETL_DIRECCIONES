@@ -213,6 +213,32 @@ def cmd_check_db(schema: Optional[str] = None) -> None:
             table.add_row("Catálogo Tipos Zona", active_schema, settings.db.table_tipo_zona, "✅ SÍ" if zona_exists else "⚠️ NO (Se auto-crea en ETL)")
 
             console.print(table)
+            console.print()
+
+            # 3. Métricas de estado de procesamiento (para reanudación)
+            if status["table_exists"]:
+                from src.extractors.db_extractor import DatabaseExtractor
+                extractor = DatabaseExtractor(db_service, schema=active_schema, table=settings.db.table)
+                counts = extractor.get_status_counts()
+                total = counts.get("total", 0)
+                validos = counts.get("validos", 0)
+                observados = counts.get("observados", 0)
+                pendientes = counts.get("pendientes", 0)
+
+                pct_val = (validos / total * 100) if total else 0
+                pct_obs = (observados / total * 100) if total else 0
+                pct_pend = (pendientes / total * 100) if total else 0
+
+                table_status = Table(title=f"📊 Estado de Procesamiento Catastral ({active_schema}.{settings.db.table})", show_header=True, header_style="bold green")
+                table_status.add_column("Estado de Fila", style="bold")
+                table_status.add_column("Cantidad", justify="right", style="cyan")
+                table_status.add_column("Porcentaje", justify="right", style="yellow")
+
+                table_status.add_row("Total Registros", str(total), "100.0%")
+                table_status.add_row("✅ Validados Oficiales", str(validos), f"{pct_val:.1f}%")
+                table_status.add_row("⚠️ Observados", str(observados), f"{pct_obs:.1f}%")
+                table_status.add_row("⏳ Pendientes (Sin procesar)", str(pendientes), f"{pct_pend:.1f}%")
+                console.print(table_status)
         else:
             print(f"Esquemas disponibles en BD: {status.get('available_schemas', [])}")
             print(f"Tabla Direcciones ({active_schema}.{settings.db.table}): {'Existe' if status['table_exists'] else 'No existe'}")
@@ -422,23 +448,32 @@ def catalog_menu() -> None:
 
 
 def cmd_run_etl(
-
     schema: Optional[str] = None,
     limit: Optional[int] = None,
     batch_size: Optional[int] = None,
     mode: Optional[str] = None,
     require_ai: bool = False,
+    process_all: bool = False,
+    reprocess_observed: bool = False,
+    force: bool = False,
 ) -> None:
     """Ejecuta el pipeline ETL en su método único In-Place sobre el esquema seleccionado."""
     settings = get_settings()
     active_schema = schema or settings.db.schema
     active_table = settings.db.table
 
+    filter_mode = "pending"
+    if reprocess_observed:
+        filter_mode = "observed"
+    elif force:
+        filter_mode = "all"
+
     _print_panel(
-        "🚀 EJECUCIÓN DEL PIPELINE ETL MPCH (MÉTODO IN-PLACE ÚNICO)",
+        "🚀 EJECUCIÓN DEL PIPELINE ETL MPCH (MÉTODO IN-PLACE CON REANUDACIÓN)",
         f"Esquema: {active_schema}\n"
         f"Tabla Objetivo: {active_schema}.{active_table} (Modificación en sitio preservando IDs)\n"
-        f"Lote: {batch_size or settings.etl.batch_size} | Límite: {limit or 'Todos'} | Requerir IA: {'Sí' if require_ai else 'No'}",
+        f"Filtro: {filter_mode.upper()} | Modo continuo (--all): {'Sí' if process_all else 'No'}\n"
+        f"Lote: {batch_size or settings.etl.batch_size} | Límite: {limit or ('Todos los pendientes' if process_all else 'Configurado')} | Requerir IA: {'Sí' if require_ai else 'No'}",
     )
 
     pipeline = ETLPipeline(
@@ -447,7 +482,7 @@ def cmd_run_etl(
         batch_size=batch_size,
         require_ai=require_ai,
     )
-    summary = pipeline.run(max_records=limit)
+    summary = pipeline.run(max_records=limit, filter_mode=filter_mode, process_all=process_all)
 
     total_proc = max(1, summary.processed_records)
     pct_ai = (summary.ai_records / total_proc) * 100
@@ -635,6 +670,25 @@ def main() -> None:
         help="Falla y detiene la ejecución si el modelo de IA no está disponible en memoria",
     )
 
+    run_parser.add_argument(
+        "--all",
+        action="store_true",
+        default=False,
+        help="Procesa de forma continua en bucle todos los registros pendientes hasta agotar la cola",
+    )
+    run_parser.add_argument(
+        "--reprocess-observed",
+        action="store_true",
+        default=False,
+        help="Reprocesa únicamente los registros con es_procesado = FALSE (observados)",
+    )
+    run_parser.add_argument(
+        "--force",
+        action="store_true",
+        default=False,
+        help="Fuerza el reprocesamiento de todos los registros ignorando el estado previo",
+    )
+
     args = parser.parse_args()
 
     if args.command is None or args.command == "menu":
@@ -663,6 +717,9 @@ def main() -> None:
             batch_size=args.batch_size,
             mode=args.mode,
             require_ai=args.require_ai,
+            process_all=args.all,
+            reprocess_observed=args.reprocess_observed,
+            force=args.force,
         )
 
 

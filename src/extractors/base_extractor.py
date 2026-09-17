@@ -15,12 +15,13 @@ class BaseExtractor(ABC):
         pass
 
     @abstractmethod
-    def extract_batch(self, offset: int, limit: int) -> List[DireccionOrigen]:
+    def extract_batch(self, offset: int, limit: int, filter_mode: str = "pending") -> List[DireccionOrigen]:
         """Extrae un lote específico de registros de origen.
 
         Args:
             offset: Desplazamiento inicial (0-indexed).
             limit: Número máximo de registros a extraer.
+            filter_mode: Modo de filtrado ('pending', 'observed', 'all').
 
         Returns:
             Lista de objetos DireccionOrigen.

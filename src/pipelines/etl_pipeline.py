@@ -279,40 +279,92 @@ class ETLPipeline:
 
         sys.stdout.flush()
 
-    def run(self, max_records: Optional[int] = None) -> ETLSummary:
-        """Ejecuta el ciclo de vida completo del ETL por lotes con seguimiento visual."""
+    def run(
+        self,
+        max_records: Optional[int] = None,
+        filter_mode: str = "pending",
+        process_all: bool = False,
+    ) -> ETLSummary:
+        """Ejecuta el ciclo de vida del ETL por lotes con reanudación automática y seguimiento visual."""
         self.prepare_environment()
 
         summary = ETLSummary(mode=self.mode, ai_status_message=self.ai_status_message)
-        total_available = self.extractor.get_total_records()
+        
+        # Consultar métricas de estado en la base de datos de manera segura
+        counts = {}
+        try:
+            raw_counts = self.extractor.get_status_counts()
+            if isinstance(raw_counts, dict):
+                counts = raw_counts
+        except Exception:
+            counts = {}
 
-        records_to_process = (
-            min(total_available, max_records) if max_records else total_available
-        )
+        total_available = counts.get("total", self.extractor.get_total_records())
+        if not isinstance(total_available, int):
+            try:
+                total_available = int(total_available)
+            except Exception:
+                total_available = 0
+
+        pending_count = counts.get("pendientes", total_available)
+        valid_count = counts.get("validos", 0)
+        observed_count = counts.get("observados", 0)
+
+        # Determinar universo objetivo según el filtro seleccionado
+        if filter_mode == "pending":
+            target_pool = pending_count
+        elif filter_mode == "observed":
+            target_pool = observed_count
+        else:
+            target_pool = total_available
+
+        if target_pool == 0 and not process_all and max_records is None:
+            if RICH_AVAILABLE and console:
+                console.print(
+                    f"\n[bold green]🎉 Todos los registros ({total_available}) ya se encuentran procesados en {self.schema}.{self.table}[/bold green]\n"
+                    f"├─ ✅ Validados en Catastro: [green]{valid_count}[/green]\n"
+                    f"├─ ⚠️  Observados            : [yellow]{observed_count}[/yellow]\n"
+                    f"└─ ⏳ Pendientes por IA     : [cyan]0[/cyan]\n"
+                )
+            else:
+                print(f"\n🎉 Todos los registros ({total_available}) ya han sido procesados. No hay registros pendientes.\n")
+            return summary
+
+        records_to_process = target_pool if process_all else (min(target_pool, max_records) if max_records else target_pool)
         summary.total_records = records_to_process
 
+        valid_pct = (valid_count / total_available * 100) if total_available else 0
+        obs_pct = (observed_count / total_available * 100) if total_available else 0
+        pend_pct = (pending_count / total_available * 100) if total_available else 0
+
         if RICH_AVAILABLE and console:
-            console.rule(f"[bold cyan]Iniciando Pipeline ETL In-Place [{self.schema}.{self.table}] (Conservando IDs)[/bold cyan]")
+            console.rule(f"[bold cyan]Pipeline ETL In-Place [{self.schema}.{self.table}] (Reanudación Automática)[/bold cyan]")
             console.print(
                 f"Esquema Activo: [cyan]{self.schema}[/cyan] | Tabla: [yellow]{self.table}[/yellow]\n"
-                f"Disponibles: [green]{total_available}[/green] | "
-                f"A procesar: [yellow]{records_to_process}[/yellow] | "
-                f"Tamaño de Lote: [blue]{self.batch_size}[/blue]\n"
+                f"📊 Estado BD: Total: [bold]{total_available}[/bold] | "
+                f"✅ Válidos: [green]{valid_count} ({valid_pct:.1f}%)[/green] | "
+                f"⚠️ Observados: [yellow]{observed_count} ({obs_pct:.1f}%)[/yellow] | "
+                f"⏳ Pendientes: [cyan]{pending_count} ({pend_pct:.1f}%)[/cyan]\n"
+                f"🚀 A Procesar: [bold green]{records_to_process}[/bold green] (Filtro: [magenta]{filter_mode.upper()}[/magenta]) | "
+                f"Tamaño Lote: [blue]{self.batch_size}[/blue]\n"
             )
         else:
-            print(f"\n=== Iniciando Pipeline ETL In-Place [{self.schema}.{self.table}] (Conservando IDs) ===")
-            print(f"Esquema: {self.schema} | Tabla: {self.table} | Disponibles: {total_available} | A procesar: {records_to_process} | Lote: {self.batch_size}\n")
+            print(f"\n=== Pipeline ETL In-Place [{self.schema}.{self.table}] (Reanudación Automática) ===")
+            print(f"Total: {total_available} | Válidos: {valid_count} | Observados: {observed_count} | Pendientes: {pending_count}")
+            print(f"A Procesar: {records_to_process} | Filtro: {filter_mode} | Lote: {self.batch_size}\n")
         sys.stdout.flush()
 
-        offset = 0
+        processed_in_run = 0
         current_index = 0
 
-        while offset < records_to_process:
-            limit = min(self.batch_size, records_to_process - offset)
+        while processed_in_run < records_to_process:
+            limit = min(self.batch_size, records_to_process - processed_in_run)
 
             try:
-                # 1. Extracción
-                batch_raw = self.extractor.extract_batch(offset=offset, limit=limit)
+                # 1. Extracción (en modo pending, los registros actualizados dejan de ser NULL,
+                # por lo que offset=0 siempre apunta al siguiente conjunto de registros pendientes)
+                fetch_offset = 0 if filter_mode == "pending" else processed_in_run
+                batch_raw = self.extractor.extract_batch(offset=fetch_offset, limit=limit, filter_mode=filter_mode)
                 if not batch_raw:
                     break
 
@@ -369,10 +421,12 @@ class ETLPipeline:
                         summary.failed_records += 1
                         summary.processed_records += 1
 
-            except Exception as e:
-                logger.error("Fallo durante la extracción del lote en offset %d: %s", offset, e)
-                summary.failed_records += limit
+                processed_in_run += len(batch_raw)
 
-            offset += limit
+            except Exception as e:
+                logger.error("Fallo durante la extracción del lote en offset %d: %s", fetch_offset, e)
+                summary.failed_records += limit
+                processed_in_run += limit
 
         return summary
+
