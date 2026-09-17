@@ -528,6 +528,12 @@ def cmd_run_etl(
         print("=" * 50)
 
 
+def cmd_run_gui(port: int = 8080, open_browser: bool = True) -> None:
+    """Inicia el servidor backend y abre la interfaz gráfica de escritorio."""
+    from src.ui.launcher import start_gui_server
+    start_gui_server(port=port, open_browser=open_browser)
+
+
 def interactive_menu() -> None:
     """Menú interactivo visual de consola con soporte para Rich y cambio de esquema."""
     settings = get_settings()
@@ -546,11 +552,12 @@ def interactive_menu() -> None:
         print("4. 🔄 Cambiar Esquema Activo de Trabajo (public, schema_solo_tabla, etc.)")
         print("5. 🤖 Probar Inferencia y Salud del Modelo IA (patroclo)")
         print("6. 📚 Gestionar Catálogos y Diccionarios (Vías y Zonas en JSON)")
+        print("7. 🖥️  Abrir Interfaz Gráfica / Ventana Ejecutable (GUI Desktop)")
         print("0. 🚪 Salir")
         print("-" * 65)
 
         if RICH_AVAILABLE and console:
-            choice = Prompt.ask("Selecciona una opción", choices=["0", "1", "2", "3", "4", "5", "6"], default="3")
+            choice = Prompt.ask("Selecciona una opción", choices=["0", "1", "2", "3", "4", "5", "6", "7"], default="3")
         else:
             choice = input("Selecciona una opción [3]: ").strip() or "3"
 
@@ -609,6 +616,8 @@ def interactive_menu() -> None:
             cmd_check_ollama()
         elif choice == "6":
             catalog_menu()
+        elif choice == "7":
+            cmd_run_gui()
         elif choice == "0":
             print("\n¡Hasta pronto!\n")
             break
@@ -624,6 +633,10 @@ def main() -> None:
     subparsers = parser.add_subparsers(dest="command", help="Comando a ejecutar")
 
     subparsers.add_parser("menu", help="Abre el menú interactivo visual")
+    gui_parser = subparsers.add_parser("gui", help="Abre la interfaz gráfica en ventana de escritorio ejecutable")
+    gui_parser.add_argument("--port", type=int, default=8080, help="Puerto local para el servidor GUI (default: 8080)")
+    gui_parser.add_argument("--no-browser", action="store_true", default=False, help="No abrir ventana de navegador automáticamente")
+
     subparsers.add_parser("config", help="Muestra la configuración activa")
     subparsers.add_parser("check-ollama", help="Verifica la conexión con el servidor local Ollama y prueba el modelo")
 
@@ -736,6 +749,8 @@ def main() -> None:
             reprocess_observed=args.reprocess_observed,
             force=args.force,
         )
+    elif args.command == "gui":
+        cmd_run_gui(port=args.port, open_browser=not args.no_browser)
 
 
 

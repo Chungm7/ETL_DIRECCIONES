@@ -3,7 +3,7 @@
 import logging
 import sys
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Callable, Dict, Any
 
 try:
     from rich.console import Console
@@ -59,6 +59,8 @@ class ETLPipeline:
         db_service: Optional[DatabaseService] = None,
         mode: Optional[str] = None,
         require_ai: Optional[bool] = None,
+        on_record_processed: Optional[Callable[[Dict[str, Any]], None]] = None,
+        on_progress_update: Optional[Callable[[Any], None]] = None,
     ):
         settings = get_settings()
         self.mode = "in_place"
@@ -68,6 +70,9 @@ class ETLPipeline:
         self.db = db_service or DatabaseService()
         self.require_ai = settings.etl.require_ai if require_ai is None else require_ai
         self.ai_status_message = "Pendiente"
+        self.on_record_processed = on_record_processed
+        self.on_progress_update = on_progress_update
+        self._stop_requested = False
 
         # Extractor (extrae de la tabla de direcciones en el esquema configurado)
         self.extractor = extractor or DatabaseExtractor(
@@ -88,6 +93,11 @@ class ETLPipeline:
             table=self.table,
             mode="in_place",
         )
+
+    def request_stop(self) -> None:
+        """Solicita la detención segura del pipeline tras culminar el registro actual."""
+        self._stop_requested = True
+        logger.info("Detención de pipeline solicitada.")
 
     def prepare_environment(self) -> None:
         """Prepara el entorno para el ETL In-Place:
@@ -358,6 +368,10 @@ class ETLPipeline:
         current_index = 0
 
         while processed_in_run < records_to_process:
+            if self._stop_requested:
+                logger.info("Pipeline interrumpido por solicitud de usuario.")
+                break
+
             limit = min(self.batch_size, records_to_process - processed_in_run)
 
             try:
@@ -370,6 +384,10 @@ class ETLPipeline:
 
                 # 2. Procesamiento, carga y visualización en tiempo real registro por registro
                 for rec_raw in batch_raw:
+                    if self._stop_requested:
+                        logger.info("Pipeline detenido por usuario antes de procesar siguiente registro.")
+                        break
+
                     current_index += 1
                     try:
                         # Indicador visual inmediato de inicio de análisis
@@ -408,7 +426,7 @@ class ETLPipeline:
                         else:
                             summary.observed_records += 1
 
-                        # Mostrar seguimiento visual en vivo al instante
+                        # Mostrar seguimiento visual en vivo al instante en consola
                         self._log_record_progress(
                             index=current_index,
                             total=records_to_process,
@@ -416,10 +434,79 @@ class ETLPipeline:
                             destino=rec_dest,
                             success=is_success,
                         )
+
+                        # Emitir evento en tiempo real hacia GUI/SSE si el callback está registrado
+                        if self.on_record_processed:
+                            try:
+                                self.on_record_processed({
+                                    "index": current_index,
+                                    "total": records_to_process,
+                                    "id_licencia": rec_raw.id_licencia,
+                                    "raw_text": rec_raw.emp_direccion or "",
+                                    "metodo": metodo,
+                                    "id_via": rec_dest.id_via,
+                                    "nom_via": rec_dest.nom_via,
+                                    "num_via": rec_dest.num_via,
+                                    "id_zona": rec_dest.id_zona,
+                                    "nom_zona": rec_dest.nom_zona,
+                                    "manzana": rec_dest.manzana,
+                                    "lote": rec_dest.lote,
+                                    "slote": rec_dest.slote,
+                                    "referencia": rec_dest.referencia,
+                                    "es_procesado": bool(rec_dest.es_procesado),
+                                    "observacion": rec_dest.observacion or "",
+                                    "success": is_success,
+                                    "valid_count": summary.valid_processed_records,
+                                    "observed_count": summary.observed_records,
+                                    "processed_count": summary.processed_records,
+                                    "failed_count": summary.failed_records,
+                                    "ai_records": summary.ai_records,
+                                    "hybrid_records": summary.hybrid_records,
+                                    "heuristic_records": summary.heuristic_records,
+                                })
+                            except Exception as cb_err:
+                                logger.warning("Error notificando on_record_processed: %s", cb_err)
+
                     except Exception as rec_err:
                         logger.error("Error procesando registro %d: %s", rec_raw.id_licencia, rec_err)
                         summary.failed_records += 1
                         summary.processed_records += 1
+                        if self.on_record_processed:
+                            try:
+                                self.on_record_processed({
+                                    "index": current_index,
+                                    "total": records_to_process,
+                                    "id_licencia": rec_raw.id_licencia,
+                                    "raw_text": rec_raw.emp_direccion or "",
+                                    "metodo": "ERROR",
+                                    "id_via": None,
+                                    "nom_via": None,
+                                    "num_via": None,
+                                    "id_zona": None,
+                                    "nom_zona": None,
+                                    "manzana": None,
+                                    "lote": None,
+                                    "slote": None,
+                                    "referencia": None,
+                                    "es_procesado": False,
+                                    "observacion": f"ERROR_EJECUCION: {str(rec_err)[:200]}",
+                                    "success": False,
+                                    "valid_count": summary.valid_processed_records,
+                                    "observed_count": summary.observed_records,
+                                    "processed_count": summary.processed_records,
+                                    "failed_count": summary.failed_records,
+                                    "ai_records": summary.ai_records,
+                                    "hybrid_records": summary.hybrid_records,
+                                    "heuristic_records": summary.heuristic_records,
+                                })
+                            except Exception:
+                                pass
+
+                    if self.on_progress_update:
+                        try:
+                            self.on_progress_update(summary)
+                        except Exception:
+                            pass
 
                 processed_in_run += len(batch_raw)
 
@@ -427,6 +514,12 @@ class ETLPipeline:
                 logger.error("Fallo durante la extracción del lote en offset %d: %s", fetch_offset, e)
                 summary.failed_records += limit
                 processed_in_run += limit
+
+        if self.on_progress_update:
+            try:
+                self.on_progress_update(summary)
+            except Exception:
+                pass
 
         return summary
 
