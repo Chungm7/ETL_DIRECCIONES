@@ -37,6 +37,8 @@ class ETLSummary:
     processed_records: int = 0
     successful_records: int = 0
     failed_records: int = 0
+    valid_processed_records: int = 0
+    observed_records: int = 0
     ai_records: int = 0
     hybrid_records: int = 0
     heuristic_records: int = 0
@@ -249,11 +251,17 @@ class ETLPipeline:
             if destino.referencia:
                 content.append(f"🏛️  Ref      : ", style="bold blue")
                 content.append(f"{destino.referencia}\n", style="blue")
+            proc_badge = "PROCESADO (Válido en Catastro) ✅" if destino.es_procesado else "OBSERVADO (No Procesado) ⚠️"
+            content.append(f"📋 Catastro : ", style="bold")
+            content.append(f"{proc_badge}\n", style="bold green" if destino.es_procesado else "bold yellow")
+            if destino.observacion:
+                content.append(f"⚠️  Motivo   : ", style="bold red")
+                content.append(f"{destino.observacion}\n", style="red")
             content.append(f"💾 Estado   : ", style="bold")
             content.append(f"{status_str}", style="bold green" if success else "bold red")
 
             title = f"Registro {index}/{total} | ID Licencia: {destino.id_licencia}"
-            console.print(Panel(content, title=title, border_style="green" if success else "red", expand=False))
+            console.print(Panel(content, title=title, border_style="green" if (success and destino.es_procesado) else "yellow" if success else "red", expand=False))
         else:
             print(f"\n┌── [Registro {index}/{total} | ID Licencia: {destino.id_licencia}] ───────────────")
             print(f"│ 📍 Entrada  : \"{raw_text or 'VACÍO'}\"")
@@ -263,6 +271,10 @@ class ETLPipeline:
             print(f"│ 📐 Catastro : {catastro}")
             if destino.referencia:
                 print(f"│ 🏛️  Ref      : {destino.referencia}")
+            proc_badge = "PROCESADO ✅" if destino.es_procesado else "OBSERVADO ⚠️"
+            print(f"│ 📋 Catastro : {proc_badge}")
+            if destino.observacion:
+                print(f"│ ⚠️  Motivo   : {destino.observacion}")
             print(f"└── 💾 Estado : {status_str}")
 
         sys.stdout.flush()
@@ -338,6 +350,11 @@ class ETLPipeline:
                         else:
                             summary.failed_records += 1
                         summary.processed_records += 1
+
+                        if rec_dest.es_procesado:
+                            summary.valid_processed_records += 1
+                        else:
+                            summary.observed_records += 1
 
                         # Mostrar seguimiento visual en vivo al instante
                         self._log_record_progress(

@@ -1,26 +1,17 @@
-"""Modelo de datos para el destino normalizado en PostgreSQL."""
+"""Modelo de datos para el destino normalizado consolidado en PostgreSQL."""
 
 from typing import Optional
 from pydantic import BaseModel, Field
 
 
 class DireccionDestino(BaseModel):
-    """Representa un registro estructurado para la tabla `direcciones_generales`."""
+    """Representa un registro consolidado para la tabla de direcciones normalizada."""
     id_licencia: int = Field(
         description="Identificador único de la licencia municipal (PK)"
     )
     id_via: Optional[int] = Field(
         default=None,
-        description="Clave foránea hacia `vias.id_via` (Vía física de Chiclayo)",
-    )
-    tipo_via: Optional[int] = Field(
-        default=None,
-        description="Clave foránea hacia `tipos_via.id_tipo_via`",
-    )
-    nom_via: Optional[str] = Field(
-        default=None,
-        max_length=150,
-        description="Nombre oficial de la vía (ej. MOISES R. VALIENTE, BALTA)",
+        description="Clave foránea hacia `vias.id_via` (Vía física oficial de Chiclayo)",
     )
     num_via: Optional[str] = Field(
         default=None,
@@ -29,16 +20,7 @@ class DireccionDestino(BaseModel):
     )
     id_zona: Optional[int] = Field(
         default=None,
-        description="Clave foránea hacia `zonas.id_zona` (Habilitación urbana de Chiclayo)",
-    )
-    tipo_zona: Optional[int] = Field(
-        default=None,
-        description="Clave foránea hacia `tipos_zona.id_tipo_zona`",
-    )
-    nom_zona: Optional[str] = Field(
-        default=None,
-        max_length=150,
-        description="Nombre de la urbanización, sector o asentamiento",
+        description="Clave foránea hacia `zonas.id_zona` (Habilitación urbana oficial de Chiclayo)",
     )
     manzana: Optional[str] = Field(
         default=None,
@@ -60,8 +42,35 @@ class DireccionDestino(BaseModel):
         max_length=255,
         description="Punto de referencia, hito urbano o indicación de guía (ej. CERCA AL SENATI)",
     )
-    metodo_normalizacion: str = Field(
-        default="IA (patroclo)",
-        description="Indica el motor con el que se normalizó: IA, Heurístico o Híbrido",
+    es_procesado: bool = Field(
+        default=False,
+        description="True si la dirección se validó y asoció formalmente a los catálogos maestros oficiales; False si fue observada",
+    )
+    observacion: Optional[str] = Field(
+        default=None,
+        description="Detalle o diagnóstico si la vía o zona no existen en las tablas maestras oficiales",
     )
 
+    # Campos opcionales en memoria para auditoría/visualización
+    tipo_via: Optional[int] = Field(
+        default=None,
+        description="ID del tipo de vía en memoria",
+    )
+    nom_via: Optional[str] = Field(
+        default=None,
+        max_length=150,
+        description="Nombre oficial en memoria de la vía",
+    )
+    tipo_zona: Optional[int] = Field(
+        default=None,
+        description="ID del tipo de zona en memoria",
+    )
+    nom_zona: Optional[str] = Field(
+        default=None,
+        max_length=150,
+        description="Nombre oficial en memoria de la zona",
+    )
+    metodo_normalizacion: str = Field(
+        default="IA",
+        description="Indica el motor con el que se normalizó: IA, Heurístico o Híbrido",
+    )

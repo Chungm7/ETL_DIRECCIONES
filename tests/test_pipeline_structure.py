@@ -268,12 +268,13 @@ class TestPipelineStructure(unittest.TestCase):
             cols = service.ensure_in_place_columns(schema="public", table="direcciones_actual")
 
             self.assertIn("id_via", cols)
-            self.assertIn("tipo_via", cols)
-            self.assertIn("nom_via", cols)
+            self.assertIn("num_via", cols)
             self.assertIn("id_zona", cols)
             self.assertIn("slote", cols)
             self.assertIn("referencia", cols)
-            self.assertEqual(len(cols), 11)
+            self.assertIn("es_procesado", cols)
+            self.assertIn("observacion", cols)
+            self.assertEqual(len(cols), 9)
             self.assertEqual(mock_session.execute.call_count, 2)
 
     def test_etl_pipeline_in_place_execution(self):
@@ -283,7 +284,7 @@ class TestPipelineStructure(unittest.TestCase):
             "tipos_via": {"table_created": False, "column_added": False, "existing_records": 12, "added_records": 0, "total_records": 12},
             "tipos_zona": {"table_created": False, "column_added": False, "existing_records": 28, "added_records": 0, "total_records": 28},
         }
-        mock_db.ensure_in_place_columns.return_value = ["tipo_via", "nom_via"]
+        mock_db.ensure_in_place_columns.return_value = ["id_via", "num_via", "id_zona", "es_procesado", "observacion"]
 
         mock_extractor = MagicMock()
         mock_extractor.get_total_records.return_value = 1
@@ -334,8 +335,9 @@ class TestPipelineStructure(unittest.TestCase):
         dest = parser.parse(record)
 
         self.assertEqual(dest.metodo_normalizacion, "IA (patroclo-artesano-7b)")
-        self.assertEqual(dest.nom_via, "BALTA")
+        self.assertIn("BALTA", dest.nom_via)
         self.assertEqual(dest.num_via, "520")
+        self.assertTrue(dest.es_procesado)
 
     def test_ai_parser_hybrid_tagging(self):
         """Valida que AIAddressParser asigne 'Híbrido (IA + Heurística)' si la IA necesitó asistencia."""
@@ -361,6 +363,7 @@ class TestPipelineStructure(unittest.TestCase):
 
         self.assertEqual(dest.metodo_normalizacion, "Híbrido (IA + Heurística)")
         self.assertEqual(dest.slote, "INT-2")
+        self.assertTrue(dest.es_procesado)
 
     def test_ai_parser_fallback_heuristic_tagging(self):
         """Valida que AIAddressParser asigne 'Heurístico (Fallback - IA inactiva)' si Ollama falla."""
@@ -373,9 +376,9 @@ class TestPipelineStructure(unittest.TestCase):
         dest = parser.parse(record)
 
         self.assertEqual(dest.metodo_normalizacion, "Heurístico (Fallback - IA inactiva)")
-        self.assertEqual(dest.tipo_via, 1)  # AVENIDA
-        self.assertEqual(dest.nom_via, "BALTA")
+        self.assertIn("BALTA", dest.nom_via)
         self.assertEqual(dest.num_via, "520")
+        self.assertTrue(dest.es_procesado)
 
     def test_pipeline_transformer_no_ai_tagging(self):
         """Valida que PipelineTransformer etiquete 'Directo (IA deshabilitada)' cuando use_ai=False."""

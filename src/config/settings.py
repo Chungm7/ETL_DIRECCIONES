@@ -108,6 +108,14 @@ class DatabaseSettings(BaseSettings):
         default="referencia",
         validation_alias=AliasChoices("COL_REFERENCIA", "DB_TARGET_REF_COL", "col_referencia"),
     )
+    col_es_procesado: str = Field(
+        default="es_procesado",
+        validation_alias=AliasChoices("COL_ES_PROCESADO", "DB_TARGET_PROCESADO_COL", "col_es_procesado"),
+    )
+    col_observacion: str = Field(
+        default="observacion",
+        validation_alias=AliasChoices("COL_OBSERVACION", "DB_TARGET_OBSERVACION_COL", "col_observacion"),
+    )
 
 
     # --- Propiedades de compatibilidad hacia atrás ---

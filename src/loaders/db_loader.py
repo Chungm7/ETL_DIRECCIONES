@@ -33,19 +33,17 @@ class DatabaseLoader(BaseLoader):
         self.schema = schema or self.settings.schema
         self.table = table or self.settings.table
 
-        # Mapeo de nombres dinámicos de columnas normalizadas
+        # Mapeo de nombres dinámicos de columnas normalizadas consolidadas
         self.col_id = self.settings.id_col
         self.col_id_via = self.settings.col_id_via
-        self.col_tipo_via = self.settings.col_tipo_via
-        self.col_nom_via = self.settings.col_nom_via
         self.col_num_via = self.settings.col_num_via
         self.col_id_zona = self.settings.col_id_zona
-        self.col_tipo_zona = self.settings.col_tipo_zona
-        self.col_nom_zona = self.settings.col_nom_zona
         self.col_mz = self.settings.col_manzana
         self.col_lt = self.settings.col_lote
         self.col_slt = self.settings.col_slote
         self.col_referencia = self.settings.col_referencia
+        self.col_es_procesado = self.settings.col_es_procesado
+        self.col_observacion = self.settings.col_observacion
 
     def load_batch(self, records: List[DireccionDestino]) -> int:
         """Actualiza in-place las columnas normalizadas en la tabla existente conservando IDs."""
@@ -63,16 +61,14 @@ class DatabaseLoader(BaseLoader):
         query = text(f"""
             UPDATE "{self.schema}"."{self.table}" SET
                 "{self.col_id_via}"      = :id_via,
-                "{self.col_tipo_via}"    = :tipo_via,
-                "{self.col_nom_via}"     = :nom_via,
                 "{self.col_num_via}"     = :num_via,
                 "{self.col_id_zona}"     = :id_zona,
-                "{self.col_tipo_zona}"   = :tipo_zona,
-                "{self.col_nom_zona}"    = :nom_zona,
                 "{self.col_mz}"          = :manzana,
                 "{self.col_lt}"          = :lote,
                 "{self.col_slt}"         = :slote,
-                "{self.col_referencia}"  = :referencia
+                "{self.col_referencia}"  = :referencia,
+                "{self.col_es_procesado}"= :es_procesado,
+                "{self.col_observacion}" = :observacion
             WHERE "{self.col_id}" = :id_licencia;
         """)
 
@@ -80,16 +76,14 @@ class DatabaseLoader(BaseLoader):
             {
                 "id_licencia": rec.id_licencia,
                 "id_via": rec.id_via,
-                "tipo_via": rec.tipo_via,
-                "nom_via": rec.nom_via,
                 "num_via": rec.num_via,
                 "id_zona": rec.id_zona,
-                "tipo_zona": rec.tipo_zona,
-                "nom_zona": rec.nom_zona,
                 "manzana": rec.manzana,
                 "lote": rec.lote,
                 "slote": rec.slote,
                 "referencia": rec.referencia,
+                "es_procesado": rec.es_procesado,
+                "observacion": rec.observacion,
             }
             for rec in records
         ]

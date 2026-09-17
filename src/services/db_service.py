@@ -585,40 +585,42 @@ class DatabaseService:
         """
         cols = column_names or {
             "id_via": self.settings.col_id_via,
-            "tipo_via": self.settings.col_tipo_via,
-            "nom_via": self.settings.col_nom_via,
             "num_via": self.settings.col_num_via,
             "id_zona": self.settings.col_id_zona,
-            "tipo_zona": self.settings.col_tipo_zona,
-            "nom_zona": self.settings.col_nom_zona,
             "manzana": self.settings.col_manzana,
             "lote": self.settings.col_lote,
             "slote": self.settings.col_slote,
             "referencia": self.settings.col_referencia,
+            "es_procesado": self.settings.col_es_procesado,
+            "observacion": self.settings.col_observacion,
         }
 
+        # 1. Crear las columnas consolidadas si no existen
         ddl = f"""
         ALTER TABLE "{schema}"."{table}"
             ADD COLUMN IF NOT EXISTS "{cols['id_via']}" INTEGER,
-            ADD COLUMN IF NOT EXISTS "{cols['tipo_via']}" INTEGER,
-            ADD COLUMN IF NOT EXISTS "{cols['nom_via']}" VARCHAR(150),
             ADD COLUMN IF NOT EXISTS "{cols['num_via']}" VARCHAR(50),
             ADD COLUMN IF NOT EXISTS "{cols['id_zona']}" INTEGER,
-            ADD COLUMN IF NOT EXISTS "{cols['tipo_zona']}" INTEGER,
-            ADD COLUMN IF NOT EXISTS "{cols['nom_zona']}" VARCHAR(150),
             ADD COLUMN IF NOT EXISTS "{cols['manzana']}" VARCHAR(20),
             ADD COLUMN IF NOT EXISTS "{cols['lote']}" VARCHAR(20),
             ADD COLUMN IF NOT EXISTS "{cols['slote']}" VARCHAR(20),
-            ADD COLUMN IF NOT EXISTS "{cols['referencia']}" VARCHAR(255);
+            ADD COLUMN IF NOT EXISTS "{cols['referencia']}" VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS "{cols['es_procesado']}" BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS "{cols['observacion']}" TEXT;
+
+        -- Depurar columnas de texto redundantes para consolidar a 3NF
+        ALTER TABLE "{schema}"."{table}"
+            DROP COLUMN IF EXISTS tipo_via,
+            DROP COLUMN IF EXISTS nom_via,
+            DROP COLUMN IF EXISTS tipo_zona,
+            DROP COLUMN IF EXISTS nom_zona;
         """
 
         try:
             with self.get_session() as session:
                 session.execute(text(ddl))
 
-                # Agregar llaves foráneas si existen las tablas maestras
-                t_via = self.settings.table_tipo_via
-                t_zona = self.settings.table_tipo_zona
+                # Agregar llaves foráneas hacia las tablas maestras físicas
                 t_vias = self.settings.table_vias
                 t_zonas = self.settings.table_zonas
                 fk_ddl = f"""
@@ -634,29 +636,11 @@ class DatabaseService:
                     END IF;
 
                     IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_in_place_tipo_via'
-                    ) THEN
-                        ALTER TABLE "{schema}"."{table}"
-                            ADD CONSTRAINT fk_in_place_tipo_via
-                            FOREIGN KEY ("{cols['tipo_via']}") REFERENCES "{schema}"."{t_via}"(id_tipo_via)
-                            ON UPDATE CASCADE ON DELETE SET NULL;
-                    END IF;
-
-                    IF NOT EXISTS (
                         SELECT 1 FROM pg_constraint WHERE conname = 'fk_in_place_id_zona'
                     ) THEN
                         ALTER TABLE "{schema}"."{table}"
                             ADD CONSTRAINT fk_in_place_id_zona
                             FOREIGN KEY ("{cols['id_zona']}") REFERENCES "{schema}"."{t_zonas}"(id_zona)
-                            ON UPDATE CASCADE ON DELETE SET NULL;
-                    END IF;
-
-                    IF NOT EXISTS (
-                        SELECT 1 FROM pg_constraint WHERE conname = 'fk_in_place_tipo_zona'
-                    ) THEN
-                        ALTER TABLE "{schema}"."{table}"
-                            ADD CONSTRAINT fk_in_place_tipo_zona
-                            FOREIGN KEY ("{cols['tipo_zona']}") REFERENCES "{schema}"."{t_zona}"(id_tipo_zona)
                             ON UPDATE CASCADE ON DELETE SET NULL;
                     END IF;
                 EXCEPTION

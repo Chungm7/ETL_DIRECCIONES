@@ -36,7 +36,7 @@ flowchart TD
             CAT_TIPOS_ZONAS["28 Tipos de Zona\n(A.H., URB., CERCADO...)"]
             CAT_VIAS["3,024 Vías Físicas MPCH\n(CODIFICADOR DE VIAS)"]
             CAT_ZONAS["461 Zonas Físicas MPCH\n(CODIFICADOR DE H.U.)"]
-            NORM_RECORD["DireccionDestino (Registro Normalizado)\n(id, id_via, tipo_via, nom_via, num_via, id_zona, tipo_zona, nom_zona, mz, lt, slote, ref)"]
+            NORM_RECORD["DireccionDestino (3NF Consolidada)\n(id_licencia, emp_direccion, id_via, num_via, id_zona, manzana, lote, slote, referencia, es_procesado, observacion)"]
             
             SYNC_DB --> CAT_TIPOS_VIAS
             SYNC_DB --> CAT_TIPOS_ZONAS
@@ -181,6 +181,7 @@ ETL_MIGRACION_MPCH/
 ├── data_import/                          # Archivos CSV para importación inicial en Docker
 │   └── Direcciones_.csv                  # Archivo de direcciones origen
 ├── docs/                                 # Documentación y codificadores oficiales MPCH
+│   ├── DIAGRAMA_BASE_DE_DATOS.md         # Diagrama ER 3NF, diccionario de datos y SQL
 │   └── cod_vias_y_habilitaciones_urbanas/ # Excels originales con 3,024 vías y 461 H.U.
 ├── .env.example                          # Plantilla completa de variables de entorno
 ├── .env                                  # Archivo de variables de entorno activo

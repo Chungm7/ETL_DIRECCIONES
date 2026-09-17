@@ -25,18 +25,17 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
     def test_parse_alfredo_lapoint_with_fallback(self):
         """Verifica que 'CHICLAYOALFREDO LAPOINT 882  INT- I' extraiga la vía, número e interior."""
-        # Supongamos que Ollama no respondió o devolvió nulos
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         record = DireccionOrigen(id_licencia=1, emp_direccion="CHICLAYOALFREDO LAPOINT 882  INT- I")
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 1)
-        self.assertEqual(destino.tipo_via, 2)  # CALLE = 2
-        self.assertEqual(destino.nom_via, "ALFREDO LAPOINT")
+        self.assertTrue(destino.es_procesado)
+        self.assertIsNotNone(destino.id_via)
         self.assertIn("882", destino.num_via)
         self.assertEqual(destino.slote, "INT-I")
-        self.assertEqual(destino.tipo_zona, 8)  # CERCADO = 8
+        self.assertEqual(destino.id_zona, 148)  # CERCADO DE CHICLAYO
 
     def test_parse_fitzcarral_airport_with_fallback(self):
         """Verifica que 'AV. FITZCARRAL S/N (AEREOPUERTO...) - CHICLAYO' extraiga avenida y nombre."""
@@ -49,13 +48,13 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 2)
-        self.assertEqual(destino.tipo_via, 1)  # AVENIDA = 1
-        self.assertEqual(destino.nom_via, "FITZCARRAL")
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 2855)  # AV. CARLOS FERMIN FITZCARRALD
         self.assertIn("S/N", destino.num_via)
-        self.assertIn("AEREOPUERTO", destino.nom_zona)
+        self.assertIn("AEREOPUERTO", destino.referencia)
 
-    def test_parse_reference_cerca_al_senati(self):
-        """Verifica el caso de usuario: 'Calle trindiad 128, Urbanizacion el paraiso, cerca al senati'."""
+    def test_parse_reference_cerca_al_senati_observed(self):
+        """Verifica que 'Calle trindiad 128...' quede como OBSERVADA por no existir TRINDIAD en vias."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         record = DireccionOrigen(
@@ -65,28 +64,27 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 3)
-        self.assertEqual(destino.tipo_via, 2)  # CALLE = 2
-        self.assertEqual(destino.nom_via, "TRINDIAD")
-        self.assertEqual(destino.num_via, "128")
-        self.assertEqual(destino.tipo_zona, 6)  # URBANIZACION = 6
-        self.assertEqual(destino.nom_zona, "EL PARAISO")
-        self.assertEqual(destino.referencia, "CERCA AL SENATI")
+        self.assertFalse(destino.es_procesado)
+        self.assertIsNone(destino.id_via)
+        self.assertIsNone(destino.num_via)
+        self.assertIsNone(destino.id_zona)
+        self.assertIsNone(destino.referencia)
+        self.assertIn("TRINDIAD", destino.observacion)
 
     def test_parse_reference_frente_al_parque(self):
-        """Verifica que referencias espaciales no contaminen la vía o la zona."""
+        """Verifica que referencias espaciales no contaminen la vía o la zona y se validen con catastro."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         record = DireccionOrigen(
             id_licencia=4,
-            emp_direccion="AV. BALTA 520 URB. LOS FICUS, FRENTE AL PARQUE PRINCIPAL",
+            emp_direccion="AV. BALTA 520 URB. SANTA VICTORIA, FRENTE AL PARQUE PRINCIPAL",
         )
         destino = self.parser.parse(record)
 
-        self.assertEqual(destino.tipo_via, 1)
-        self.assertIn("BALTA", destino.nom_via)
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 2905)  # JOSE BALTA
+        self.assertEqual(destino.id_zona, 1)    # SANTA VICTORIA
         self.assertEqual(destino.num_via, "520")
-        self.assertEqual(destino.tipo_zona, 6)
-        self.assertEqual(destino.nom_zona, "LOS FICUS")
         self.assertEqual(destino.referencia, "FRENTE AL PARQUE PRINCIPAL")
 
     def test_parse_7_de_enero_street_with_number(self):
@@ -100,10 +98,10 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 10)
-        self.assertEqual(destino.tipo_via, 2)  # CALLE
-        self.assertIn("7 DE ENERO", destino.nom_via)
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 2279)  # 7 DE ENERO SUR
         self.assertEqual(destino.num_via, "129")  # Debe ser 129, NUNCA 7
-        self.assertIsNotNone(destino.id_via)
+        self.assertIsNone(destino.observacion)
 
     def test_parse_salaverry_urb_colibri_master_tables(self):
         """Verifica que 'AV. SALAVERRY 450 URB. COLIBRI' enlace con id_via e id_zona."""
@@ -116,21 +114,19 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 20)
-        self.assertEqual(destino.tipo_via, 1)  # AVENIDA
-        self.assertIn("SALAVERRY", destino.nom_via)
+        self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.num_via, "450")
-        self.assertEqual(destino.tipo_zona, 6)  # URBANIZACION
-        self.assertEqual(destino.nom_zona, "COLIBRI")
         self.assertEqual(destino.id_via, 2862)  # FELIPE SANTIAGO SALAVERRY
         self.assertEqual(destino.id_zona, 461)   # COLIBRI
+        self.assertIsNone(destino.observacion)
 
-    def test_parse_reference_with_ai_extraction(self):
-        """Verifica que la referencia proveniente de Ollama sea respetada fielmente."""
+    def test_parse_reference_with_ai_extraction_valid(self):
+        """Verifica que la referencia proveniente de Ollama sea respetada fielmente en caso válido."""
         from src.models.llm_schemas import OllamaAddressExtraction
 
         self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
             tipo_via_detectado="CALLE",
-            nom_via="TRINIDAD",
+            nom_via="BALTA",
             num_via="128",
             tipo_zona_detectada="URBANIZACION",
             nom_zona="EL PARAISO",
@@ -139,13 +135,14 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         record = DireccionOrigen(
             id_licencia=5,
-            emp_direccion="Calle trindiad 128, Urbanizacion el paraiso, cerca al senati",
+            emp_direccion="Calle balta 128, Urbanizacion el paraiso, cerca al senati",
         )
         destino = self.parser.parse(record)
 
+        self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.referencia, "CERCA AL SENATI")
-        self.assertEqual(destino.nom_zona, "EL PARAISO")
-        self.assertEqual(destino.nom_via, "TRINIDAD")
+        self.assertEqual(destino.id_via, 2905)
+        self.assertEqual(destino.id_zona, 18)
 
 
 if __name__ == "__main__":

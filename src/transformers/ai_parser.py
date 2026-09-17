@@ -24,7 +24,12 @@ class AIAddressParser:
     def parse(self, record: DireccionOrigen) -> DireccionDestino:
         """Invoca al modelo local de Ollama para desglosar la dirección y aplica correcciones."""
         if record.is_empty():
-            return DireccionDestino(id_licencia=record.id_licencia)
+            return DireccionDestino(
+                id_licencia=record.id_licencia,
+                es_procesado=False,
+                observacion="DIRECCIÓN VACÍA: El registro no contiene texto de dirección",
+                metodo_normalizacion="N/A",
+            )
 
         raw_text = TextCleaner.sanitize(record.emp_direccion or "")
 
@@ -134,16 +139,13 @@ class AIAddressParser:
                     heuristica_aplicada = True
 
         # 7. Respaldo Heurístico Dinámico para zonas y referencias
-        # 7a. Extraer referencia o nombre de zona entre paréntesis
+        # 7a. Extraer referencia entre paréntesis
         if "(" in raw_text and ")" in raw_text:
             match_par = re.search(r"\(([^)]+)\)", raw_text)
             if match_par:
                 par_text = match_par.group(1).strip()
-                if not referencia and re.search(r"\b(?:REF|CERCA|FRENTE|COSTADO|ESPALDAS?|ALTURA)\b", par_text, re.IGNORECASE):
+                if not referencia:
                     referencia = par_text.upper()
-                    heuristica_aplicada = True
-                elif not nom_zona:
-                    nom_zona = par_text
                     heuristica_aplicada = True
 
         # 7b. Buscar tipo de zona en el catálogo (priorizando tipos específicos sobre cercado)
@@ -222,34 +224,54 @@ class AIAddressParser:
         id_tipo_via = CatalogMatcher.match_tipo_via(tipo_via_detectado)
         id_tipo_zona = CatalogMatcher.match_tipo_zona(tipo_zona_detectada)
 
-        matched_via = CatalogMatcher.match_physical_via(nom_via, id_tipo_via)
-        id_via_fisica = matched_via["id"] if matched_via else None
-        if matched_via:
-            if not id_tipo_via and matched_via.get("id_tipo_via"):
-                id_tipo_via = matched_via["id_tipo_via"]
-            if not nom_via:
-                nom_via = matched_via["nom_via"]
+        via_detectada_en_texto = bool(nom_via and nom_via.strip())
+        matched_via = CatalogMatcher.match_physical_via(nom_via, id_tipo_via) if via_detectada_en_texto else None
 
-        matched_zona = CatalogMatcher.match_physical_zona(nom_zona, id_tipo_zona)
-        id_zona_fisica = matched_zona["id"] if matched_zona else None
-        if matched_zona:
-            if not id_tipo_zona and matched_zona.get("id_tipo_zona"):
-                id_tipo_zona = matched_zona["id_tipo_zona"]
-            if not nom_zona:
-                nom_zona = matched_zona["nom_zona"]
+        zona_detectada_en_texto = bool(nom_zona and nom_zona.strip())
+        matched_zona = CatalogMatcher.match_physical_zona(nom_zona, id_tipo_zona) if zona_detectada_en_texto else None
 
-        return DireccionDestino(
-            id_licencia=record.id_licencia,
-            id_via=id_via_fisica,
-            tipo_via=id_tipo_via,
-            nom_via=nom_via,
-            num_via=num_via,
-            id_zona=id_zona_fisica,
-            tipo_zona=id_tipo_zona,
-            nom_zona=nom_zona,
-            manzana=manzana,
-            lote=lote,
-            slote=slote,
-            referencia=referencia,
-            metodo_normalizacion=metodo,
-        )
+        observaciones = []
+
+        if via_detectada_en_texto and not matched_via:
+            observaciones.append(f"Vía '{nom_via}' no existe en el catálogo maestro de vías de Chiclayo")
+
+        if zona_detectada_en_texto and not matched_zona:
+            observaciones.append(f"Zona/Habilitación '{nom_zona}' no existe en el catálogo maestro de zonas de Chiclayo")
+
+        if not via_detectada_en_texto and not zona_detectada_en_texto:
+            observaciones.append("DIRECCIÓN NO RECONOCIDA: No se detectó vía ni habilitación urbana válida en el texto")
+
+        if observaciones:
+            # Caso observado: Se nullifican todas las columnas derivadas para evitar datos sin sentido
+            return DireccionDestino(
+                id_licencia=record.id_licencia,
+                id_via=None,
+                num_via=None,
+                id_zona=None,
+                manzana=None,
+                lote=None,
+                slote=None,
+                referencia=None,
+                es_procesado=False,
+                observacion="; ".join(observaciones),
+                metodo_normalizacion=metodo,
+            )
+        else:
+            # Caso exitoso: Asociado formalmente a las tablas maestras oficiales
+            return DireccionDestino(
+                id_licencia=record.id_licencia,
+                id_via=matched_via["id"] if matched_via else None,
+                num_via=num_via,
+                id_zona=matched_zona["id"] if matched_zona else None,
+                manzana=manzana,
+                lote=lote,
+                slote=slote,
+                referencia=referencia,
+                es_procesado=True,
+                observacion=None,
+                tipo_via=matched_via.get("id_tipo_via") or id_tipo_via if matched_via else None,
+                nom_via=matched_via["nom_via"] if matched_via else None,
+                tipo_zona=matched_zona.get("id_tipo_zona") or id_tipo_zona if matched_zona else None,
+                nom_zona=matched_zona["nom_zona"] if matched_zona else None,
+                metodo_normalizacion=metodo,
+            )
