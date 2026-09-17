@@ -1,36 +1,24 @@
 [
   {
     "id": 1,
-    "codigo_zona": "0001",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SANTA VICTORIA",
-    "sector_catastral": "27  31  32",
-    "condicion": "F",
     "sinonimos": [
       "SANTA VICTORIA"
     ]
   },
   {
     "id": 2,
-    "codigo_zona": "0002",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "ARTURO CABREJOS FALLA",
-    "sector_catastral": "31",
-    "condicion": "I",
     "sinonimos": [
       "ARTURO CABREJOS FALLA"
     ]
   },
   {
     "id": 3,
-    "codigo_zona": "0003",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SUB - DIVISIÓN SCANDER",
-    "sector_catastral": "31",
-    "condicion": "I",
     "sinonimos": [
       "SUB - DIVISIÓN SCANDER",
       "SUB - DIVISION SCANDER"
@@ -38,36 +26,24 @@
   },
   {
     "id": 4,
-    "codigo_zona": "0004",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FEDERICO VILLARREAL - PROGRAMA C.A.V.D - I ETAPA",
-    "sector_catastral": "32",
-    "condicion": "F",
     "sinonimos": [
       "FEDERICO VILLARREAL - PROGRAMA C.A.V.D - I ETAPA"
     ]
   },
   {
     "id": 5,
-    "codigo_zona": "0005",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN EDUARDO",
-    "sector_catastral": "27  32",
-    "condicion": "F",
     "sinonimos": [
       "SAN EDUARDO"
     ]
   },
   {
     "id": 6,
-    "codigo_zona": "0006",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN MARTÍN DE PORRES",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "SAN MARTÍN DE PORRES",
       "SAN MARTIN DE PORRES"
@@ -75,144 +51,96 @@
   },
   {
     "id": 7,
-    "codigo_zona": "0007",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN FRANCISCO",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "SAN FRANCISCO"
     ]
   },
   {
     "id": 8,
-    "codigo_zona": "0008",
     "id_tipo_zona": 4,
-    "tipo_zona": "CONJ.RES.",
     "nom_zona": "DIEGO FERRE",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "DIEGO FERRE"
     ]
   },
   {
     "id": 9,
-    "codigo_zona": "0009",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "BUENOS AIRES",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "BUENOS AIRES"
     ]
   },
   {
     "id": 10,
-    "codigo_zona": "0010",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "ZAMORA",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "ZAMORA"
     ]
   },
   {
     "id": 11,
-    "codigo_zona": "0011",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "CHINO",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "CHINO"
     ]
   },
   {
     "id": 12,
-    "codigo_zona": "0012",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 001",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 001"
     ]
   },
   {
     "id": 13,
-    "codigo_zona": "0013",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 002",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 002"
     ]
   },
   {
     "id": 14,
-    "codigo_zona": "0014",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 003",
-    "sector_catastral": "27  21",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 003"
     ]
   },
   {
     "id": 15,
-    "codigo_zona": "0015",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 004",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 004"
     ]
   },
   {
     "id": 16,
-    "codigo_zona": "0016",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 005",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 005"
     ]
   },
   {
     "id": 17,
-    "codigo_zona": "0017",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LAS BRISAS",
-    "sector_catastral": "22",
-    "condicion": "F",
     "sinonimos": [
       "LAS BRISAS"
     ]
   },
   {
     "id": 18,
-    "codigo_zona": "0018",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "EL PARAÍSO",
-    "sector_catastral": "22",
-    "condicion": "F",
     "sinonimos": [
       "EL PARAÍSO",
       "EL PARAISO"
@@ -220,60 +148,40 @@
   },
   {
     "id": 19,
-    "codigo_zona": "0019",
     "id_tipo_zona": 25,
-    "tipo_zona": "P.I.",
     "nom_zona": "UPIS SAN MIGUEL",
-    "sector_catastral": "22",
-    "condicion": "F",
     "sinonimos": [
       "UPIS SAN MIGUEL"
     ]
   },
   {
     "id": 20,
-    "codigo_zona": "0020",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA SANTA ALEJANDRINA",
-    "sector_catastral": "22  24",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA SANTA ALEJANDRINA"
     ]
   },
   {
     "id": 21,
-    "codigo_zona": "0021",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA ESPIGA DE ORO",
-    "sector_catastral": "22",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA ESPIGA DE ORO"
     ]
   },
   {
     "id": 22,
-    "codigo_zona": "0022",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 006",
-    "sector_catastral": "22",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 006"
     ]
   },
   {
     "id": 23,
-    "codigo_zona": "0023",
     "id_tipo_zona": 25,
-    "tipo_zona": "HAB.IND.",
     "nom_zona": "DE LOTE ÚNICO",
-    "sector_catastral": "22",
-    "condicion": "F",
     "sinonimos": [
       "DE LOTE ÚNICO",
       "DE LOTE UNICO"
@@ -281,60 +189,40 @@
   },
   {
     "id": 24,
-    "codigo_zona": "0024",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CONDOMINIO LOS COCOS",
-    "sector_catastral": "28",
-    "condicion": "I",
     "sinonimos": [
       "CONDOMINIO LOS COCOS"
     ]
   },
   {
     "id": 25,
-    "codigo_zona": "0025",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 009",
-    "sector_catastral": "33",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 009"
     ]
   },
   {
     "id": 26,
-    "codigo_zona": "0026",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "MARISCAL NIETO",
-    "sector_catastral": "33",
-    "condicion": "I",
     "sinonimos": [
       "MARISCAL NIETO"
     ]
   },
   {
     "id": 27,
-    "codigo_zona": "0027",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "MURO",
-    "sector_catastral": "33",
-    "condicion": "F",
     "sinonimos": [
       "MURO"
     ]
   },
   {
     "id": 28,
-    "codigo_zona": "0028",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "CAPITÁN EP. LUIS ALBERTO GARCÍA ROJAS",
-    "sector_catastral": "33",
-    "condicion": "F",
     "sinonimos": [
       "CAPITÁN EP. LUIS ALBERTO GARCÍA ROJAS",
       "CAPITAN EP. LUIS ALBERTO GARCIA ROJAS"
@@ -342,12 +230,8 @@
   },
   {
     "id": 29,
-    "codigo_zona": "0029",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "CIRO ALEGRÍA",
-    "sector_catastral": "33",
-    "condicion": "F",
     "sinonimos": [
       "CIRO ALEGRÍA",
       "CIRO ALEGRIA"
@@ -355,36 +239,24 @@
   },
   {
     "id": 30,
-    "codigo_zona": "0030",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "DIEGO FERRE",
-    "sector_catastral": "33",
-    "condicion": "F",
     "sinonimos": [
       "DIEGO FERRE"
     ]
   },
   {
     "id": 31,
-    "codigo_zona": "0031",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "PUENTE BLANCO",
-    "sector_catastral": "14",
-    "condicion": "F",
     "sinonimos": [
       "PUENTE BLANCO"
     ]
   },
   {
     "id": 32,
-    "codigo_zona": "0032",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "JOSÉ GALVEZ",
-    "sector_catastral": "14",
-    "condicion": "F",
     "sinonimos": [
       "JOSÉ GALVEZ",
       "JOSE GALVEZ"
@@ -392,132 +264,88 @@
   },
   {
     "id": 33,
-    "codigo_zona": "0033",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN ANTONIO OESTE",
-    "sector_catastral": "13  15  14",
-    "condicion": "F",
     "sinonimos": [
       "SAN ANTONIO OESTE"
     ]
   },
   {
     "id": 34,
-    "codigo_zona": "0034",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN ANTONIO ESTE",
-    "sector_catastral": "15  14",
-    "condicion": "F",
     "sinonimos": [
       "SAN ANTONIO ESTE"
     ]
   },
   {
     "id": 35,
-    "codigo_zona": "0035",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SUAZO",
-    "sector_catastral": "13  14",
-    "condicion": "F",
     "sinonimos": [
       "SUAZO"
     ]
   },
   {
     "id": 36,
-    "codigo_zona": "0036",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "TUPAC AMARU",
-    "sector_catastral": "11",
-    "condicion": "F",
     "sinonimos": [
       "TUPAC AMARU"
     ]
   },
   {
     "id": 37,
-    "codigo_zona": "0037",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA PRIMAVERA I",
-    "sector_catastral": "11",
-    "condicion": "I",
     "sinonimos": [
       "LA PRIMAVERA I"
     ]
   },
   {
     "id": 38,
-    "codigo_zona": "0038",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CHICLAYO II ETAPA",
-    "sector_catastral": "11",
-    "condicion": "F",
     "sinonimos": [
       "CHICLAYO II ETAPA"
     ]
   },
   {
     "id": 39,
-    "codigo_zona": "0039",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CHICLAYO I ETAPA",
-    "sector_catastral": "11",
-    "condicion": "I",
     "sinonimos": [
       "CHICLAYO I ETAPA"
     ]
   },
   {
     "id": 40,
-    "codigo_zona": "0040",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "PATAZCA",
-    "sector_catastral": "11  20",
-    "condicion": "I",
     "sinonimos": [
       "PATAZCA"
     ]
   },
   {
     "id": 41,
-    "codigo_zona": "0041",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS LIBERTADORES",
-    "sector_catastral": "10  20",
-    "condicion": "I",
     "sinonimos": [
       "LOS LIBERTADORES"
     ]
   },
   {
     "id": 42,
-    "codigo_zona": "0042",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LUIS HEYSEN",
-    "sector_catastral": "05",
-    "condicion": "F",
     "sinonimos": [
       "LUIS HEYSEN"
     ]
   },
   {
     "id": 43,
-    "codigo_zona": "0043",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN SANTA ROSA",
-    "sector_catastral": "05",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN SANTA ROSA",
       "AMPLIACION SANTA ROSA"
@@ -525,84 +353,56 @@
   },
   {
     "id": 44,
-    "codigo_zona": "0044",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SANTA ROSA DE LIMA",
-    "sector_catastral": "05",
-    "condicion": "F",
     "sinonimos": [
       "SANTA ROSA DE LIMA"
     ]
   },
   {
     "id": 45,
-    "codigo_zona": "0045",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "LA PRIMAVERA",
-    "sector_catastral": "05  06",
-    "condicion": "F",
     "sinonimos": [
       "LA PRIMAVERA"
     ]
   },
   {
     "id": 46,
-    "codigo_zona": "0046",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN LUIS",
-    "sector_catastral": "06  05",
-    "condicion": "F",
     "sinonimos": [
       "SAN LUIS"
     ]
   },
   {
     "id": 47,
-    "codigo_zona": "0047",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "EL PORVENIR",
-    "sector_catastral": "12  06  05",
-    "condicion": "F",
     "sinonimos": [
       "EL PORVENIR"
     ]
   },
   {
     "id": 48,
-    "codigo_zona": "0048",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "COIS TERCER SECTOR",
-    "sector_catastral": "05",
-    "condicion": "F",
     "sinonimos": [
       "COIS TERCER SECTOR"
     ]
   },
   {
     "id": 49,
-    "codigo_zona": "0049",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "EL PORVENIR",
-    "sector_catastral": "05",
-    "condicion": "I",
     "sinonimos": [
       "EL PORVENIR"
     ]
   },
   {
     "id": 50,
-    "codigo_zona": "0050",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SANTA MARÍA",
-    "sector_catastral": "05",
-    "condicion": "F",
     "sinonimos": [
       "SANTA MARÍA",
       "SANTA MARIA"
@@ -610,12 +410,8 @@
   },
   {
     "id": 51,
-    "codigo_zona": "0051",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "AUGUSTO B. LEGUÍA",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "AUGUSTO B. LEGUÍA",
       "AUGUSTO B. LEGUIA"
@@ -623,24 +419,16 @@
   },
   {
     "id": 52,
-    "codigo_zona": "0052",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN ISIDRO",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "SAN ISIDRO"
     ]
   },
   {
     "id": 53,
-    "codigo_zona": "0053",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "CERROPÓN",
-    "sector_catastral": "22",
-    "condicion": "I",
     "sinonimos": [
       "CERROPÓN",
       "CERROPON"
@@ -648,48 +436,32 @@
   },
   {
     "id": 54,
-    "codigo_zona": "0054",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA PRIMAVERA IV ETAPA",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "LA PRIMAVERA IV ETAPA"
     ]
   },
   {
     "id": 55,
-    "codigo_zona": "0055",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA PRIMAVERA III",
-    "sector_catastral": "04",
-    "condicion": "I",
     "sinonimos": [
       "LA PRIMAVERA III"
     ]
   },
   {
     "id": 56,
-    "codigo_zona": "0056",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA PRIMAVERA II ETAPA",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "LA PRIMAVERA II ETAPA"
     ]
   },
   {
     "id": 57,
-    "codigo_zona": "0057",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN TUPAC AMARU",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN TUPAC AMARU",
       "AMPLIACION TUPAC AMARU"
@@ -697,48 +469,32 @@
   },
   {
     "id": 58,
-    "codigo_zona": "0058",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "MIRAFLORES I",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "MIRAFLORES I"
     ]
   },
   {
     "id": 59,
-    "codigo_zona": "0059",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FELIPE SANTIAGO SALAVERRY",
-    "sector_catastral": "20  23",
-    "condicion": "F",
     "sinonimos": [
       "FELIPE SANTIAGO SALAVERRY"
     ]
   },
   {
     "id": 60,
-    "codigo_zona": "0060",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "9 DE OCTUBRE",
-    "sector_catastral": "23  25",
-    "condicion": "F",
     "sinonimos": [
       "9 DE OCTUBRE"
     ]
   },
   {
     "id": 61,
-    "codigo_zona": "0061",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "CRUZ DEL PERDÓN",
-    "sector_catastral": "23  25",
-    "condicion": "F",
     "sinonimos": [
       "CRUZ DEL PERDÓN",
       "CRUZ DEL PERDON"
@@ -746,12 +502,8 @@
   },
   {
     "id": 62,
-    "codigo_zona": "0062",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
-    "sector_catastral": "19",
-    "condicion": "F",
     "sinonimos": [
       "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
       "CAP. FAP JOSE QUINONES GONZALES - I ETAPA"
@@ -759,24 +511,16 @@
   },
   {
     "id": 63,
-    "codigo_zona": "0063",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SANTA ELENA",
-    "sector_catastral": "19",
-    "condicion": "F",
     "sinonimos": [
       "SANTA ELENA"
     ]
   },
   {
     "id": 64,
-    "codigo_zona": "0064",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "JOSÉ BALTA",
-    "sector_catastral": "19",
-    "condicion": "F",
     "sinonimos": [
       "JOSÉ BALTA",
       "JOSE BALTA"
@@ -784,24 +528,16 @@
   },
   {
     "id": 65,
-    "codigo_zona": "0065",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 047",
-    "sector_catastral": "63",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 047"
     ]
   },
   {
     "id": 66,
-    "codigo_zona": "0066",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "RESIDENCIAL JOSÉ QUIÑONES",
-    "sector_catastral": "19",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL JOSÉ QUIÑONES",
       "RESIDENCIAL JOSE QUINONES"
@@ -809,12 +545,8 @@
   },
   {
     "id": 67,
-    "codigo_zona": "0067",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LAS VIÑAS",
-    "sector_catastral": "20",
-    "condicion": "F",
     "sinonimos": [
       "LAS VIÑAS",
       "LAS VINAS"
@@ -822,36 +554,24 @@
   },
   {
     "id": 68,
-    "codigo_zona": "0068",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS PRECURSORES",
-    "sector_catastral": "20",
-    "condicion": "I",
     "sinonimos": [
       "LOS PRECURSORES"
     ]
   },
   {
     "id": 69,
-    "codigo_zona": "0069",
     "id_tipo_zona": 4,
-    "tipo_zona": "CONJ.RES.",
     "nom_zona": "LAS CASUARINAS I ETAPA",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "LAS CASUARINAS I ETAPA"
     ]
   },
   {
     "id": 70,
-    "codigo_zona": "0070",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "JOSÉ OLAYA",
-    "sector_catastral": "20  25",
-    "condicion": "F",
     "sinonimos": [
       "JOSÉ OLAYA",
       "JOSE OLAYA"
@@ -859,168 +579,112 @@
   },
   {
     "id": 71,
-    "codigo_zona": "0071",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS PARQUES",
-    "sector_catastral": "20",
-    "condicion": "F",
     "sinonimos": [
       "LOS PARQUES"
     ]
   },
   {
     "id": 72,
-    "codigo_zona": "0072",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LURIN",
-    "sector_catastral": "20",
-    "condicion": "F",
     "sinonimos": [
       "LURIN"
     ]
   },
   {
     "id": 73,
-    "codigo_zona": "0073",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "KARL WEISS",
-    "sector_catastral": "20",
-    "condicion": "F",
     "sinonimos": [
       "KARL WEISS"
     ]
   },
   {
     "id": 74,
-    "codigo_zona": "0074",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 014",
-    "sector_catastral": "20",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 014"
     ]
   },
   {
     "id": 75,
-    "codigo_zona": "0075",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 015",
-    "sector_catastral": "20",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 015"
     ]
   },
   {
     "id": 76,
-    "codigo_zona": "0076",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "MIRAFLORES II ETAPA",
-    "sector_catastral": "04",
-    "condicion": "F",
     "sinonimos": [
       "MIRAFLORES II ETAPA"
     ]
   },
   {
     "id": 77,
-    "codigo_zona": "0077",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "JORGE BASADRE",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "JORGE BASADRE"
     ]
   },
   {
     "id": 78,
-    "codigo_zona": "0078",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "UPIS FERNANDO BELAUNDE TERRY",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "UPIS FERNANDO BELAUNDE TERRY"
     ]
   },
   {
     "id": 79,
-    "codigo_zona": "0079",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SANTA ISABEL - PROG. HAB. LOS MOCHICAS",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "SANTA ISABEL - PROG. HAB. LOS MOCHICAS"
     ]
   },
   {
     "id": 80,
-    "codigo_zona": "0080",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SANTA LILA",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "SANTA LILA"
     ]
   },
   {
     "id": 81,
-    "codigo_zona": "0081",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "3 DE OCTUBRE - PAMPA Y MOLINO DE VIENTO",
-    "sector_catastral": "10  19",
-    "condicion": "F",
     "sinonimos": [
       "3 DE OCTUBRE - PAMPA Y MOLINO DE VIENTO"
     ]
   },
   {
     "id": 82,
-    "codigo_zona": "0082",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "BANCARIOS",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "BANCARIOS"
     ]
   },
   {
     "id": 83,
-    "codigo_zona": "0083",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "RICARDO PALMA",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "RICARDO PALMA"
     ]
   },
   {
     "id": 84,
-    "codigo_zona": "0084",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LIBERTADOR SIMÓN BOLÍVAR",
-    "sector_catastral": "09  10  17",
-    "condicion": "F",
     "sinonimos": [
       "LIBERTADOR SIMÓN BOLÍVAR",
       "LIBERTADOR SIMON BOLIVAR"
@@ -1028,168 +692,112 @@
   },
   {
     "id": 85,
-    "codigo_zona": "0085",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 016",
-    "sector_catastral": "03  10",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 016"
     ]
   },
   {
     "id": 86,
-    "codigo_zona": "0086",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 017",
-    "sector_catastral": "10",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 017"
     ]
   },
   {
     "id": 87,
-    "codigo_zona": "0087",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "CRUZ DE LA ESPERANZA",
-    "sector_catastral": "08  09  02  17",
-    "condicion": "F",
     "sinonimos": [
       "CRUZ DE LA ESPERANZA"
     ]
   },
   {
     "id": 88,
-    "codigo_zona": "0088",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "LAS LOMAS",
-    "sector_catastral": "09  17",
-    "condicion": "F",
     "sinonimos": [
       "LAS LOMAS"
     ]
   },
   {
     "id": 89,
-    "codigo_zona": "0089",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "LURIN",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "LURIN"
     ]
   },
   {
     "id": 90,
-    "codigo_zona": "0090",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA"
     ]
   },
   {
     "id": 91,
-    "codigo_zona": "0091",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA SUBPROGRAMA II SEGUNDA ETAPA",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA SUBPROGRAMA II SEGUNDA ETAPA"
     ]
   },
   {
     "id": 92,
-    "codigo_zona": "0092",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA"
     ]
   },
   {
     "id": 93,
-    "codigo_zona": "0093",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA SUBPROGRAMA I",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA SUBPROGRAMA I"
     ]
   },
   {
     "id": 94,
-    "codigo_zona": "0094",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA II ETAPA",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA II ETAPA"
     ]
   },
   {
     "id": 95,
-    "codigo_zona": "0095",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA V ETAPA",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA V ETAPA"
     ]
   },
   {
     "id": 96,
-    "codigo_zona": "0096",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA V ETAPA MZ-M1",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "REMIGIO B. SILVA V ETAPA MZ-M1"
     ]
   },
   {
     "id": 97,
-    "codigo_zona": "0097",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 018",
-    "sector_catastral": "17",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 018"
     ]
   },
   {
     "id": 98,
-    "codigo_zona": "0098",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SIMÓN BOLÍVAR (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "17",
-    "condicion": "I",
     "sinonimos": [
       "SIMÓN BOLÍVAR (AMPLIACIÓN INFORMAL)",
       "SIMON BOLIVAR (AMPLIACION INFORMAL)"
@@ -1197,12 +805,8 @@
   },
   {
     "id": 99,
-    "codigo_zona": "0099",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN BUENOS AIRES",
-    "sector_catastral": "27",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN BUENOS AIRES",
       "AMPLIACION BUENOS AIRES"
@@ -1210,36 +814,24 @@
   },
   {
     "id": 100,
-    "codigo_zona": "0100",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CIUDAD DEL CHOFER",
-    "sector_catastral": "03  08  09  02  10",
-    "condicion": "F",
     "sinonimos": [
       "CIUDAD DEL CHOFER"
     ]
   },
   {
     "id": 101,
-    "codigo_zona": "0101",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LAS VILLAS DEL SOL",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "LAS VILLAS DEL SOL"
     ]
   },
   {
     "id": 102,
-    "codigo_zona": "0102",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SUB - DIVISIÓN ALVARADO",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SUB - DIVISIÓN ALVARADO",
       "SUB - DIVISION ALVARADO"
@@ -1247,12 +839,8 @@
   },
   {
     "id": 103,
-    "codigo_zona": "0103",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CARMEN ANGÉLICA",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "CARMEN ANGÉLICA",
       "CARMEN ANGELICA"
@@ -1260,60 +848,40 @@
   },
   {
     "id": 104,
-    "codigo_zona": "0104",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS JARDINES DE SANTA ROSA",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LOS JARDINES DE SANTA ROSA"
     ]
   },
   {
     "id": 105,
-    "codigo_zona": "0105",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN FELIPE",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "SAN FELIPE"
     ]
   },
   {
     "id": 106,
-    "codigo_zona": "0106",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN BORJA",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SAN BORJA"
     ]
   },
   {
     "id": 107,
-    "codigo_zona": "0107",
     "id_tipo_zona": 4,
-    "tipo_zona": "CONJ.RES.",
     "nom_zona": "LA MARINA",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LA MARINA"
     ]
   },
   {
     "id": 108,
-    "codigo_zona": "0108",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "SAN JOSÉ DE AFUERA",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SAN JOSÉ DE AFUERA",
       "SAN JOSE DE AFUERA"
@@ -1321,60 +889,40 @@
   },
   {
     "id": 109,
-    "codigo_zona": "0109",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS CEDROS",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LOS CEDROS"
     ]
   },
   {
     "id": 110,
-    "codigo_zona": "0110",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "QUINTA LAS DELICIAS",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "QUINTA LAS DELICIAS"
     ]
   },
   {
     "id": 111,
-    "codigo_zona": "0111",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA FLORIDA I",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "LA FLORIDA I"
     ]
   },
   {
     "id": 112,
-    "codigo_zona": "0112",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS ROSALES",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LOS ROSALES"
     ]
   },
   {
     "id": 113,
-    "codigo_zona": "0113",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CAFÉ PERÚ",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "CAFÉ PERÚ",
       "CAFE PERU"
@@ -1382,60 +930,40 @@
   },
   {
     "id": 114,
-    "codigo_zona": "0114",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL AMAUTA",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "EL AMAUTA"
     ]
   },
   {
     "id": 115,
-    "codigo_zona": "0115",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "MULTIFAMILIAR LOS PINOS DE LA PLATA",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "MULTIFAMILIAR LOS PINOS DE LA PLATA"
     ]
   },
   {
     "id": 116,
-    "codigo_zona": "0116",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS JAZMINES",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LOS JAZMINES"
     ]
   },
   {
     "id": 117,
-    "codigo_zona": "0117",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "SANTA ELISA",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SANTA ELISA"
     ]
   },
   {
     "id": 118,
-    "codigo_zona": "0118",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "SAN JOSÉ",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SAN JOSÉ",
       "SAN JOSE"
@@ -1443,36 +971,24 @@
   },
   {
     "id": 119,
-    "codigo_zona": "0119",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 022",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 022"
     ]
   },
   {
     "id": 120,
-    "codigo_zona": "0120",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 023",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 023"
     ]
   },
   {
     "id": 121,
-    "codigo_zona": "0121",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "AMPLIACIÓN LOS JAZMINES",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN LOS JAZMINES",
       "AMPLIACION LOS JAZMINES"
@@ -1480,24 +996,16 @@
   },
   {
     "id": 122,
-    "codigo_zona": "0122",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "LAS DELICIAS",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LAS DELICIAS"
     ]
   },
   {
     "id": 123,
-    "codigo_zona": "0123",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "DANIEL ALCIDES CARRIÓN",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "DANIEL ALCIDES CARRIÓN",
       "DANIEL ALCIDES CARRION"
@@ -1505,60 +1013,40 @@
   },
   {
     "id": 124,
-    "codigo_zona": "0124",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN LORENZO",
-    "sector_catastral": "06",
-    "condicion": "F",
     "sinonimos": [
       "SAN LORENZO"
     ]
   },
   {
     "id": 125,
-    "codigo_zona": "0125",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "COIS PRIMER SECTOR",
-    "sector_catastral": "06",
-    "condicion": "F",
     "sinonimos": [
       "COIS PRIMER SECTOR"
     ]
   },
   {
     "id": 126,
-    "codigo_zona": "0126",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "COIS SEGUNDO SECTOR",
-    "sector_catastral": "06",
-    "condicion": "F",
     "sinonimos": [
       "COIS SEGUNDO SECTOR"
     ]
   },
   {
     "id": 127,
-    "codigo_zona": "0127",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS ROSALES",
-    "sector_catastral": "06",
-    "condicion": "I",
     "sinonimos": [
       "LOS ROSALES"
     ]
   },
   {
     "id": 128,
-    "codigo_zona": "0128",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "JOSÉ LEONARDO ORTIZ",
-    "sector_catastral": "06  12",
-    "condicion": "F",
     "sinonimos": [
       "JOSÉ LEONARDO ORTIZ",
       "JOSE LEONARDO ORTIZ"
@@ -1566,60 +1054,40 @@
   },
   {
     "id": 129,
-    "codigo_zona": "0129",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "EL CAMALITO",
-    "sector_catastral": "13",
-    "condicion": "F",
     "sinonimos": [
       "EL CAMALITO"
     ]
   },
   {
     "id": 130,
-    "codigo_zona": "0130",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 026",
-    "sector_catastral": "06  13",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 026"
     ]
   },
   {
     "id": 131,
-    "codigo_zona": "0131",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "ARTURO PASTOR BOGGIANO",
-    "sector_catastral": "26  29",
-    "condicion": "I",
     "sinonimos": [
       "ARTURO PASTOR BOGGIANO"
     ]
   },
   {
     "id": 132,
-    "codigo_zona": "0132",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LA PUNTA",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "LA PUNTA"
     ]
   },
   {
     "id": 133,
-    "codigo_zona": "0133",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "SEÑOR DE LOS MILAGROS",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "SEÑOR DE LOS MILAGROS",
       "SENOR DE LOS MILAGROS"
@@ -1627,24 +1095,16 @@
   },
   {
     "id": 134,
-    "codigo_zona": "0134",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "EL MOLINO",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "EL MOLINO"
     ]
   },
   {
     "id": 135,
-    "codigo_zona": "0135",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "LAS AMÉRICAS",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "LAS AMÉRICAS",
       "LAS AMERICAS"
@@ -1652,12 +1112,8 @@
   },
   {
     "id": 136,
-    "codigo_zona": "0136",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SAN NICOLÁS",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "SAN NICOLÁS",
       "SAN NICOLAS"
@@ -1665,48 +1121,32 @@
   },
   {
     "id": 137,
-    "codigo_zona": "0137",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "ANA DE LOS ANGELES",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "ANA DE LOS ANGELES"
     ]
   },
   {
     "id": 138,
-    "codigo_zona": "0138",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "VILLA EL SALVADOR",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "VILLA EL SALVADOR"
     ]
   },
   {
     "id": 139,
-    "codigo_zona": "0139",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SANTA ANGELA",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "SANTA ANGELA"
     ]
   },
   {
     "id": 140,
-    "codigo_zona": "0140",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CORAZON DE JESÚS",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "CORAZON DE JESÚS",
       "CORAZON DE JESUS"
@@ -1714,24 +1154,16 @@
   },
   {
     "id": 141,
-    "codigo_zona": "0141",
     "id_tipo_zona": 22,
-    "tipo_zona": "COOP.VIV.",
     "nom_zona": "DIVINO MAESTRO",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "DIVINO MAESTRO"
     ]
   },
   {
     "id": 142,
-    "codigo_zona": "0142",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "HIPÓLITO UNANUE",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "HIPÓLITO UNANUE",
       "HIPOLITO UNANUE"
@@ -1739,12 +1171,8 @@
   },
   {
     "id": 143,
-    "codigo_zona": "0143",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "JESÚS NAZARENO",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "JESÚS NAZARENO",
       "JESUS NAZARENO"
@@ -1752,48 +1180,32 @@
   },
   {
     "id": 144,
-    "codigo_zona": "0144",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "MONTERRICO I",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "MONTERRICO I"
     ]
   },
   {
     "id": 145,
-    "codigo_zona": "0145",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "MONTERRICO - II ETAPA",
-    "sector_catastral": "26  29",
-    "condicion": "F",
     "sinonimos": [
       "MONTERRICO - II ETAPA"
     ]
   },
   {
     "id": 146,
-    "codigo_zona": "0146",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PARAJE LURIN",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "PARAJE LURIN"
     ]
   },
   {
     "id": 147,
-    "codigo_zona": "0147",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN SAN NICOLAS - 28",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN SAN NICOLAS - 28",
       "AMPLIACION SAN NICOLAS - 28"
@@ -1801,72 +1213,48 @@
   },
   {
     "id": 148,
-    "codigo_zona": "0148",
     "id_tipo_zona": 25,
-    "tipo_zona": "P.T.",
     "nom_zona": "CERCADO DE CHICLAYO",
-    "sector_catastral": "12  21",
-    "condicion": "F",
     "sinonimos": [
       "CERCADO DE CHICLAYO"
     ]
   },
   {
     "id": 149,
-    "codigo_zona": "0149",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 029",
-    "sector_catastral": "21",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 029"
     ]
   },
   {
     "id": 150,
-    "codigo_zona": "0150",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "EL INGENIERO 1",
-    "sector_catastral": "18",
-    "condicion": "F",
     "sinonimos": [
       "EL INGENIERO 1"
     ]
   },
   {
     "id": 151,
-    "codigo_zona": "0151",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LAS GARZAS",
-    "sector_catastral": "18",
-    "condicion": "I",
     "sinonimos": [
       "LAS GARZAS"
     ]
   },
   {
     "id": 152,
-    "codigo_zona": "0152",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 030",
-    "sector_catastral": "18",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 030"
     ]
   },
   {
     "id": 153,
-    "codigo_zona": "0153",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN NUEVO PROGRESO",
-    "sector_catastral": "62",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN NUEVO PROGRESO",
       "AMPLIACION NUEVO PROGRESO"
@@ -1874,24 +1262,16 @@
   },
   {
     "id": 154,
-    "codigo_zona": "0154",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "PASCUAL SACO OLIVEROS",
-    "sector_catastral": "21",
-    "condicion": "F",
     "sinonimos": [
       "PASCUAL SACO OLIVEROS"
     ]
   },
   {
     "id": 155,
-    "codigo_zona": "0155",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "PUENTE BLANCO (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "14",
-    "condicion": "I",
     "sinonimos": [
       "PUENTE BLANCO (AMPLIACIÓN INFORMAL)",
       "PUENTE BLANCO (AMPLIACION INFORMAL)"
@@ -1899,12 +1279,8 @@
   },
   {
     "id": 156,
-    "codigo_zona": "0156",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA PURÍSIMA",
-    "sector_catastral": "28",
-    "condicion": "F",
     "sinonimos": [
       "LA PURÍSIMA",
       "LA PURISIMA"
@@ -1912,36 +1288,24 @@
   },
   {
     "id": 157,
-    "codigo_zona": "0157",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LAS PALMAS",
-    "sector_catastral": "44  29",
-    "condicion": "F",
     "sinonimos": [
       "LAS PALMAS"
     ]
   },
   {
     "id": 158,
-    "codigo_zona": "0158",
     "id_tipo_zona": 3,
-    "tipo_zona": "CONJ.HAB.",
     "nom_zona": "VILLA DEL PERIODISTA",
-    "sector_catastral": "10",
-    "condicion": "I",
     "sinonimos": [
       "VILLA DEL PERIODISTA"
     ]
   },
   {
     "id": 159,
-    "codigo_zona": "0159",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SEÑOR DE SIPÁN",
-    "sector_catastral": "62",
-    "condicion": "F",
     "sinonimos": [
       "SEÑOR DE SIPÁN",
       "SENOR DE SIPAN"
@@ -1949,48 +1313,32 @@
   },
   {
     "id": 160,
-    "codigo_zona": "0160",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 032",
-    "sector_catastral": "03  02",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 032"
     ]
   },
   {
     "id": 161,
-    "codigo_zona": "0161",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SANTA TRINIDAD",
-    "sector_catastral": "03",
-    "condicion": "F",
     "sinonimos": [
       "SANTA TRINIDAD"
     ]
   },
   {
     "id": 162,
-    "codigo_zona": "0162",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "CHRISTIAN",
-    "sector_catastral": "03",
-    "condicion": "F",
     "sinonimos": [
       "CHRISTIAN"
     ]
   },
   {
     "id": 163,
-    "codigo_zona": "0163",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LAS DELICIAS (EX - FDO. SAN JOSÉ)",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LAS DELICIAS (EX - FDO. SAN JOSÉ)",
       "LAS DELICIAS (EX - FDO. SAN JOSE)"
@@ -1998,12 +1346,8 @@
   },
   {
     "id": 164,
-    "codigo_zona": "0164",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LUIS ALBERTO SÁNCHEZ",
-    "sector_catastral": "03",
-    "condicion": "F",
     "sinonimos": [
       "LUIS ALBERTO SÁNCHEZ",
       "LUIS ALBERTO SANCHEZ"
@@ -2011,36 +1355,24 @@
   },
   {
     "id": 165,
-    "codigo_zona": "0165",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SANTO TORIBIO DE MOGROVEJO",
-    "sector_catastral": "03",
-    "condicion": "F",
     "sinonimos": [
       "SANTO TORIBIO DE MOGROVEJO"
     ]
   },
   {
     "id": 166,
-    "codigo_zona": "0166",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "4 DE NOVIEMBRE",
-    "sector_catastral": "03",
-    "condicion": "F",
     "sinonimos": [
       "4 DE NOVIEMBRE"
     ]
   },
   {
     "id": 167,
-    "codigo_zona": "0167",
     "id_tipo_zona": 1,
-    "tipo_zona": "P.A.L.",
     "nom_zona": "LA PORTADA DE LAS AMÉRICAS SECTOR 1",
-    "sector_catastral": "29",
-    "condicion": "F",
     "sinonimos": [
       "LA PORTADA DE LAS AMÉRICAS SECTOR 1",
       "LA PORTADA DE LAS AMERICAS SECTOR 1"
@@ -2048,72 +1380,48 @@
   },
   {
     "id": 168,
-    "codigo_zona": "0168",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 033",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 033"
     ]
   },
   {
     "id": 169,
-    "codigo_zona": "0169",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "28 DE JULIO",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "28 DE JULIO"
     ]
   },
   {
     "id": 170,
-    "codigo_zona": "0170",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA LOS MANGOS",
-    "sector_catastral": "44  45",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA LOS MANGOS"
     ]
   },
   {
     "id": 171,
-    "codigo_zona": "0171",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA FLORIDA II",
-    "sector_catastral": "30  45",
-    "condicion": "F",
     "sinonimos": [
       "LA FLORIDA II"
     ]
   },
   {
     "id": 172,
-    "codigo_zona": "0172",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LOS ROBLES",
-    "sector_catastral": "45",
-    "condicion": "F",
     "sinonimos": [
       "LOS ROBLES"
     ]
   },
   {
     "id": 173,
-    "codigo_zona": "0173",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "NUEVA JERUSALÉN",
-    "sector_catastral": "09",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA JERUSALÉN",
       "NUEVA JERUSALEN"
@@ -2121,60 +1429,40 @@
   },
   {
     "id": 174,
-    "codigo_zona": "0174",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "VISTA ALEGRE",
-    "sector_catastral": "09",
-    "condicion": "F",
     "sinonimos": [
       "VISTA ALEGRE"
     ]
   },
   {
     "id": 175,
-    "codigo_zona": "0175",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VALLE DEL SOL",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "VALLE DEL SOL"
     ]
   },
   {
     "id": 176,
-    "codigo_zona": "0176",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "NUEVA ESPERANZA N°1",
-    "sector_catastral": "07",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA ESPERANZA N°1"
     ]
   },
   {
     "id": 177,
-    "codigo_zona": "0177",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 036",
-    "sector_catastral": "12",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 036"
     ]
   },
   {
     "id": 178,
-    "codigo_zona": "0178",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "CAMPODÓNICO",
-    "sector_catastral": "13",
-    "condicion": "I",
     "sinonimos": [
       "CAMPODÓNICO",
       "CAMPODONICO"
@@ -2182,12 +1470,8 @@
   },
   {
     "id": 179,
-    "codigo_zona": "0179",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN MARTÍN",
-    "sector_catastral": "13",
-    "condicion": "F",
     "sinonimos": [
       "SAN MARTÍN",
       "SAN MARTIN"
@@ -2195,60 +1479,40 @@
   },
   {
     "id": 180,
-    "codigo_zona": "0180",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN JUAN",
-    "sector_catastral": "13",
-    "condicion": "F",
     "sinonimos": [
       "SAN JUAN"
     ]
   },
   {
     "id": 181,
-    "codigo_zona": "0181",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 037",
-    "sector_catastral": "12  13",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 037"
     ]
   },
   {
     "id": 182,
-    "codigo_zona": "0182",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA MOLINA",
-    "sector_catastral": "18  61",
-    "condicion": "F",
     "sinonimos": [
       "LA MOLINA"
     ]
   },
   {
     "id": 183,
-    "codigo_zona": "0183",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "DEL INGENIERO III",
-    "sector_catastral": "61",
-    "condicion": "I",
     "sinonimos": [
       "DEL INGENIERO III"
     ]
   },
   {
     "id": 184,
-    "codigo_zona": "0184",
     "id_tipo_zona": 1,
-    "tipo_zona": "P.A.L.",
     "nom_zona": "AMPLIACIÓN CRISTO REDENTOR",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN CRISTO REDENTOR",
       "AMPLIACION CRISTO REDENTOR"
@@ -2256,60 +1520,40 @@
   },
   {
     "id": 185,
-    "codigo_zona": "0185",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PARQUE INDUSTRIAL",
-    "sector_catastral": "61",
-    "condicion": "I",
     "sinonimos": [
       "PARQUE INDUSTRIAL"
     ]
   },
   {
     "id": 186,
-    "codigo_zona": "0186",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RICARDO ARIZOLA TIRADO",
-    "sector_catastral": "62",
-    "condicion": "F",
     "sinonimos": [
       "RICARDO ARIZOLA TIRADO"
     ]
   },
   {
     "id": 187,
-    "codigo_zona": "0187",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 040",
-    "sector_catastral": "63",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 040"
     ]
   },
   {
     "id": 188,
-    "codigo_zona": "0188",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 041",
-    "sector_catastral": "63",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 041"
     ]
   },
   {
     "id": 189,
-    "codigo_zona": "0189",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FELIPE SANTIAGO SALAVERRY (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "20",
-    "condicion": "I",
     "sinonimos": [
       "FELIPE SANTIAGO SALAVERRY (AMPLIACIÓN INFORMAL)",
       "FELIPE SANTIAGO SALAVERRY (AMPLIACION INFORMAL)"
@@ -2317,36 +1561,24 @@
   },
   {
     "id": 190,
-    "codigo_zona": "0190",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 019",
-    "sector_catastral": "22",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 019"
     ]
   },
   {
     "id": 191,
-    "codigo_zona": "0191",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 039",
-    "sector_catastral": "22",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 039"
     ]
   },
   {
     "id": 192,
-    "codigo_zona": "0192",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA CERROPÓN - LA MOLINA ALTA",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA CERROPÓN - LA MOLINA ALTA",
       "PROGRESIVA CERROPON - LA MOLINA ALTA"
@@ -2354,36 +1586,24 @@
   },
   {
     "id": 193,
-    "codigo_zona": "0193",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LAS LOMAS",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "LAS LOMAS"
     ]
   },
   {
     "id": 194,
-    "codigo_zona": "0194",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 042",
-    "sector_catastral": "62  63",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 042"
     ]
   },
   {
     "id": 195,
-    "codigo_zona": "0195",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "NUEVO CERROPÓN",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "NUEVO CERROPÓN",
       "NUEVO CERROPON"
@@ -2391,24 +1611,16 @@
   },
   {
     "id": 196,
-    "codigo_zona": "0196",
     "id_tipo_zona": 26,
-    "tipo_zona": "C.P.M.",
     "nom_zona": "SAN HILDEBRANDO",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "SAN HILDEBRANDO"
     ]
   },
   {
     "id": 197,
-    "codigo_zona": "0197",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN CERROPÓN BLOCK 20",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN CERROPÓN BLOCK 20",
       "AMPLIACION CERROPON BLOCK 20"
@@ -2416,12 +1628,8 @@
   },
   {
     "id": 198,
-    "codigo_zona": "0198",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "PROGRESIVA CERROPÓN VILLA EL SALVADOR",
-    "sector_catastral": "62",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA CERROPÓN VILLA EL SALVADOR",
       "PROGRESIVA CERROPON VILLA EL SALVADOR"
@@ -2429,36 +1637,24 @@
   },
   {
     "id": 199,
-    "codigo_zona": "0199",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 045",
-    "sector_catastral": "05",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 045"
     ]
   },
   {
     "id": 200,
-    "codigo_zona": "0200",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA COLINA",
-    "sector_catastral": "63",
-    "condicion": "I",
     "sinonimos": [
       "LA COLINA"
     ]
   },
   {
     "id": 201,
-    "codigo_zona": "0201",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN LA MOLINA ALTA 1ER. SECTOR",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN LA MOLINA ALTA 1ER. SECTOR",
       "AMPLIACION LA MOLINA ALTA 1ER. SECTOR"
@@ -2466,72 +1662,48 @@
   },
   {
     "id": 202,
-    "codigo_zona": "0203",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL SANTUARIO",
-    "sector_catastral": "64",
-    "condicion": "F",
     "sinonimos": [
       "EL SANTUARIO"
     ]
   },
   {
     "id": 203,
-    "codigo_zona": "0204",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 059",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 059"
     ]
   },
   {
     "id": 204,
-    "codigo_zona": "0205",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 048",
-    "sector_catastral": "64",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 048"
     ]
   },
   {
     "id": 205,
-    "codigo_zona": "0206",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA DEL NORTE II ETAPA - LOS PORTALES",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "VILLA DEL NORTE II ETAPA - LOS PORTALES"
     ]
   },
   {
     "id": 206,
-    "codigo_zona": "0207",
     "id_tipo_zona": 22,
-    "tipo_zona": "COOP.VIV.",
     "nom_zona": "DE TRAB. ADM. DE LA UPCH",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "DE TRAB. ADM. DE LA UPCH"
     ]
   },
   {
     "id": 207,
-    "codigo_zona": "0208",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA SAN JOSÉ OBRERO",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA SAN JOSÉ OBRERO",
       "PROGRESIVA SAN JOSE OBRERO"
@@ -2539,24 +1711,16 @@
   },
   {
     "id": 208,
-    "codigo_zona": "0209",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "ADRIANO BACA BURGA",
-    "sector_catastral": "25",
-    "condicion": "I",
     "sinonimos": [
       "ADRIANO BACA BURGA"
     ]
   },
   {
     "id": 209,
-    "codigo_zona": "0210",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "ELÍAS AGUIRRE",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "ELÍAS AGUIRRE",
       "ELIAS AGUIRRE"
@@ -2564,36 +1728,24 @@
   },
   {
     "id": 210,
-    "codigo_zona": "0211",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "QUINTA CAROLINA ZOEGER B.",
-    "sector_catastral": "25",
-    "condicion": "I",
     "sinonimos": [
       "QUINTA CAROLINA ZOEGER B."
     ]
   },
   {
     "id": 211,
-    "codigo_zona": "0212",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "19 DE SETIEMBRE",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "19 DE SETIEMBRE"
     ]
   },
   {
     "id": 212,
-    "codigo_zona": "0213",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN CERROPÓN BLOCK 19",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN CERROPÓN BLOCK 19",
       "AMPLIACION CERROPON BLOCK 19"
@@ -2601,24 +1753,16 @@
   },
   {
     "id": 213,
-    "codigo_zona": "0214",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 049",
-    "sector_catastral": "25",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 049"
     ]
   },
   {
     "id": 214,
-    "codigo_zona": "0215",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN CERROPÓN SECTOR SAN LUCAS",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN CERROPÓN SECTOR SAN LUCAS",
       "AMPLIACION CERROPON SECTOR SAN LUCAS"
@@ -2626,36 +1770,24 @@
   },
   {
     "id": 215,
-    "codigo_zona": "0216",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 051",
-    "sector_catastral": "25",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 051"
     ]
   },
   {
     "id": 216,
-    "codigo_zona": "0217",
     "id_tipo_zona": 10,
-    "tipo_zona": "ASOC.PROP.",
     "nom_zona": "LA CIUDADELA",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "LA CIUDADELA"
     ]
   },
   {
     "id": 217,
-    "codigo_zona": "0218",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "LAS ÁNIMAS",
-    "sector_catastral": "25  24",
-    "condicion": "I",
     "sinonimos": [
       "LAS ÁNIMAS",
       "LAS ANIMAS"
@@ -2663,24 +1795,16 @@
   },
   {
     "id": 218,
-    "codigo_zona": "0219",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LAS DELICIAS",
-    "sector_catastral": "61",
-    "condicion": "I",
     "sinonimos": [
       "LAS DELICIAS"
     ]
   },
   {
     "id": 219,
-    "codigo_zona": "0220",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "COOP. DE VIVIENDA DEL MINISTERIO PÚBLICO LTDA. N°1889",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "COOP. DE VIVIENDA DEL MINISTERIO PÚBLICO LTDA. N°1889",
       "COOP. DE VIVIENDA DEL MINISTERIO PUBLICO LTDA. N°1889"
@@ -2688,12 +1812,8 @@
   },
   {
     "id": 220,
-    "codigo_zona": "0221",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LA UNIÓN",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "LA UNIÓN",
       "LA UNION"
@@ -2701,60 +1821,40 @@
   },
   {
     "id": 221,
-    "codigo_zona": "0222",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "VILLA SANTUARIO DE LA PAZ",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "VILLA SANTUARIO DE LA PAZ"
     ]
   },
   {
     "id": 222,
-    "codigo_zona": "0223",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAMAN",
-    "sector_catastral": "37",
-    "condicion": "F",
     "sinonimos": [
       "SAMAN"
     ]
   },
   {
     "id": 223,
-    "codigo_zona": "0224",
     "id_tipo_zona": 1,
-    "tipo_zona": "P.A.L.",
     "nom_zona": "PEDRO ABEL LABARTHE",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "PEDRO ABEL LABARTHE"
     ]
   },
   {
     "id": 224,
-    "codigo_zona": "0225",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SAN JUAN (SECTOR LA HUACA)",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "SAN JUAN (SECTOR LA HUACA)"
     ]
   },
   {
     "id": 225,
-    "codigo_zona": "0226",
     "id_tipo_zona": 10,
-    "tipo_zona": "ASOC.POBL.",
     "nom_zona": "AMPLIACIÓN PROGRESIVA CERROPÓN",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN PROGRESIVA CERROPÓN",
       "AMPLIACION PROGRESIVA CERROPON"
@@ -2762,12 +1862,8 @@
   },
   {
     "id": 226,
-    "codigo_zona": "0227",
     "id_tipo_zona": 1,
-    "tipo_zona": "P.A.L.",
     "nom_zona": "SAN VALENTÍN",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "SAN VALENTÍN",
       "SAN VALENTIN"
@@ -2775,12 +1871,8 @@
   },
   {
     "id": 227,
-    "codigo_zona": "0228",
     "id_tipo_zona": 24,
-    "tipo_zona": "ASOC.PVIV.",
     "nom_zona": "EL TRÉBOL",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "EL TRÉBOL",
       "EL TREBOL"
@@ -2788,108 +1880,72 @@
   },
   {
     "id": 228,
-    "codigo_zona": "0229",
     "id_tipo_zona": 22,
-    "tipo_zona": "COOP.VIV.",
     "nom_zona": "LA RINCONADA",
-    "sector_catastral": "45",
-    "condicion": "I",
     "sinonimos": [
       "LA RINCONADA"
     ]
   },
   {
     "id": 229,
-    "codigo_zona": "0230",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA DEL NORTE",
-    "sector_catastral": "29",
-    "condicion": "F",
     "sinonimos": [
       "VILLA DEL NORTE"
     ]
   },
   {
     "id": 230,
-    "codigo_zona": "0231",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PARQUE RESIDENCIAL VILLA DEL NORTE - LA ESMERALDA",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "PARQUE RESIDENCIAL VILLA DEL NORTE - LA ESMERALDA"
     ]
   },
   {
     "id": 231,
-    "codigo_zona": "0232",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA DEL NORTE VI ETAPA",
-    "sector_catastral": "45",
-    "condicion": "I",
     "sinonimos": [
       "VILLA DEL NORTE VI ETAPA"
     ]
   },
   {
     "id": 232,
-    "codigo_zona": "0233",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "CALIFORNIA",
-    "sector_catastral": "37",
-    "condicion": "I",
     "sinonimos": [
       "CALIFORNIA"
     ]
   },
   {
     "id": 233,
-    "codigo_zona": "0234",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "JERICO",
-    "sector_catastral": "45",
-    "condicion": "F",
     "sinonimos": [
       "JERICO"
     ]
   },
   {
     "id": 234,
-    "codigo_zona": "0235",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "MONTERRICO IV ETAPA",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "MONTERRICO IV ETAPA"
     ]
   },
   {
     "id": 235,
-    "codigo_zona": "0236",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA D4 LOS OLIVOS",
-    "sector_catastral": "39",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA D4 LOS OLIVOS"
     ]
   },
   {
     "id": 236,
-    "codigo_zona": "0237",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA LOS ÁLAMOS",
-    "sector_catastral": "28",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA LOS ÁLAMOS",
       "PROGRESIVA LOS ALAMOS"
@@ -2897,36 +1953,24 @@
   },
   {
     "id": 237,
-    "codigo_zona": "0238",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SAN FRANCISCO DE ASIS",
-    "sector_catastral": "46",
-    "condicion": "F",
     "sinonimos": [
       "SAN FRANCISCO DE ASIS"
     ]
   },
   {
     "id": 238,
-    "codigo_zona": "0239",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA LUISA",
-    "sector_catastral": "45",
-    "condicion": "I",
     "sinonimos": [
       "VILLA LUISA"
     ]
   },
   {
     "id": 239,
-    "codigo_zona": "0240",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "FRANCISCO RODRÍGUEZ JULCA",
-    "sector_catastral": "28  29",
-    "condicion": "I",
     "sinonimos": [
       "FRANCISCO RODRÍGUEZ JULCA",
       "FRANCISCO RODRIGUEZ JULCA"
@@ -2934,180 +1978,120 @@
   },
   {
     "id": 240,
-    "codigo_zona": "0241",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA BONITA",
-    "sector_catastral": "45",
-    "condicion": "F",
     "sinonimos": [
       "VILLA BONITA"
     ]
   },
   {
     "id": 241,
-    "codigo_zona": "0242",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "VILLA EL PROGRESO",
-    "sector_catastral": "35",
-    "condicion": "F",
     "sinonimos": [
       "VILLA EL PROGRESO"
     ]
   },
   {
     "id": 242,
-    "codigo_zona": "0243",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 007",
-    "sector_catastral": "35  38",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 007"
     ]
   },
   {
     "id": 243,
-    "codigo_zona": "0244",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "MIRAFLORES",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "MIRAFLORES"
     ]
   },
   {
     "id": 244,
-    "codigo_zona": "0245",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LAS VEGAS",
-    "sector_catastral": "35",
-    "condicion": "F",
     "sinonimos": [
       "LAS VEGAS"
     ]
   },
   {
     "id": 245,
-    "codigo_zona": "0246",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LOS PRECURSORES",
-    "sector_catastral": "38",
-    "condicion": "F",
     "sinonimos": [
       "LOS PRECURSORES"
     ]
   },
   {
     "id": 246,
-    "codigo_zona": "0247",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SAN BARTOLO",
-    "sector_catastral": "38",
-    "condicion": "F",
     "sinonimos": [
       "SAN BARTOLO"
     ]
   },
   {
     "id": 247,
-    "codigo_zona": "0248",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "NUEVA ESPERANZA",
-    "sector_catastral": "22",
-    "condicion": "I",
     "sinonimos": [
       "NUEVA ESPERANZA"
     ]
   },
   {
     "id": 248,
-    "codigo_zona": "0249",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "VILLA EL SALVADOR SECTOR 1",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "VILLA EL SALVADOR SECTOR 1"
     ]
   },
   {
     "id": 249,
-    "codigo_zona": "0250",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL PARQUE LA FLORESTA",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "RESIDENCIAL PARQUE LA FLORESTA"
     ]
   },
   {
     "id": 250,
-    "codigo_zona": "0251",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "RAMIRO PRIALE II",
-    "sector_catastral": "38",
-    "condicion": "F",
     "sinonimos": [
       "RAMIRO PRIALE II"
     ]
   },
   {
     "id": 251,
-    "codigo_zona": "0252",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN JUAN I Y II",
-    "sector_catastral": "39  40",
-    "condicion": "I",
     "sinonimos": [
       "SAN JUAN I Y II"
     ]
   },
   {
     "id": 252,
-    "codigo_zona": "0253",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "LLAMPALLEC",
-    "sector_catastral": "07",
-    "condicion": "I",
     "sinonimos": [
       "LLAMPALLEC"
     ]
   },
   {
     "id": 253,
-    "codigo_zona": "0254",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 011",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 011"
     ]
   },
   {
     "id": 254,
-    "codigo_zona": "0255",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL LA PURÍSIMA",
-    "sector_catastral": "28",
-    "condicion": "F",
     "sinonimos": [
       "RESIDENCIAL LA PURÍSIMA",
       "RESIDENCIAL LA PURISIMA"
@@ -3115,108 +2099,72 @@
   },
   {
     "id": 255,
-    "codigo_zona": "0256",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LAS PALMAS II ETAPA",
-    "sector_catastral": "29",
-    "condicion": "F",
     "sinonimos": [
       "LAS PALMAS II ETAPA"
     ]
   },
   {
     "id": 256,
-    "codigo_zona": "0257",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "MONTERRICO V",
-    "sector_catastral": "44  45",
-    "condicion": "I",
     "sinonimos": [
       "MONTERRICO V"
     ]
   },
   {
     "id": 257,
-    "codigo_zona": "0258",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LAS PALMERAS",
-    "sector_catastral": "28",
-    "condicion": "F",
     "sinonimos": [
       "LAS PALMERAS"
     ]
   },
   {
     "id": 258,
-    "codigo_zona": "0259",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LAS COLINAS DE LAS BRISAS",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "LAS COLINAS DE LAS BRISAS"
     ]
   },
   {
     "id": 259,
-    "codigo_zona": "0260",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "MONTERRICO III",
-    "sector_catastral": "29  45",
-    "condicion": "F",
     "sinonimos": [
       "MONTERRICO III"
     ]
   },
   {
     "id": 260,
-    "codigo_zona": "0261",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA RIVIERA II ETAPA",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "LA RIVIERA II ETAPA"
     ]
   },
   {
     "id": 261,
-    "codigo_zona": "0262",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA RIVIERA III ETAPA",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "LA RIVIERA III ETAPA"
     ]
   },
   {
     "id": 262,
-    "codigo_zona": "0263",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "LOS OLIVOS",
-    "sector_catastral": "24",
-    "condicion": "F",
     "sinonimos": [
       "LOS OLIVOS"
     ]
   },
   {
     "id": 263,
-    "codigo_zona": "0264",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "AMPLIACIÓN CRUZ DEL PERDÓN",
-    "sector_catastral": "24",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN CRUZ DEL PERDÓN",
       "AMPLIACION CRUZ DEL PERDON"
@@ -3224,12 +2172,8 @@
   },
   {
     "id": 264,
-    "codigo_zona": "0265",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "JOSÉ CARLOS MARIÁTEGUI",
-    "sector_catastral": "24",
-    "condicion": "F",
     "sinonimos": [
       "JOSÉ CARLOS MARIÁTEGUI",
       "JOSE CARLOS MARIATEGUI"
@@ -3237,24 +2181,16 @@
   },
   {
     "id": 265,
-    "codigo_zona": "0266",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.PROG.",
     "nom_zona": "SAN PABLO",
-    "sector_catastral": "25  24",
-    "condicion": "F",
     "sinonimos": [
       "SAN PABLO"
     ]
   },
   {
     "id": 266,
-    "codigo_zona": "0267",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SAN SEBASTIÁN",
-    "sector_catastral": "24",
-    "condicion": "F",
     "sinonimos": [
       "SAN SEBASTIÁN",
       "SAN SEBASTIAN"
@@ -3262,84 +2198,56 @@
   },
   {
     "id": 267,
-    "codigo_zona": "0268",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "VIRGEN DE LA PAZ",
-    "sector_catastral": "24",
-    "condicion": "F",
     "sinonimos": [
       "VIRGEN DE LA PAZ"
     ]
   },
   {
     "id": 268,
-    "codigo_zona": "0269",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "SAN JULIO",
-    "sector_catastral": "24",
-    "condicion": "I",
     "sinonimos": [
       "SAN JULIO"
     ]
   },
   {
     "id": 269,
-    "codigo_zona": "0270",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "AVIDUN",
-    "sector_catastral": "24",
-    "condicion": "I",
     "sinonimos": [
       "AVIDUN"
     ]
   },
   {
     "id": 270,
-    "codigo_zona": "0271",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 038",
-    "sector_catastral": "29  28",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 038"
     ]
   },
   {
     "id": 271,
-    "codigo_zona": "0272",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "28 DE JULIO",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "28 DE JULIO"
     ]
   },
   {
     "id": 272,
-    "codigo_zona": "0273",
     "id_tipo_zona": 24,
-    "tipo_zona": "ASOC.PVIV.",
     "nom_zona": "LOS DATILES",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "LOS DATILES"
     ]
   },
   {
     "id": 273,
-    "codigo_zona": "0274",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "JORGE CHÁVEZ",
-    "sector_catastral": "16",
-    "condicion": "F",
     "sinonimos": [
       "JORGE CHÁVEZ",
       "JORGE CHAVEZ"
@@ -3347,24 +2255,16 @@
   },
   {
     "id": 274,
-    "codigo_zona": "0275",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "FANNY ABANTO CALLE",
-    "sector_catastral": "16",
-    "condicion": "F",
     "sinonimos": [
       "FANNY ABANTO CALLE"
     ]
   },
   {
     "id": 275,
-    "codigo_zona": "0276",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN FANNY ABANTO CALLE",
-    "sector_catastral": "16",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN FANNY ABANTO CALLE",
       "AMPLIACION FANNY ABANTO CALLE"
@@ -3372,12 +2272,8 @@
   },
   {
     "id": 276,
-    "codigo_zona": "0277",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN FANNY ABANTO CALLE II ETAPA",
-    "sector_catastral": "16",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN FANNY ABANTO CALLE II ETAPA",
       "AMPLIACION FANNY ABANTO CALLE II ETAPA"
@@ -3385,24 +2281,16 @@
   },
   {
     "id": 277,
-    "codigo_zona": "0278",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SAUL CANTORAL HUAMANI",
-    "sector_catastral": "01  43",
-    "condicion": "F",
     "sinonimos": [
       "SAUL CANTORAL HUAMANI"
     ]
   },
   {
     "id": 278,
-    "codigo_zona": "0279",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL MOLINITO (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "01",
-    "condicion": "I",
     "sinonimos": [
       "EL MOLINITO (AMPLIACIÓN INFORMAL)",
       "EL MOLINITO (AMPLIACION INFORMAL)"
@@ -3410,12 +2298,8 @@
   },
   {
     "id": 279,
-    "codigo_zona": "0280",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "AMPLIACIÓN CÉSAR VALLEJO",
-    "sector_catastral": "01",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN CÉSAR VALLEJO",
       "AMPLIACION CESAR VALLEJO"
@@ -3423,12 +2307,8 @@
   },
   {
     "id": 280,
-    "codigo_zona": "0281",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "CÉSAR VALLEJO",
-    "sector_catastral": "01",
-    "condicion": "F",
     "sinonimos": [
       "CÉSAR VALLEJO",
       "CESAR VALLEJO"
@@ -3436,12 +2316,8 @@
   },
   {
     "id": 281,
-    "codigo_zona": "0282",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "ENRIQUE LÓPEZ ALBUJAR (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "01",
-    "condicion": "I",
     "sinonimos": [
       "ENRIQUE LÓPEZ ALBUJAR (AMPLIACIÓN INFORMAL)",
       "ENRIQUE LOPEZ ALBUJAR (AMPLIACION INFORMAL)"
@@ -3449,12 +2325,8 @@
   },
   {
     "id": 282,
-    "codigo_zona": "0283",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "ENRIQUE LÓPEZ ALBUJAR",
-    "sector_catastral": "01",
-    "condicion": "F",
     "sinonimos": [
       "ENRIQUE LÓPEZ ALBUJAR",
       "ENRIQUE LOPEZ ALBUJAR"
@@ -3462,36 +2334,24 @@
   },
   {
     "id": 283,
-    "codigo_zona": "0284",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "LAS MERCEDES",
-    "sector_catastral": "01",
-    "condicion": "I",
     "sinonimos": [
       "LAS MERCEDES"
     ]
   },
   {
     "id": 284,
-    "codigo_zona": "0285",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "CASSINELLI",
-    "sector_catastral": "13",
-    "condicion": "I",
     "sinonimos": [
       "CASSINELLI"
     ]
   },
   {
     "id": 285,
-    "codigo_zona": "0286",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "CAMPODÓNICO NUEVO",
-    "sector_catastral": "15",
-    "condicion": "I",
     "sinonimos": [
       "CAMPODÓNICO NUEVO",
       "CAMPODONICO NUEVO"
@@ -3499,12 +2359,8 @@
   },
   {
     "id": 286,
-    "codigo_zona": "0287",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN SAN ANTONIO",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN SAN ANTONIO",
       "AMPLIACION SAN ANTONIO"
@@ -3512,48 +2368,32 @@
   },
   {
     "id": 287,
-    "codigo_zona": "0288",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "GAYOSO RUBIO",
-    "sector_catastral": "15",
-    "condicion": "I",
     "sinonimos": [
       "GAYOSO RUBIO"
     ]
   },
   {
     "id": 288,
-    "codigo_zona": "0289",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "EL OBRERO",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "EL OBRERO"
     ]
   },
   {
     "id": 289,
-    "codigo_zona": "0290",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "UCHOFEN",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "UCHOFEN"
     ]
   },
   {
     "id": 290,
-    "codigo_zona": "0291",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "SAGRADO CORAZÓN DE JESÚS",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "SAGRADO CORAZÓN DE JESÚS",
       "SAGRADO CORAZON DE JESUS"
@@ -3561,132 +2401,88 @@
   },
   {
     "id": 291,
-    "codigo_zona": "0292",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "SANTO TORIBIO",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "SANTO TORIBIO"
     ]
   },
   {
     "id": 292,
-    "codigo_zona": "0293",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "JUAN PABLO PEREGRINO",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "JUAN PABLO PEREGRINO"
     ]
   },
   {
     "id": 293,
-    "codigo_zona": "0294",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL MOLINITO",
-    "sector_catastral": "15",
-    "condicion": "F",
     "sinonimos": [
       "EL MOLINITO"
     ]
   },
   {
     "id": 294,
-    "codigo_zona": "0295",
     "id_tipo_zona": 4,
-    "tipo_zona": "CONJ.RES.",
     "nom_zona": "LAS CASUARINAS II ETAPA",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "LAS CASUARINAS II ETAPA"
     ]
   },
   {
     "id": 295,
-    "codigo_zona": "0296",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SANTA ELENA",
-    "sector_catastral": "16",
-    "condicion": "F",
     "sinonimos": [
       "SANTA ELENA"
     ]
   },
   {
     "id": 296,
-    "codigo_zona": "0297",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CONDOMINIO RESIDENCIAL BOLOGNESI",
-    "sector_catastral": "27",
-    "condicion": "I",
     "sinonimos": [
       "CONDOMINIO RESIDENCIAL BOLOGNESI"
     ]
   },
   {
     "id": 297,
-    "codigo_zona": "0298",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 052",
-    "sector_catastral": "05",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 052"
     ]
   },
   {
     "id": 298,
-    "codigo_zona": "0299",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "SAN JUAN DE DIOS",
-    "sector_catastral": "38",
-    "condicion": "F",
     "sinonimos": [
       "SAN JUAN DE DIOS"
     ]
   },
   {
     "id": 299,
-    "codigo_zona": "0300",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "NUEVO PROGRESO",
-    "sector_catastral": "62",
-    "condicion": "F",
     "sinonimos": [
       "NUEVO PROGRESO"
     ]
   },
   {
     "id": 300,
-    "codigo_zona": "0302",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "AMPLIACION SAUL CANTORAL HUAMANI (PROPIEDAD INFORMAL)",
-    "sector_catastral": "43",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACION SAUL CANTORAL HUAMANI (PROPIEDAD INFORMAL)"
     ]
   },
   {
     "id": 301,
-    "codigo_zona": "0303",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "VIÑA DEL MAR",
-    "sector_catastral": "43",
-    "condicion": "I",
     "sinonimos": [
       "VIÑA DEL MAR",
       "VINA DEL MAR"
@@ -3694,84 +2490,56 @@
   },
   {
     "id": 302,
-    "codigo_zona": "0304",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "BENJAMIN ARBULU MIRANDA",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "BENJAMIN ARBULU MIRANDA"
     ]
   },
   {
     "id": 303,
-    "codigo_zona": "0305",
     "id_tipo_zona": 21,
-    "tipo_zona": "ASOC.VIV.",
     "nom_zona": "VILLA EL PROGRESO",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "VILLA EL PROGRESO"
     ]
   },
   {
     "id": 304,
-    "codigo_zona": "0306",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "LA ESPERANZA",
-    "sector_catastral": "62  64",
-    "condicion": "I",
     "sinonimos": [
       "LA ESPERANZA"
     ]
   },
   {
     "id": 305,
-    "codigo_zona": "0307",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "14 DE ABRIL",
-    "sector_catastral": "09",
-    "condicion": "F",
     "sinonimos": [
       "14 DE ABRIL"
     ]
   },
   {
     "id": 306,
-    "codigo_zona": "0308",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "NUEVA ESPERANZA",
-    "sector_catastral": "07",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA ESPERANZA"
     ]
   },
   {
     "id": 307,
-    "codigo_zona": "0309",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "CERRO POLOLO",
-    "sector_catastral": "24",
-    "condicion": "I",
     "sinonimos": [
       "CERRO POLOLO"
     ]
   },
   {
     "id": 308,
-    "codigo_zona": "0310",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN ELÍAS AGUIRRE",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN ELÍAS AGUIRRE",
       "AMPLIACION ELIAS AGUIRRE"
@@ -3779,24 +2547,16 @@
   },
   {
     "id": 309,
-    "codigo_zona": "0311",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN FRANCISCO",
-    "sector_catastral": "24",
-    "condicion": "F",
     "sinonimos": [
       "SAN FRANCISCO"
     ]
   },
   {
     "id": 310,
-    "codigo_zona": "0312",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVA DE LOTE ÚNICO",
-    "sector_catastral": "30",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA DE LOTE ÚNICO",
       "NUEVA DE LOTE UNICO"
@@ -3804,132 +2564,88 @@
   },
   {
     "id": 311,
-    "codigo_zona": "0313",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 053",
-    "sector_catastral": "24",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 053"
     ]
   },
   {
     "id": 312,
-    "codigo_zona": "0314",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "UPIS SAN ISIDRO",
-    "sector_catastral": "26",
-    "condicion": "F",
     "sinonimos": [
       "UPIS SAN ISIDRO"
     ]
   },
   {
     "id": 313,
-    "codigo_zona": "0315",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "NUEVA ESPERANZA I ETAPA",
-    "sector_catastral": "07",
-    "condicion": "I",
     "sinonimos": [
       "NUEVA ESPERANZA I ETAPA"
     ]
   },
   {
     "id": 314,
-    "codigo_zona": "0316",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "CRISTO REDENTOR",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "CRISTO REDENTOR"
     ]
   },
   {
     "id": 315,
-    "codigo_zona": "0317",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "15 DE SETIEMBRE",
-    "sector_catastral": "17",
-    "condicion": "F",
     "sinonimos": [
       "15 DE SETIEMBRE"
     ]
   },
   {
     "id": 316,
-    "codigo_zona": "0318",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "BARRIO SUB OFICIALES - SECTOR A",
-    "sector_catastral": "33",
-    "condicion": "F",
     "sinonimos": [
       "BARRIO SUB OFICIALES - SECTOR A"
     ]
   },
   {
     "id": 317,
-    "codigo_zona": "0319",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 050",
-    "sector_catastral": "43",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 050"
     ]
   },
   {
     "id": 318,
-    "codigo_zona": "0320",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LAS BRISAS PARCELA 2",
-    "sector_catastral": "22",
-    "condicion": "F",
     "sinonimos": [
       "LAS BRISAS PARCELA 2"
     ]
   },
   {
     "id": 319,
-    "codigo_zona": "0321",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 008",
-    "sector_catastral": "22",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 008"
     ]
   },
   {
     "id": 320,
-    "codigo_zona": "0322",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA REMANENTE",
-    "sector_catastral": "17",
-    "condicion": "I",
     "sinonimos": [
       "REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA REMANENTE"
     ]
   },
   {
     "id": 321,
-    "codigo_zona": "0323",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SUB-DIVISIÓN DE LOTE (LOTIZ. FRANCISCO RODRIGUEZ JULCA)",
-    "sector_catastral": "28",
-    "condicion": "F",
     "sinonimos": [
       "SUB-DIVISIÓN DE LOTE (LOTIZ. FRANCISCO RODRIGUEZ JULCA)",
       "SUB-DIVISION DE LOTE (LOTIZ. FRANCISCO RODRIGUEZ JULCA)"
@@ -3937,60 +2653,40 @@
   },
   {
     "id": 322,
-    "codigo_zona": "0324",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA RIVIERA I",
-    "sector_catastral": "44",
-    "condicion": "I",
     "sinonimos": [
       "LA RIVIERA I"
     ]
   },
   {
     "id": 323,
-    "codigo_zona": "0325",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA SANTA ROSA",
-    "sector_catastral": "44  45",
-    "condicion": "I",
     "sinonimos": [
       "VILLA SANTA ROSA"
     ]
   },
   {
     "id": 324,
-    "codigo_zona": "0326",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "MIGUEL GRAU SEMINARIO",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "MIGUEL GRAU SEMINARIO"
     ]
   },
   {
     "id": 325,
-    "codigo_zona": "0327",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FEDERICO VILLARREAL - PROGRAMA BID - I ETAPA",
-    "sector_catastral": "32",
-    "condicion": "F",
     "sinonimos": [
       "FEDERICO VILLARREAL - PROGRAMA BID - I ETAPA"
     ]
   },
   {
     "id": 326,
-    "codigo_zona": "0328",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FEDERICO VILLARREAL - PROGRAMA EMADI PERÚ - II ETAPA",
-    "sector_catastral": "31  32",
-    "condicion": "F",
     "sinonimos": [
       "FEDERICO VILLARREAL - PROGRAMA EMADI PERÚ - II ETAPA",
       "FEDERICO VILLARREAL - PROGRAMA EMADI PERU - II ETAPA"
@@ -3998,12 +2694,8 @@
   },
   {
     "id": 327,
-    "codigo_zona": "0329",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FEDERICO VILLARREAL - PROGRAMA EMADI PERÚ - III ETAPA",
-    "sector_catastral": "31",
-    "condicion": "F",
     "sinonimos": [
       "FEDERICO VILLARREAL - PROGRAMA EMADI PERÚ - III ETAPA",
       "FEDERICO VILLARREAL - PROGRAMA EMADI PERU - III ETAPA"
@@ -4011,264 +2703,176 @@
   },
   {
     "id": 328,
-    "codigo_zona": "0330",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "FEDERICO VILLARREAL - PROGRAMA C.A.V.D - IV ETAPA",
-    "sector_catastral": "31",
-    "condicion": "F",
     "sinonimos": [
       "FEDERICO VILLARREAL - PROGRAMA C.A.V.D - IV ETAPA"
     ]
   },
   {
     "id": 329,
-    "codigo_zona": "0331",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA DEL NORTE V",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "VILLA DEL NORTE V"
     ]
   },
   {
     "id": 330,
-    "codigo_zona": "0332",
     "id_tipo_zona": 24,
-    "tipo_zona": "ASOC.PVIV.",
     "nom_zona": "INGENIEROS SAN PATRICIO",
-    "sector_catastral": "45",
-    "condicion": "F",
     "sinonimos": [
       "INGENIEROS SAN PATRICIO"
     ]
   },
   {
     "id": 331,
-    "codigo_zona": "0333",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "EL MOLINO",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "EL MOLINO"
     ]
   },
   {
     "id": 332,
-    "codigo_zona": "0334",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 034",
-    "sector_catastral": "26  29",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 034"
     ]
   },
   {
     "id": 333,
-    "codigo_zona": "0335",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "LOS MANGOS",
-    "sector_catastral": "29",
-    "condicion": "I",
     "sinonimos": [
       "LOS MANGOS"
     ]
   },
   {
     "id": 334,
-    "codigo_zona": "0336",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVA POSADA DEL SOL DE CHICLAYO - I ETAPA",
-    "sector_catastral": "59",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA POSADA DEL SOL DE CHICLAYO - I ETAPA"
     ]
   },
   {
     "id": 335,
-    "codigo_zona": "0337",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVA POSADA DEL SOL DE CHICLAYO - II ETAPA",
-    "sector_catastral": "59",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA POSADA DEL SOL DE CHICLAYO - II ETAPA"
     ]
   },
   {
     "id": 336,
-    "codigo_zona": "0338",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVA POSADA DEL SOL DE CHICLAYO - III ETAPA",
-    "sector_catastral": "59",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA POSADA DEL SOL DE CHICLAYO - III ETAPA"
     ]
   },
   {
     "id": 337,
-    "codigo_zona": "0339",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVA POSADA DEL SOL DE CHICLAYO - IV ETAPA",
-    "sector_catastral": "59",
-    "condicion": "F",
     "sinonimos": [
       "NUEVA POSADA DEL SOL DE CHICLAYO - IV ETAPA"
     ]
   },
   {
     "id": 338,
-    "codigo_zona": "0340",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA POSADA DEL SOL DE CHICLAYO - I ETAPA",
-    "sector_catastral": "59",
-    "condicion": "F",
     "sinonimos": [
       "VILLA POSADA DEL SOL DE CHICLAYO - I ETAPA"
     ]
   },
   {
     "id": 339,
-    "codigo_zona": "0341",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA POSADA DEL SOL DE CHICLAYO - II ETAPA",
-    "sector_catastral": "59",
-    "condicion": "F",
     "sinonimos": [
       "VILLA POSADA DEL SOL DE CHICLAYO - II ETAPA"
     ]
   },
   {
     "id": 340,
-    "codigo_zona": "0342",
     "id_tipo_zona": 19,
-    "tipo_zona": "FDO.",
     "nom_zona": "LAS DELICIAS - EX FDO. SAN JACINTO",
-    "sector_catastral": "30",
-    "condicion": "I",
     "sinonimos": [
       "LAS DELICIAS - EX FDO. SAN JACINTO"
     ]
   },
   {
     "id": 341,
-    "codigo_zona": "0343",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO I ETAPA",
-    "sector_catastral": "48",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO I ETAPA"
     ]
   },
   {
     "id": 342,
-    "codigo_zona": "0344",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO II ETAPA",
-    "sector_catastral": "49",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO II ETAPA"
     ]
   },
   {
     "id": 343,
-    "codigo_zona": "0345",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO III ETAPA",
-    "sector_catastral": "50",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO III ETAPA"
     ]
   },
   {
     "id": 344,
-    "codigo_zona": "0346",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO IV ETAPA",
-    "sector_catastral": "51",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO IV ETAPA"
     ]
   },
   {
     "id": 345,
-    "codigo_zona": "0347",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO V ETAPA",
-    "sector_catastral": "51",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO V ETAPA"
     ]
   },
   {
     "id": 346,
-    "codigo_zona": "0348",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO VI ETAPA",
-    "sector_catastral": "51  50",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO VI ETAPA"
     ]
   },
   {
     "id": 347,
-    "codigo_zona": "0349",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO VII ETAPA",
-    "sector_catastral": "49",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO VII ETAPA"
     ]
   },
   {
     "id": 348,
-    "codigo_zona": "0350",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PUERTA DE CHICLAYO VIII ETAPA",
-    "sector_catastral": "48",
-    "condicion": "F",
     "sinonimos": [
       "PUERTA DE CHICLAYO VIII ETAPA"
     ]
   },
   {
     "id": 349,
-    "codigo_zona": "0351",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA MARÍA",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "VILLA MARÍA",
       "VILLA MARIA"
@@ -4276,96 +2880,64 @@
   },
   {
     "id": 350,
-    "codigo_zona": "0352",
     "id_tipo_zona": 4,
-    "tipo_zona": "CONJ.RES.",
     "nom_zona": "LAS VILLAS DE CHICLAYO OESTE",
-    "sector_catastral": "41",
-    "condicion": "F",
     "sinonimos": [
       "LAS VILLAS DE CHICLAYO OESTE"
     ]
   },
   {
     "id": 351,
-    "codigo_zona": "0353",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 054",
-    "sector_catastral": "24",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 054"
     ]
   },
   {
     "id": 352,
-    "codigo_zona": "0354",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "BUENOS AIRES",
-    "sector_catastral": "62",
-    "condicion": "I",
     "sinonimos": [
       "BUENOS AIRES"
     ]
   },
   {
     "id": 353,
-    "codigo_zona": "0355",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 055",
-    "sector_catastral": "43",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 055"
     ]
   },
   {
     "id": 354,
-    "codigo_zona": "0356",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 056",
-    "sector_catastral": "43",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 056"
     ]
   },
   {
     "id": 355,
-    "codigo_zona": "0357",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 010",
-    "sector_catastral": "25",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 010"
     ]
   },
   {
     "id": 356,
-    "codigo_zona": "0358",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROVIVIENDA NUEVO MUNDO",
-    "sector_catastral": "43",
-    "condicion": "F",
     "sinonimos": [
       "PROVIVIENDA NUEVO MUNDO"
     ]
   },
   {
     "id": 357,
-    "codigo_zona": "0359",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "CASTAÑEDA",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "CASTAÑEDA",
       "CASTANEDA"
@@ -4373,84 +2945,56 @@
   },
   {
     "id": 358,
-    "codigo_zona": "0360",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL DERRAMA MAGISTERIAL",
-    "sector_catastral": "41",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL DERRAMA MAGISTERIAL"
     ]
   },
   {
     "id": 359,
-    "codigo_zona": "0361",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 057",
-    "sector_catastral": "41  53  54",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 057"
     ]
   },
   {
     "id": 360,
-    "codigo_zona": "0362",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 058",
-    "sector_catastral": "41",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 058"
     ]
   },
   {
     "id": 361,
-    "codigo_zona": "0363",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA MARCELO",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "VILLA MARCELO"
     ]
   },
   {
     "id": 362,
-    "codigo_zona": "0364",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA PARADA",
-    "sector_catastral": "42",
-    "condicion": "I",
     "sinonimos": [
       "LA PARADA"
     ]
   },
   {
     "id": 363,
-    "codigo_zona": "0365",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "VIRGEN DE GUADALUPE",
-    "sector_catastral": "42",
-    "condicion": "I",
     "sinonimos": [
       "VIRGEN DE GUADALUPE"
     ]
   },
   {
     "id": 364,
-    "codigo_zona": "0366",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "JESÚS DE NAZARENO",
-    "sector_catastral": "42",
-    "condicion": "F",
     "sinonimos": [
       "JESÚS DE NAZARENO",
       "JESUS DE NAZARENO"
@@ -4458,48 +3002,32 @@
   },
   {
     "id": 365,
-    "codigo_zona": "0367",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "SANTA ANA",
-    "sector_catastral": "42",
-    "condicion": "F",
     "sinonimos": [
       "SANTA ANA"
     ]
   },
   {
     "id": 366,
-    "codigo_zona": "0368",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 061",
-    "sector_catastral": "42",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 061"
     ]
   },
   {
     "id": 367,
-    "codigo_zona": "0369",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "EL INGENIERO II",
-    "sector_catastral": "42",
-    "condicion": "F",
     "sinonimos": [
       "EL INGENIERO II"
     ]
   },
   {
     "id": 368,
-    "codigo_zona": "0370",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CRUZ DE CHALPÓN",
-    "sector_catastral": "42",
-    "condicion": "F",
     "sinonimos": [
       "CRUZ DE CHALPÓN",
       "CRUZ DE CHALPON"
@@ -4507,24 +3035,16 @@
   },
   {
     "id": 369,
-    "codigo_zona": "0371",
     "id_tipo_zona": 4,
-    "tipo_zona": "CONJ.RES.",
     "nom_zona": "SAN GABRIEL",
-    "sector_catastral": "18",
-    "condicion": "I",
     "sinonimos": [
       "SAN GABRIEL"
     ]
   },
   {
     "id": 370,
-    "codigo_zona": "0372",
     "id_tipo_zona": 1,
-    "tipo_zona": "P.A.L.",
     "nom_zona": "LA PORTADA DE LAS AMÉRICAS",
-    "sector_catastral": "29",
-    "condicion": "F",
     "sinonimos": [
       "LA PORTADA DE LAS AMÉRICAS",
       "LA PORTADA DE LAS AMERICAS"
@@ -4532,240 +3052,160 @@
   },
   {
     "id": 371,
-    "codigo_zona": "0373",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 027",
-    "sector_catastral": "45",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 027"
     ]
   },
   {
     "id": 372,
-    "codigo_zona": "0374",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CAMPO REAL - I ETAPA",
-    "sector_catastral": "64",
-    "condicion": "F",
     "sinonimos": [
       "CAMPO REAL - I ETAPA"
     ]
   },
   {
     "id": 373,
-    "codigo_zona": "0375",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL SANTUARIO II ETAPA",
-    "sector_catastral": "64",
-    "condicion": "F",
     "sinonimos": [
       "EL SANTUARIO II ETAPA"
     ]
   },
   {
     "id": 374,
-    "codigo_zona": "0376",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SECTOR 33",
-    "sector_catastral": "38",
-    "condicion": "F",
     "sinonimos": [
       "SECTOR 33"
     ]
   },
   {
     "id": 375,
-    "codigo_zona": "0377",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - I ETAPA",
-    "sector_catastral": "57",
-    "condicion": "I",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - I ETAPA"
     ]
   },
   {
     "id": 376,
-    "codigo_zona": "0378",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - II ETAPA",
-    "sector_catastral": "57",
-    "condicion": "I",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - II ETAPA"
     ]
   },
   {
     "id": 377,
-    "codigo_zona": "0379",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - III ETAPA",
-    "sector_catastral": "55",
-    "condicion": "I",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - III ETAPA"
     ]
   },
   {
     "id": 378,
-    "codigo_zona": "0380",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - IV ETAPA",
-    "sector_catastral": "55  56",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - IV ETAPA"
     ]
   },
   {
     "id": 379,
-    "codigo_zona": "0381",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - V ETAPA",
-    "sector_catastral": "56",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - V ETAPA"
     ]
   },
   {
     "id": 380,
-    "codigo_zona": "0382",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - VI ETAPA",
-    "sector_catastral": "56",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - VI ETAPA"
     ]
   },
   {
     "id": 381,
-    "codigo_zona": "0383",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - VII ETAPA",
-    "sector_catastral": "56",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - VII ETAPA"
     ]
   },
   {
     "id": 382,
-    "codigo_zona": "0384",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LA ESTANCIA DE CHICLAYO - VIII ETAPA",
-    "sector_catastral": "56",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DE CHICLAYO - VIII ETAPA"
     ]
   },
   {
     "id": 383,
-    "codigo_zona": "0385",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - I ETAPA",
-    "sector_catastral": "57",
-    "condicion": "I",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - I ETAPA"
     ]
   },
   {
     "id": 384,
-    "codigo_zona": "0386",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - II ETAPA",
-    "sector_catastral": "57",
-    "condicion": "I",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - II ETAPA"
     ]
   },
   {
     "id": 385,
-    "codigo_zona": "0387",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - III ETAPA",
-    "sector_catastral": "55",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - III ETAPA"
     ]
   },
   {
     "id": 386,
-    "codigo_zona": "0388",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - IV ETAPA",
-    "sector_catastral": "55",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - IV ETAPA"
     ]
   },
   {
     "id": 387,
-    "codigo_zona": "0389",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - V ETAPA",
-    "sector_catastral": "55",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - V ETAPA"
     ]
   },
   {
     "id": 388,
-    "codigo_zona": "0390",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - VI ETAPA",
-    "sector_catastral": "55",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - VI ETAPA"
     ]
   },
   {
     "id": 389,
-    "codigo_zona": "0391",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "LA ESTANCIA DEL VALLE - VII ETAPA",
-    "sector_catastral": "55",
-    "condicion": "F",
     "sinonimos": [
       "LA ESTANCIA DEL VALLE - VII ETAPA"
     ]
   },
   {
     "id": 390,
-    "codigo_zona": "0392",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "COFRADÍA",
-    "sector_catastral": "52",
-    "condicion": "F",
     "sinonimos": [
       "COFRADÍA",
       "COFRADIA"
@@ -4773,84 +3213,56 @@
   },
   {
     "id": 391,
-    "codigo_zona": "0393",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL LA FLORESTA - I ETAPA",
-    "sector_catastral": "58",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL LA FLORESTA - I ETAPA"
     ]
   },
   {
     "id": 392,
-    "codigo_zona": "0394",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL LA FLORESTA - II ETAPA",
-    "sector_catastral": "57  58",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL LA FLORESTA - II ETAPA"
     ]
   },
   {
     "id": 393,
-    "codigo_zona": "0395",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL LA FLORESTA - III ETAPA",
-    "sector_catastral": "57  58",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL LA FLORESTA - III ETAPA"
     ]
   },
   {
     "id": 394,
-    "codigo_zona": "0396",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL LA FLORESTA - IV ETAPA",
-    "sector_catastral": "58",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL LA FLORESTA - IV ETAPA"
     ]
   },
   {
     "id": 395,
-    "codigo_zona": "0397",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "RESIDENCIAL LA FLORESTA - V ETAPA",
-    "sector_catastral": "58",
-    "condicion": "I",
     "sinonimos": [
       "RESIDENCIAL LA FLORESTA - V ETAPA"
     ]
   },
   {
     "id": 396,
-    "codigo_zona": "0398",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SAN ANTONIO",
-    "sector_catastral": "40",
-    "condicion": "F",
     "sinonimos": [
       "SAN ANTONIO"
     ]
   },
   {
     "id": 397,
-    "codigo_zona": "0399",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SAN JOSÉ",
-    "sector_catastral": "64",
-    "condicion": "F",
     "sinonimos": [
       "SAN JOSÉ",
       "SAN JOSE"
@@ -4858,24 +3270,16 @@
   },
   {
     "id": 398,
-    "codigo_zona": "0400",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SAN PEDRO",
-    "sector_catastral": "40",
-    "condicion": "F",
     "sinonimos": [
       "SAN PEDRO"
     ]
   },
   {
     "id": 399,
-    "codigo_zona": "0401",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA SANTA LUCÍA",
-    "sector_catastral": "28  44",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA SANTA LUCÍA",
       "PROGRESIVA SANTA LUCIA"
@@ -4883,12 +3287,8 @@
   },
   {
     "id": 400,
-    "codigo_zona": "0402",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SANTA ROSALÍA Y SAN JUAN",
-    "sector_catastral": "02  40",
-    "condicion": "F",
     "sinonimos": [
       "SANTA ROSALÍA Y SAN JUAN",
       "SANTA ROSALIA Y SAN JUAN"
@@ -4896,252 +3296,168 @@
   },
   {
     "id": 401,
-    "codigo_zona": "0403",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "VILLA DEL NORTE VII ETAPA CUARZO",
-    "sector_catastral": "45",
-    "condicion": "F",
     "sinonimos": [
       "VILLA DEL NORTE VII ETAPA CUARZO"
     ]
   },
   {
     "id": 402,
-    "codigo_zona": "0404",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EMIGDIO DE LOS ARENALES",
-    "sector_catastral": "28",
-    "condicion": "I",
     "sinonimos": [
       "EMIGDIO DE LOS ARENALES"
     ]
   },
   {
     "id": 403,
-    "codigo_zona": "0405",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL MANGO",
-    "sector_catastral": "64",
-    "condicion": "I",
     "sinonimos": [
       "EL MANGO"
     ]
   },
   {
     "id": 404,
-    "codigo_zona": "0406",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LAS COLONIAS",
-    "sector_catastral": "47",
-    "condicion": "I",
     "sinonimos": [
       "LAS COLONIAS"
     ]
   },
   {
     "id": 405,
-    "codigo_zona": "0407",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LAS LOMAS DE SAMAN",
-    "sector_catastral": "36",
-    "condicion": "I",
     "sinonimos": [
       "LAS LOMAS DE SAMAN"
     ]
   },
   {
     "id": 406,
-    "codigo_zona": "0408",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LOS CEIBOS",
-    "sector_catastral": "28",
-    "condicion": "I",
     "sinonimos": [
       "LOS CEIBOS"
     ]
   },
   {
     "id": 407,
-    "codigo_zona": "0409",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "LOS ROBLES",
-    "sector_catastral": "40",
-    "condicion": "I",
     "sinonimos": [
       "LOS ROBLES"
     ]
   },
   {
     "id": 408,
-    "codigo_zona": "0410",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA SAN CARLOS",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "PROGRESIVA SAN CARLOS"
     ]
   },
   {
     "id": 409,
-    "codigo_zona": "0411",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA SANTA ISABEL",
-    "sector_catastral": "38",
-    "condicion": "I",
     "sinonimos": [
       "PROGRESIVA SANTA ISABEL"
     ]
   },
   {
     "id": 410,
-    "codigo_zona": "0413",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "REAL FELIPE",
-    "sector_catastral": "45",
-    "condicion": "F",
     "sinonimos": [
       "REAL FELIPE"
     ]
   },
   {
     "id": 411,
-    "codigo_zona": "0415",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SAN FRANCISCO",
-    "sector_catastral": "44",
-    "condicion": "I",
     "sinonimos": [
       "SAN FRANCISCO"
     ]
   },
   {
     "id": 412,
-    "codigo_zona": "0416",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "MONTERRICO VI",
-    "sector_catastral": "44",
-    "condicion": "F",
     "sinonimos": [
       "MONTERRICO VI"
     ]
   },
   {
     "id": 413,
-    "codigo_zona": "0417",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "MIRAFLORES II ETAPA",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "MIRAFLORES II ETAPA"
     ]
   },
   {
     "id": 414,
-    "codigo_zona": "0418",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "VILLA DEL SOL NORTE",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "VILLA DEL SOL NORTE"
     ]
   },
   {
     "id": 415,
-    "codigo_zona": "0419",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "19 DE JUNIO",
-    "sector_catastral": "37",
-    "condicion": "I",
     "sinonimos": [
       "19 DE JUNIO"
     ]
   },
   {
     "id": 416,
-    "codigo_zona": "0420",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LAS PALMAS",
-    "sector_catastral": "37",
-    "condicion": "I",
     "sinonimos": [
       "LAS PALMAS"
     ]
   },
   {
     "id": 417,
-    "codigo_zona": "0421",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LOS OLIVOS DE CHICLAYO",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "LOS OLIVOS DE CHICLAYO"
     ]
   },
   {
     "id": 418,
-    "codigo_zona": "0422",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "INDEPENDENCIA",
-    "sector_catastral": "40  02",
-    "condicion": "I",
     "sinonimos": [
       "INDEPENDENCIA"
     ]
   },
   {
     "id": 419,
-    "codigo_zona": "0423",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 012",
-    "sector_catastral": "36",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 012"
     ]
   },
   {
     "id": 420,
-    "codigo_zona": "0424",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "NUEVO HORIZONTE",
-    "sector_catastral": "36",
-    "condicion": "I",
     "sinonimos": [
       "NUEVO HORIZONTE"
     ]
   },
   {
     "id": 421,
-    "codigo_zona": "0425",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LOS ÁNGELES",
-    "sector_catastral": "02",
-    "condicion": "I",
     "sinonimos": [
       "LOS ÁNGELES",
       "LOS ANGELES"
@@ -5149,12 +3465,8 @@
   },
   {
     "id": 422,
-    "codigo_zona": "0426",
     "id_tipo_zona": 1,
-    "tipo_zona": "A.H.",
     "nom_zona": "LAS ÁNIMAS - SECTOR 1",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "LAS ÁNIMAS - SECTOR 1",
       "LAS ANIMAS - SECTOR 1"
@@ -5162,48 +3474,32 @@
   },
   {
     "id": 423,
-    "codigo_zona": "0427",
     "id_tipo_zona": 24,
-    "tipo_zona": "ASOC.PVIV.",
     "nom_zona": "VIRGEN DE GUADALUPE AMPLIACION SAMAN",
-    "sector_catastral": "37",
-    "condicion": "I",
     "sinonimos": [
       "VIRGEN DE GUADALUPE AMPLIACION SAMAN"
     ]
   },
   {
     "id": 424,
-    "codigo_zona": "0428",
     "id_tipo_zona": 24,
-    "tipo_zona": "ASOC.PVIV.",
     "nom_zona": "2 DE JUNIO",
-    "sector_catastral": "37",
-    "condicion": "I",
     "sinonimos": [
       "2 DE JUNIO"
     ]
   },
   {
     "id": 425,
-    "codigo_zona": "0429",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CONDOMINIO VILLA CLUB LAS PALMERAS",
-    "sector_catastral": "45",
-    "condicion": "I",
     "sinonimos": [
       "CONDOMINIO VILLA CLUB LAS PALMERAS"
     ]
   },
   {
     "id": 426,
-    "codigo_zona": "0430",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "FANNY ABANTO CALLE (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "16",
-    "condicion": "I",
     "sinonimos": [
       "FANNY ABANTO CALLE (AMPLIACIÓN INFORMAL)",
       "FANNY ABANTO CALLE (AMPLIACION INFORMAL)"
@@ -5211,24 +3507,16 @@
   },
   {
     "id": 427,
-    "codigo_zona": "0431",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CONDOMINIO VIRGEN DEL CARMEN",
-    "sector_catastral": "64",
-    "condicion": "I",
     "sinonimos": [
       "CONDOMINIO VIRGEN DEL CARMEN"
     ]
   },
   {
     "id": 428,
-    "codigo_zona": "0432",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "CONDOMINIO NUESTRA SEÑORA DE LA PAZ",
-    "sector_catastral": "64",
-    "condicion": "I",
     "sinonimos": [
       "CONDOMINIO NUESTRA SEÑORA DE LA PAZ",
       "CONDOMINIO NUESTRA SENORA DE LA PAZ"
@@ -5236,24 +3524,16 @@
   },
   {
     "id": 429,
-    "codigo_zona": "0433",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "EL MIRADOR DE POMALCA",
-    "sector_catastral": "47",
-    "condicion": "I",
     "sinonimos": [
       "EL MIRADOR DE POMALCA"
     ]
   },
   {
     "id": 430,
-    "codigo_zona": "0434",
     "id_tipo_zona": 12,
-    "tipo_zona": "LOTIZ.",
     "nom_zona": "AMPLIACIÓN MIRAFLORES II ETAPA",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN MIRAFLORES II ETAPA",
       "AMPLIACION MIRAFLORES II ETAPA"
@@ -5261,48 +3541,32 @@
   },
   {
     "id": 431,
-    "codigo_zona": "0435",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 013",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 013"
     ]
   },
   {
     "id": 432,
-    "codigo_zona": "0436",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NADINE HEREDIA",
-    "sector_catastral": "07",
-    "condicion": "I",
     "sinonimos": [
       "NADINE HEREDIA"
     ]
   },
   {
     "id": 433,
-    "codigo_zona": "0437",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVA POMALCA",
-    "sector_catastral": "47",
-    "condicion": "I",
     "sinonimos": [
       "NUEVA POMALCA"
     ]
   },
   {
     "id": 434,
-    "codigo_zona": "0438",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "NUEVO PARAÍSO",
-    "sector_catastral": "47",
-    "condicion": "I",
     "sinonimos": [
       "NUEVO PARAÍSO",
       "NUEVO PARAISO"
@@ -5310,36 +3574,24 @@
   },
   {
     "id": 435,
-    "codigo_zona": "0439",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "LAS PALMERAS",
-    "sector_catastral": "07",
-    "condicion": "F",
     "sinonimos": [
       "LAS PALMERAS"
     ]
   },
   {
     "id": 436,
-    "codigo_zona": "0440",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "LAS PALMERAS II",
-    "sector_catastral": "40",
-    "condicion": "I",
     "sinonimos": [
       "LAS PALMERAS II"
     ]
   },
   {
     "id": 437,
-    "codigo_zona": "0441",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "AMPLIACIÓN JORGE BASADRE",
-    "sector_catastral": "10",
-    "condicion": "F",
     "sinonimos": [
       "AMPLIACIÓN JORGE BASADRE",
       "AMPLIACION JORGE BASADRE"
@@ -5347,24 +3599,16 @@
   },
   {
     "id": 438,
-    "codigo_zona": "0442",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "BARRIO SUB OFICIALES FAP - SECTOR B",
-    "sector_catastral": "13",
-    "condicion": "F",
     "sinonimos": [
       "BARRIO SUB OFICIALES FAP - SECTOR B"
     ]
   },
   {
     "id": 439,
-    "codigo_zona": "0443",
     "id_tipo_zona": 25,
-    "tipo_zona": "P.I.",
     "nom_zona": "URB. LAS ÁNIMAS",
-    "sector_catastral": "25",
-    "condicion": "F",
     "sinonimos": [
       "URB. LAS ÁNIMAS",
       "URB. LAS ANIMAS",
@@ -5373,12 +3617,8 @@
   },
   {
     "id": 440,
-    "codigo_zona": "0444",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "SAN FÉLIX",
-    "sector_catastral": "38",
-    "condicion": "I",
     "sinonimos": [
       "SAN FÉLIX",
       "SAN FELIX"
@@ -5386,24 +3626,16 @@
   },
   {
     "id": 441,
-    "codigo_zona": "0445",
     "id_tipo_zona": 1,
-    "tipo_zona": "P.A.L.",
     "nom_zona": "SAN PEDRO",
-    "sector_catastral": "39",
-    "condicion": "F",
     "sinonimos": [
       "SAN PEDRO"
     ]
   },
   {
     "id": 442,
-    "codigo_zona": "0446",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SUB DIVISIÓN SAN FÉLIX",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "SUB DIVISIÓN SAN FÉLIX",
       "SUB DIVISION SAN FELIX"
@@ -5411,12 +3643,8 @@
   },
   {
     "id": 443,
-    "codigo_zona": "0447",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "AMPLIACIÓN LAS VEGAS",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "AMPLIACIÓN LAS VEGAS",
       "AMPLIACION LAS VEGAS"
@@ -5424,24 +3652,16 @@
   },
   {
     "id": 444,
-    "codigo_zona": "0448",
     "id_tipo_zona": 7,
-    "tipo_zona": "UPIS",
     "nom_zona": "SAN JUAN",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "SAN JUAN"
     ]
   },
   {
     "id": 445,
-    "codigo_zona": "0449",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "PROGRESIVA CERROPÓN",
-    "sector_catastral": "63",
-    "condicion": "F",
     "sinonimos": [
       "PROGRESIVA CERROPÓN",
       "PROGRESIVA CERROPON"
@@ -5449,24 +3669,16 @@
   },
   {
     "id": 446,
-    "codigo_zona": "0450",
     "id_tipo_zona": 10,
-    "tipo_zona": "ASOC.POBL.",
     "nom_zona": "LAS LAGUNAS",
-    "sector_catastral": "36",
-    "condicion": "I",
     "sinonimos": [
       "LAS LAGUNAS"
     ]
   },
   {
     "id": 447,
-    "codigo_zona": "0451",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "EL TRÉBOL",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "EL TRÉBOL",
       "EL TREBOL"
@@ -5474,36 +3686,24 @@
   },
   {
     "id": 448,
-    "codigo_zona": "0452",
     "id_tipo_zona": 24,
-    "tipo_zona": "ASOC.PVIV.",
     "nom_zona": "JUAN VELASCO ALVARADO",
-    "sector_catastral": "60",
-    "condicion": "I",
     "sinonimos": [
       "JUAN VELASCO ALVARADO"
     ]
   },
   {
     "id": 449,
-    "codigo_zona": "0453",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 020",
-    "sector_catastral": "60",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 020"
     ]
   },
   {
     "id": 450,
-    "codigo_zona": "0454",
     "id_tipo_zona": 5,
-    "tipo_zona": "P.J.",
     "nom_zona": "JUAN PABLO PEREGRINO (AMPLIACIÓN INFORMAL)",
-    "sector_catastral": "15",
-    "condicion": "I",
     "sinonimos": [
       "JUAN PABLO PEREGRINO (AMPLIACIÓN INFORMAL)",
       "JUAN PABLO PEREGRINO (AMPLIACION INFORMAL)"
@@ -5511,132 +3711,88 @@
   },
   {
     "id": 451,
-    "codigo_zona": "0455",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 021",
-    "sector_catastral": "34",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 021"
     ]
   },
   {
     "id": 452,
-    "codigo_zona": "0456",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 024",
-    "sector_catastral": "26",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 024"
     ]
   },
   {
     "id": 453,
-    "codigo_zona": "0457",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 025",
-    "sector_catastral": "28  44",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 025"
     ]
   },
   {
     "id": 454,
-    "codigo_zona": "0458",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 028",
-    "sector_catastral": "39",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 028"
     ]
   },
   {
     "id": 455,
-    "codigo_zona": "0459",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 031",
-    "sector_catastral": "37",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 031"
     ]
   },
   {
     "id": 456,
-    "codigo_zona": "0460",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 035",
-    "sector_catastral": "35",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 035"
     ]
   },
   {
     "id": 457,
-    "codigo_zona": "0461",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "VISTA ALEGRE - GALILEA",
-    "sector_catastral": "59",
-    "condicion": "I",
     "sinonimos": [
       "VISTA ALEGRE - GALILEA"
     ]
   },
   {
     "id": 458,
-    "codigo_zona": "0463",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 044",
-    "sector_catastral": "38",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 044"
     ]
   },
   {
     "id": 459,
-    "codigo_zona": "0464",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 060",
-    "sector_catastral": "64",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 060"
     ]
   },
   {
     "id": 460,
-    "codigo_zona": "0465",
     "id_tipo_zona": 6,
-    "tipo_zona": "H.U.",
     "nom_zona": "SIN DENOMINACION 061",
-    "sector_catastral": "64",
-    "condicion": "I",
     "sinonimos": [
       "SIN DENOMINACION 061"
     ]
   },
   {
     "id": 461,
-    "codigo_zona": "0461",
     "id_tipo_zona": 6,
-    "tipo_zona": "URB.",
     "nom_zona": "COLIBRI",
-    "sector_catastral": "",
-    "condicion": "F",
     "sinonimos": [
       "COLIBRI",
       "URB. COLIBRI",
