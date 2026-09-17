@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "PostgreSQL MPCH (bd_mpch)",
+      "Group": "Servidores Locales",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "bd_mpch",
+      "Username": "postgres",
+      "SSLMode": "prefer"
+    }
+  }
+}

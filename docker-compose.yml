@@ -1,0 +1,58 @@
+services:
+  # ============================================================================
+  # 1. Instancia de PostgreSQL (Motor de Base de Datos - Origen y Destino)
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: mpch_postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: bd_mpch
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/initdb:/docker-entrypoint-initdb.d:ro
+      - ./data_import:/data_import:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bd_mpch"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mpch_network
+
+  # ============================================================================
+  # 2. Instancia de pgAdmin 4 (Administración Visual por Interfaz Web)
+  # ============================================================================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: mpch_pgadmin
+    restart: unless-stopped
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mpch.gob.pe
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+      PGADMIN_SERVER_JSON_FILE: /pgadmin4/servers.json
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mpch_network
+
+networks:
+  mpch_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local

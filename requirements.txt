@@ -1,0 +1,28 @@
+# Dependencias Principales del Proyecto ETL MPCH
+
+# Modelos y Validación de Datos
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
+
+# Cliente de IA Local (Ollama)
+ollama>=0.2.0
+httpx>=0.27.0
+
+# Base de Datos PostgreSQL
+SQLAlchemy>=2.0.0
+psycopg2-binary>=2.9.9
+
+# Manipulación de Datos y Archivos (Excel / CSV)
+pandas>=2.2.0
+openpyxl>=3.1.2
+xlrd>=2.0.1
+
+# Entorno y Configuración
+python-dotenv>=1.0.1
+
+# Interfaz de Consola y Progreso
+rich>=13.7.0
+tqdm>=4.66.0
+
+# Pruebas Unitarias
+pytest>=8.0.0

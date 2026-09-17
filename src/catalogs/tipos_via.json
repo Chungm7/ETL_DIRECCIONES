@@ -1,0 +1,86 @@
+[
+  {
+    "id": 1,
+    "nombre": "AVENIDA",
+    "abreviatura": "AV.",
+    "sinonimos": ["AVENIDA", "AV", "AV.", "AVDA", "AVDA."],
+    "patron_regex": "\\bAV(?:ENIDA|DA|\\.)?\\b"
+  },
+  {
+    "id": 2,
+    "nombre": "CALLE",
+    "abreviatura": "CA.",
+    "sinonimos": ["CALLE", "CA", "CA.", "CL", "CL.", "C."],
+    "patron_regex": "\\bCA(?:LLE|\\.)?\\b|\\bCL\\.?\\b"
+  },
+  {
+    "id": 3,
+    "nombre": "JIRON",
+    "abreviatura": "JR.",
+    "sinonimos": ["JIRON", "JIRÓN", "JR", "JR."],
+    "patron_regex": "\\bJR\\.?\\b|\\bJIR(?:ON|ÓN|\\.)?\\b"
+  },
+  {
+    "id": 4,
+    "nombre": "PASAJE",
+    "abreviatura": "PJE.",
+    "sinonimos": ["PASAJE", "PJE", "PJE.", "PSJ", "PSJ."],
+    "patron_regex": "\\bPJE\\.?\\b|\\bPAS(?:AJE|\\.)?\\b|\\bPSJ\\.?\\b"
+  },
+  {
+    "id": 5,
+    "nombre": "ALAMEDA",
+    "abreviatura": "AL.",
+    "sinonimos": ["ALAMEDA", "AL", "AL."],
+    "patron_regex": "\\bAL(?:AMEDA|\\.)?\\b"
+  },
+  {
+    "id": 6,
+    "nombre": "CARRETERA",
+    "abreviatura": "CTRA.",
+    "sinonimos": ["CARRETERA", "CTRA", "CTRA.", "CRTA", "CARR"],
+    "patron_regex": "\\b(?:CARRETERA|CTRA\\.?|CRTA\\.?|CARR\\.?)\\b"
+  },
+  {
+    "id": 7,
+    "nombre": "PROLONGACION",
+    "abreviatura": "PRLG.",
+    "sinonimos": ["PROLONGACION", "PROLONGACIÓN", "PRLG", "PRLG.", "PROL", "PRLG. AV.", "PRLG. CA.", "PRLG.AV", "PRLG.CA"],
+    "patron_regex": "\\bPRLG\\.?\\b|\\bPROL(?:ONGACION|ONGACIÓN|\\.)?\\b"
+  },
+  {
+    "id": 8,
+    "nombre": "PASEO",
+    "abreviatura": "PSO.",
+    "sinonimos": ["PASEO", "PSO", "PSO."],
+    "patron_regex": "\\bPASEO\\b|\\bPSO\\.?\\b"
+  },
+  {
+    "id": 9,
+    "nombre": "MALECON",
+    "abreviatura": "ML.",
+    "sinonimos": ["MALECON", "MALECÓN", "ML", "ML."],
+    "patron_regex": "\\bMALEC(?:ON|ÓN)\\b|\\bML\\.?\\b"
+  },
+  {
+    "id": 10,
+    "nombre": "CAMINO",
+    "abreviatura": "CM.",
+    "sinonimos": ["CAMINO", "CM", "CM."],
+    "patron_regex": "\\bCAMINO\\b|\\bCM\\.?\\b"
+  },
+  {
+    "id": 11,
+    "nombre": "PLAZA",
+    "abreviatura": "PZ.",
+    "sinonimos": ["PLAZA", "PZ", "PZ."],
+    "patron_regex": "\\bPLAZA\\b|\\bPZ\\.?\\b"
+  },
+  {
+    "id": 12,
+    "nombre": "PLAZUELA",
+    "abreviatura": "PZLA.",
+    "sinonimos": ["PLAZUELA", "PZLA", "PZLA."],
+    "patron_regex": "\\bPLAZUELA\\b|\\bPZLA\\.?\\b"
+  }
+]

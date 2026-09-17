@@ -1,0 +1,198 @@
+[
+  {
+    "id": 1,
+    "nombre": "ASENTAMIENTO HUMANO",
+    "abreviatura": "A.H.",
+    "sinonimos": ["ASENTAMIENTO HUMANO", "A.H.", "A.H", "AH", "AA.HH.", "AAHH", "P.A.L.", "PAL"],
+    "patron_regex": "\\b(?:AA\\.?HH\\.?|A\\.?H\\.?|ASENTAMIENTO\\s+HUMANO)\\b"
+  },
+  {
+    "id": 2,
+    "nombre": "AGRUPACION",
+    "abreviatura": "AGRUP.",
+    "sinonimos": ["AGRUPACION", "AGRUPACIÓN", "AGRUP", "AGRUP."],
+    "patron_regex": "\\b(?:AGRUPACION|AGRUPACIÓN|AGRUP\\.?)\\b"
+  },
+  {
+    "id": 3,
+    "nombre": "CONJUNTO HABITACIONAL",
+    "abreviatura": "CONJ.HAB.",
+    "sinonimos": ["CONJUNTO HABITACIONAL", "CONJ.HAB.", "CONJ.HAB", "CONJ HAB"],
+    "patron_regex": "\\b(?:CONJ(?:UNTO)?\\s*HAB(?:ITACIONAL)?|CONJ\\.?HAB\\.?)\\b"
+  },
+  {
+    "id": 4,
+    "nombre": "CONJUNTO RESIDENCIAL",
+    "abreviatura": "CONJ.RES.",
+    "sinonimos": ["CONJUNTO RESIDENCIAL", "CONJ.RES.", "CONJ.RES", "CONJ RES"],
+    "patron_regex": "\\b(?:CONJ(?:UNTO)?\\s*RES(?:IDENCIAL)?|CONJ\\.?RES\\.?)\\b"
+  },
+  {
+    "id": 5,
+    "nombre": "PUEBLO JOVEN",
+    "abreviatura": "P.J.",
+    "sinonimos": ["PUEBLO JOVEN", "P.J.", "P.J", "PJ", "PP.JJ."],
+    "patron_regex": "\\b(?:PP\\.?JJ\\.?|P\\.?J\\.?|PUEBLO\\s+JOVEN)\\b"
+  },
+  {
+    "id": 6,
+    "nombre": "URBANIZACION",
+    "abreviatura": "URB.",
+    "sinonimos": ["URBANIZACION", "URBANIZACIÓN", "URB", "URB.", "H.U.", "HU", "HABILITACION URBANA", "URB.PROG."],
+    "patron_regex": "\\b(?:URB(?:ANIZACION|ANIZACIÓN|\\.)?|H\\.?U\\.?)\\b"
+  },
+  {
+    "id": 7,
+    "nombre": "URBANIZACION POPULAR",
+    "abreviatura": "URB.POP.",
+    "sinonimos": ["URBANIZACION POPULAR", "URBANIZACIÓN POPULAR", "URB.POP.", "URB POP", "UPIS"],
+    "patron_regex": "\\b(?:URB(?:ANIZACION|ANIZACIÓN|\\.)?\\s+POPULAR|URB\\.?POP\\.?|UPIS)\\b"
+  },
+  {
+    "id": 8,
+    "nombre": "CERCADO",
+    "abreviatura": "CERCADO",
+    "sinonimos": ["CERCADO", "CERCADO DE CHICLAYO", "CHICLAYO"],
+    "patron_regex": "\\b(?:CERCADO(?:\\s+DE\\s+CHICLAYO)?|CHICLAYO)\\b"
+  },
+  {
+    "id": 9,
+    "nombre": "HACIENDA",
+    "abreviatura": "HAC.",
+    "sinonimos": ["HACIENDA", "HAC", "HAC."],
+    "patron_regex": "\\b(?:HACIENDA|HAC\\.?)\\b"
+  },
+  {
+    "id": 10,
+    "nombre": "ASOCIACION",
+    "abreviatura": "ASOC.",
+    "sinonimos": ["ASOCIACION", "ASOCIACIÓN", "ASOC", "ASOC.", "ASOC.POBL.", "ASOC.PROP."],
+    "patron_regex": "\\b(?:ASOCIACION|ASOCIACIÓN|ASOC\\.?)\\b"
+  },
+  {
+    "id": 11,
+    "nombre": "COOPERATIVA",
+    "abreviatura": "COOP.",
+    "sinonimos": ["COOPERATIVA", "COOP", "COOP."],
+    "patron_regex": "\\b(?:COOPERATIVA|COOP\\.?)\\b"
+  },
+  {
+    "id": 12,
+    "nombre": "LOTIZACION",
+    "abreviatura": "LOT.",
+    "sinonimos": ["LOTIZACION", "LOTIZACIÓN", "LOT", "LOT.", "LOTIZ.", "LOTIZ"],
+    "patron_regex": "\\b(?:LOTIZACION|LOTIZACIÓN|LOT\\.?|LOTIZ\\.?)\\b"
+  },
+  {
+    "id": 13,
+    "nombre": "PARCELA",
+    "abreviatura": "PARC.",
+    "sinonimos": ["PARCELA", "PARC", "PARC."],
+    "patron_regex": "\\b(?:PARCELA|PARC\\.?)\\b"
+  },
+  {
+    "id": 14,
+    "nombre": "VALLE",
+    "abreviatura": "VALLE",
+    "sinonimos": ["VALLE"],
+    "patron_regex": "\\bVALLE\\b"
+  },
+  {
+    "id": 15,
+    "nombre": "CASERIO",
+    "abreviatura": "CAS.",
+    "sinonimos": ["CASERIO", "CASERÍO", "CAS", "CAS."],
+    "patron_regex": "\\b(?:CASERIO|CASERÍO|CAS\\.?)\\b"
+  },
+  {
+    "id": 16,
+    "nombre": "UNIDAD VECINAL",
+    "abreviatura": "U.V.",
+    "sinonimos": ["UNIDAD VECINAL", "U.V.", "U.V", "UV"],
+    "patron_regex": "\\b(?:U\\.?V\\.?|UNIDAD\\s+VECINAL)\\b"
+  },
+  {
+    "id": 17,
+    "nombre": "COMUNIDAD",
+    "abreviatura": "COM.",
+    "sinonimos": ["COMUNIDAD", "COM", "COM."],
+    "patron_regex": "\\b(?:COMUNIDAD|COM\\.?)\\b"
+  },
+  {
+    "id": 18,
+    "nombre": "BARRIO",
+    "abreviatura": "BO.",
+    "sinonimos": ["BARRIO", "BO", "BO."],
+    "patron_regex": "\\b(?:BARRIO|BO\\.?)\\b"
+  },
+  {
+    "id": 19,
+    "nombre": "FUNDO",
+    "abreviatura": "FDO.",
+    "sinonimos": ["FUNDO", "PREDIO", "FDO", "FDO."],
+    "patron_regex": "\\b(?:FUNDO|PREDIO|FDO\\.?)\\b"
+  },
+  {
+    "id": 20,
+    "nombre": "JUNTA DE COMPRADORES",
+    "abreviatura": "J.COMP.",
+    "sinonimos": ["JUNTA DE COMPRADORES", "J.COMP.", "J.COMP"],
+    "patron_regex": "\\b(?:JUNTA\\s+DE\\s+COMPRADORES|J\\.?COMP\\.?)\\b"
+  },
+  {
+    "id": 21,
+    "nombre": "ASOCIACION DE VIVIENDA",
+    "abreviatura": "ASOC.VIV.",
+    "sinonimos": ["ASOCIACION DE VIVIENDA", "ASOCIACIÓN DE VIVIENDA", "ASOC.VIV.", "ASOC.VIV"],
+    "patron_regex": "\\b(?:ASOC(?:IACION|IACIÓN)?\\s*(?:DE\\s*)?VIV(?:IENDA)?|ASOC\\.?VIV\\.?)\\b"
+  },
+  {
+    "id": 22,
+    "nombre": "COOPERATIVA DE VIVIENDA",
+    "abreviatura": "COOP.VIV.",
+    "sinonimos": ["COOPERATIVA DE VIVIENDA", "COOP.VIV.", "COOP.VIV"],
+    "patron_regex": "\\b(?:COOP(?:ERATIVA)?\\s*(?:DE\\s*)?VIV(?:IENDA)?|COOP\\.?VIV\\.?)\\b"
+  },
+  {
+    "id": 23,
+    "nombre": "SOCIEDAD",
+    "abreviatura": "SOC.",
+    "sinonimos": ["SOCIEDAD", "SOC", "SOC."],
+    "patron_regex": "\\b(?:SOCIEDAD|SOC\\.?)\\b"
+  },
+  {
+    "id": 24,
+    "nombre": "ASOCIACION PRO VIVIENDA",
+    "abreviatura": "ASOC.PVIV.",
+    "sinonimos": ["ASOCIACION PRO VIVIENDA", "ASOC.PVIV.", "ASOC.PVIV"],
+    "patron_regex": "\\b(?:ASOC(?:IACION|IACIÓN)?\\s*PRO\\s*VIV(?:IENDA)?|ASOC\\.?PVIV\\.?)\\b"
+  },
+  {
+    "id": 25,
+    "nombre": "ZONA",
+    "abreviatura": "ZONA",
+    "sinonimos": ["ZONA", "HAB.IND.", "P.I.", "P.T."],
+    "patron_regex": "\\bZONA\\b|\\bHAB\\.?IND\\.?\\b|\\bP\\.?I\\.?\\b"
+  },
+  {
+    "id": 26,
+    "nombre": "CENTRO POBLADO",
+    "abreviatura": "C.P.",
+    "sinonimos": ["CENTRO POBLADO", "C.P.", "C.P", "CP", "C.P.M.", "CPM"],
+    "patron_regex": "\\b(?:C\\.?P\\.?M?\\.?|CENTRO\\s+POBLADO)\\b"
+  },
+  {
+    "id": 27,
+    "nombre": "ANEXO",
+    "abreviatura": "ANEXO",
+    "sinonimos": ["ANEXO"],
+    "patron_regex": "\\bANEXO\\b"
+  },
+  {
+    "id": 28,
+    "nombre": "COMUNIDAD INDIGENA",
+    "abreviatura": "COM.IND.",
+    "sinonimos": ["COMUNIDAD INDIGENA", "COMUNIDAD INDÍGENA", "COM.IND.", "COM.IND", "COMUNIDAD CAMPESINA"],
+    "patron_regex": "\\b(?:COM(?:UNIDAD)?\\s*(?:INDIGENA|INDÍGENA|CAMPESINA)|COM\\.?IND\\.?)\\b"
+  }
+]

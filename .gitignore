@@ -1,0 +1,54 @@
+# Python Bytecode y Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Entornos Virtuales
+venv/
+.venv/
+env/
+ENV/
+
+# Variables de Entorno y Secretos (Seguridad)
+.env
+!.env.example
+
+# IDEs y Editores (IntelliJ, JetBrains, VS Code, Vim)
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Logs, Temporales y Pruebas
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
+.~lock.*#
+
+
+# Archivos del Sistema Operativo
+.DS_Store
+Thumbs.db
