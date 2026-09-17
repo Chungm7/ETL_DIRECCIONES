@@ -488,28 +488,37 @@ def _run_pipeline_worker(req: StartPipelineRequest):
     """Función que ejecuta el pipeline ETL en un hilo secundario para no bloquear el servidor."""
     settings = get_settings()
     target_schema = req.schema_name or settings.db.schema
-    target_table = req.table_name or settings.db.table
+    target_table  = req.table_name  or settings.db.table
     state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
     try:
         # Usar conexión dinámica del wizard si está disponible
         db_svc = state.dynamic_db_service or DatabaseService()
 
-        pipeline_kwargs: Dict[str, Any] = dict(
+        # Resolver columnas: las del wizard tienen prioridad sobre las del .env
+        id_col   = req.id_col      or settings.db.id_col
+        dir_col  = req.address_col or settings.db.dir_col
+
+        state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
+
+        # Construir el extractor con las columnas identificadas por el usuario en el wizard
+        custom_extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema=target_schema,
+            table=target_table,
+            id_col=id_col,
+            dir_col=dir_col,
+        )
+
+        pipeline = ETLPipeline(
             schema=target_schema,
             table=target_table,
             batch_size=req.batch_size,
             db_service=db_svc,
             require_ai=req.require_ai,
+            extractor=custom_extractor,
             on_record_processed=state.add_record,
         )
-        # Pasar columnas identificadas en el wizard si el pipeline las soporta
-        if req.id_col:
-            pipeline_kwargs["id_col"] = req.id_col
-        if req.address_col:
-            pipeline_kwargs["address_col"] = req.address_col
-
-        pipeline = ETLPipeline(**pipeline_kwargs)
         state.pipeline = pipeline
 
         state.add_log("Preparando entorno y tablas maestras...")

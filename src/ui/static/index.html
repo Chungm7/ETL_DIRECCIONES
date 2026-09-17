@@ -598,7 +598,7 @@
         </div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
           <!-- Controles de configuración ETL -->
-          <div style="display:flex; gap:8px; align-items:center;">
+          <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
             <div class="field" style="margin:0; min-width:90px;">
               <label style="font-size:11px;">Límite</label>
               <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:13px;" />
@@ -614,6 +614,10 @@
                 <option value="all">Todos</option>
                 <option value="observed">Observados</option>
               </select>
+            </div>
+            <div style="display:flex; align-items:center; gap:5px; padding-bottom:2px;">
+              <input type="checkbox" id="inp_require_ai" checked style="width:14px; height:14px; cursor:pointer;" />
+              <label for="inp_require_ai" style="font-size:12px; font-weight:600; color:var(--gray); cursor:pointer; white-space:nowrap;">Requiere IA</label>
             </div>
           </div>
           <button class="btn btn-green" id="btnStart" onclick="startETL()">Iniciar ETL</button>

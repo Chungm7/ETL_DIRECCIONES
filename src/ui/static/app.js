@@ -481,9 +481,10 @@ function addLog(msg, level = '') {
 
 // ── Iniciar ETL ──────────────────────────────────────────────────────────────
 async function startETL() {
-  const limit    = parseInt(document.getElementById('inp_limit').value) || null;
-  const batch    = parseInt(document.getElementById('inp_batch').value) || 50;
-  const filter   = document.getElementById('inp_filter').value || 'pending';
+  const limit      = parseInt(document.getElementById('inp_limit').value) || null;
+  const batch      = parseInt(document.getElementById('inp_batch').value) || 50;
+  const filter     = document.getElementById('inp_filter').value || 'pending';
+  const require_ai = document.getElementById('inp_require_ai')?.checked ?? true;
 
   // Reset records y stats visuales
   wiz.allRecords = [];
@@ -504,6 +505,7 @@ async function startETL() {
     address_col:  wiz.addr_col,
     batch_size:   batch,
     filter_mode:  filter,
+    require_ai:   require_ai,
     limit,
   };
 
