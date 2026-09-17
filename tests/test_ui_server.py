@@ -16,8 +16,8 @@ def test_ui_index_served(client):
     """Verifica que el archivo index.html sea servido correctamente en la raíz."""
     response = client.get("/")
     assert response.status_code == 200
-    assert "MUNICIPALIDAD PROVINCIAL DE CHICLAYO" in response.text
-    assert "ETL Catastral IA" in response.text
+    assert "Municipalidad Provincial de Chiclayo" in response.text
+    assert "Normalización" in response.text
 
 
 def test_api_status_endpoint(client):

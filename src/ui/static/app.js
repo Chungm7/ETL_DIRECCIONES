@@ -1,9 +1,10 @@
 /**
- * MPCH ETL - Cliente Frontend y Receptor SSE en Tiempo Real
+ * MPCH ETL - Cliente Frontend y Receptor en Tiempo Real
+ * Interfaz profesional, limpia e interactiva para normalización de direcciones.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Elementos DOM
+  // Elementos del formulario y controles
   const form = document.getElementById('etl-form');
   const schemaSelect = document.getElementById('schema-select');
   const tableInput = document.getElementById('table-input');
@@ -18,8 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnCloseDiag = document.getElementById('btn-close-diag');
   const btnRunSampleAi = document.getElementById('btn-run-sample-ai');
   const btnClearFeed = document.getElementById('btn-clear-feed');
+  const searchFilterInput = document.getElementById('search-filter-input');
 
-  // Badges y Estado
+  // Indicadores de estado
   const dbIndicator = document.getElementById('db-indicator');
   const dbName = document.getElementById('db-name');
   const aiIndicator = document.getElementById('ai-indicator');
@@ -46,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const progressPendingLabel = document.getElementById('progress-pending-label');
   const progressStatusLabel = document.getElementById('progress-status-label');
 
-  // Contenedores de vistas
+  // Vistas y contenedores
   const tabBtnRecords = document.getElementById('tab-btn-records');
   const tabBtnLogs = document.getElementById('tab-btn-logs');
   const viewRecords = document.getElementById('view-records');
@@ -59,19 +61,19 @@ document.addEventListener('DOMContentLoaded', () => {
   const diagDbDetail = document.getElementById('diag-db-detail');
   const diagAiDetail = document.getElementById('diag-ai-detail');
 
-  // Filtros de tarjetas
+  // Filtros
   const filterChips = document.querySelectorAll('.filter-chip');
   let currentCardFilter = 'all';
+  let currentSearchQuery = '';
 
-  // Estado local
+  // Estado
   let isRunning = false;
   let recordsList = [];
   let eventSource = null;
-  let timerInterval = null;
-  let startTime = null;
+  let latestCounts = null;
 
   // ==========================================
-  // INICIALIZACIÓN Y CONEXIONES
+  // INICIALIZACIÓN
   // ==========================================
 
   async function init() {
@@ -98,34 +100,30 @@ document.addEventListener('DOMContentLoaded', () => {
         });
       }
 
-      // BD Health
+      // Conexión Base de Datos
       if (data.db.connected) {
-        dbIndicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+        dbIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
         dbName.textContent = data.db.schema;
-        dbName.className = 'text-emerald-400 font-bold';
-        diagDbDetail.textContent = `✅ ${data.db.message} (Tabla existe: ${data.db.table_exists ? 'Sí' : 'No'})`;
+        diagDbDetail.textContent = `Conectado a PostgreSQL en esquema '${data.db.schema}' (Tabla disponible: ${data.db.table_exists ? 'Sí' : 'No'})`;
       } else {
-        dbIndicator.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
-        dbName.textContent = 'Desconectado';
-        dbName.className = 'text-rose-400 font-bold';
-        diagDbDetail.textContent = `❌ ${data.db.message}`;
+        dbIndicator.className = 'w-2 h-2 rounded-full bg-rose-500';
+        dbName.textContent = 'Sin conexión';
+        diagDbDetail.textContent = `Fallo de conexión: ${data.db.message}`;
       }
 
-      // AI Health
+      // Servicio de IA
       statAiModel.textContent = data.ai.model || 'patroclo';
       if (data.ai.connected) {
-        aiIndicator.className = 'w-2.5 h-2.5 rounded-full bg-purple-400';
+        aiIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
         aiName.textContent = data.ai.model;
-        aiName.className = 'text-purple-300 font-bold';
-        diagAiDetail.textContent = `✅ ${data.ai.message} (Modelo '${data.ai.model}')`;
+        diagAiDetail.textContent = `Disponible: ${data.ai.message}`;
       } else {
-        aiIndicator.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
-        aiName.textContent = 'Sin Conexión';
-        aiName.className = 'text-rose-400 font-bold';
-        diagAiDetail.textContent = `⚠️ ${data.ai.message}`;
+        aiIndicator.className = 'w-2 h-2 rounded-full bg-amber-500';
+        aiName.textContent = 'Fuera de línea';
+        diagAiDetail.textContent = `Aviso: ${data.ai.message}`;
       }
 
-      // Esquema y Tabla activos
+      // Valores activos en el formulario
       if (data.active_schema) {
         schemaSelect.value = data.active_schema;
       }
@@ -133,31 +131,30 @@ document.addEventListener('DOMContentLoaded', () => {
         tableInput.value = data.active_table;
       }
 
-      // Conteos
+      // Actualizar conteos
       updateTableCountsDisplay(data.table_counts);
-      activeSchemaBadge.textContent = `Esquema: ${data.active_schema || 'public'} | Tabla: ${data.active_table || 'direcciones_actual'}`;
+      activeSchemaBadge.textContent = `${data.active_schema || 'public'}.${data.active_table || 'direcciones_actual'}`;
 
-      // Si hay registros recientes recibidos previamente
+      // Registros previos si existieran
       if (data.recent_records && data.recent_records.length > 0 && recordsList.length === 0) {
         data.recent_records.forEach(r => renderRecordCard(r));
       }
 
-      // Si ya estaba corriendo
+      // Estado de ejecución activo
       if (data.running) {
         setRunningState(true);
         updateStatsDisplay(data.stats);
       }
     } catch (err) {
-      console.error('Fallo cargando estado inicial:', err);
-      appendLog(`[ERROR] No se pudo comunicar con el servidor: ${err.message}`);
+      console.error('Error cargando estado:', err);
+      appendLog(`[Error] No se pudo comunicar con el servidor: ${err.message}`);
     }
   }
-
-  let latestCounts = null;
 
   function updateTableCountsDisplay(counts) {
     if (!counts) return;
     latestCounts = counts;
+
     const total = counts.total != null ? Number(counts.total) : 0;
     const pendientes = counts.pendientes != null ? Number(counts.pendientes) : 0;
     const validos = counts.validos != null ? Number(counts.validos) : 0;
@@ -174,22 +171,22 @@ document.addEventListener('DOMContentLoaded', () => {
       statValidPct.textContent = `${validPct}%`;
       statObservedPct.textContent = `${obsPct}%`;
 
-      // Calcular objetivo según filtro y límite
       recalcTargetToProcess();
     }
 
-    progressPendingLabel.textContent = `Pendientes en BD: ${pendientes.toLocaleString()}`;
+    progressPendingLabel.textContent = `Pendientes: ${pendientes.toLocaleString()}`;
   }
 
   function recalcTargetToProcess() {
     if (!latestCounts || isRunning) return;
+
     const total = latestCounts.total != null ? Number(latestCounts.total) : 0;
     const pendientes = latestCounts.pendientes != null ? Number(latestCounts.pendientes) : 0;
     const observados = latestCounts.observados != null ? Number(latestCounts.observados) : 0;
 
     const filter = filterSelect ? filterSelect.value : 'pending';
     let pool = pendientes;
-    if (filter === 'observed' || filter === 'unprocessed') {
+    if (filter === 'observed') {
       pool = observados;
     } else if (filter === 'all') {
       pool = total;
@@ -204,7 +201,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // CONEXIÓN SSE (Server-Sent Events)
+  // CONEXIÓN SSE
   // ==========================================
 
   function connectSSE() {
@@ -215,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
     eventSource = new EventSource('/api/stream');
 
     eventSource.onopen = () => {
-      appendLog('[SISTEMA] Canal SSE establecido con el servidor.');
+      appendLog('[Sistema] Canal de eventos en vivo conectado.');
     };
 
     eventSource.onmessage = (e) => {
@@ -228,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     eventSource.onerror = () => {
-      // Reintento automático por parte del navegador
+      // Reconexión automática nativa
     };
   }
 
@@ -250,19 +247,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
       case 'done':
         setRunningState(false);
-        statusText.textContent = 'FINALIZADO ✅';
-        statusText.className = 'text-emerald-400 font-black';
-        progressStatusLabel.textContent = 'Ejecución completada con éxito';
-        appendLog('[SISTEMA] Pipeline ETL completado.');
+        statusText.textContent = 'Completado';
+        statusText.className = 'font-semibold text-emerald-700';
+        progressStatusLabel.textContent = 'Proceso finalizado correctamente';
+        appendLog('[Sistema] Proceso de normalización finalizado.');
         refreshCounts();
         break;
 
       case 'error':
         setRunningState(false);
-        statusText.textContent = 'ERROR ⚠️';
-        statusText.className = 'text-rose-500 font-black';
-        appendLog(`[ERROR CRÍTICO] ${payload.error}`);
-        alert(`Error en el pipeline: ${payload.error}`);
+        statusText.textContent = 'Detenido con error';
+        statusText.className = 'font-semibold text-rose-600';
+        appendLog(`[Error] ${payload.error}`);
+        alert(`Aviso: ${payload.error}`);
         break;
 
       default:
@@ -271,14 +268,14 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // ==========================================
-  // RENDERIZADO DE REGISTRO POR REGISTRO (CARDS)
+  // RENDERIZADO DE RESULTADOS
   // ==========================================
 
   function renderRecordCard(rec) {
     if (emptyState) emptyState.style.display = 'none';
 
     recordsList.unshift(rec);
-    if (recordsList.length > 300) recordsList.pop();
+    if (recordsList.length > 400) recordsList.pop();
 
     badgeRecordsCount.textContent = recordsList.length;
 
@@ -286,121 +283,112 @@ document.addEventListener('DOMContentLoaded', () => {
     const cardStatus = isValid ? 'valid' : 'observed';
 
     const card = document.createElement('div');
-    card.className = `record-card rounded-xl p-4 border transition-all shadow-sm ${
-      isValid
-        ? 'bg-white border-emerald-200 hover:border-emerald-400'
-        : 'bg-amber-50/40 border-amber-300 hover:border-amber-400'
+    card.className = `result-row rounded-lg p-3.5 border text-xs transition bg-white ${
+      isValid ? 'border-slate-200 hover:border-slate-300' : 'border-amber-200 bg-amber-50/20'
     }`;
+
+    // Atributos de búsqueda y filtrado
     card.setAttribute('data-status', cardStatus);
+    const searchCorpus = [
+      rec.id_licencia,
+      rec.raw_text,
+      rec.nom_via,
+      rec.nom_zona,
+      rec.observacion,
+    ].filter(Boolean).join(' ').toLowerCase();
+    card.setAttribute('data-search', searchCorpus);
 
-    // Si hay un filtro activo y no coincide, ocultarlo
-    if (currentCardFilter !== 'all' && currentCardFilter !== cardStatus) {
-      card.style.display = 'none';
-    }
+    // Estado de visibilidad inicial
+    applyItemVisibility(card, cardStatus, searchCorpus);
 
-    // Identificar motor utilizado
-    let methodBadgeClass = 'bg-slate-100 text-slate-700 border-slate-200';
-    let methodIcon = '⚙️';
-    if (rec.metodo && rec.metodo.includes('IA')) {
-      methodBadgeClass = 'bg-purple-100 text-purple-800 border-purple-300 font-bold';
-      methodIcon = '🤖';
-    } else if (rec.metodo && rec.metodo.includes('Híbrido')) {
-      methodBadgeClass = 'bg-blue-100 text-blue-800 border-blue-300 font-bold';
-      methodIcon = '⚡';
-    }
+    // Método utilizado
+    let methodLabel = rec.metodo || 'Reglas';
+    if (methodLabel.includes('IA')) methodLabel = 'IA';
+    else if (methodLabel.includes('Híbrido')) methodLabel = 'Híbrido';
+    else methodLabel = 'Heurística';
 
-    // Cabecera de la tarjeta
+    // Badges de estado
     const statusBadge = isValid
-      ? `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-           ✅ CATASTRO VÁLIDO
+      ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+           Validado en catastro
          </span>`
-      : `<span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black bg-amber-200 text-amber-900 border border-amber-400 animate-pulse">
-           ⚠️ OBSERVADO
+      : `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
+           Observado
          </span>`;
 
-    // Normalizado Vía
+    // Datos de Vía
     const viaText = rec.nom_via
-      ? `<b class="text-slate-900">${rec.nom_via}</b> ${rec.num_via ? `<span class="text-slate-700 font-mono">#${rec.num_via}</span>` : ''}`
-      : `<span class="text-slate-400 italic">No identificada</span>`;
-    const viaBadge = rec.id_via
-      ? `<span class="px-1.5 py-0.5 text-[10px] rounded bg-blue-100 text-blue-800 font-mono font-bold">ID: ${rec.id_via}</span>`
-      : `<span class="px-1.5 py-0.5 text-[10px] rounded bg-slate-100 text-slate-500 font-mono">ID: -</span>`;
+      ? `<span class="font-medium text-slate-900">${escapeHtml(rec.nom_via)}</span> ${rec.num_via ? `<span class="text-slate-600 font-mono">#${escapeHtml(rec.num_via)}</span>` : ''}`
+      : `<span class="text-slate-400 italic">No determinada</span>`;
+    const viaIdBadge = rec.id_via
+      ? `<span class="text-[10px] text-slate-500 font-mono font-medium">(ID: ${rec.id_via})</span>`
+      : '';
 
-    // Normalizado Zona
+    // Datos de Zona
     const zonaText = rec.nom_zona
-      ? `<b class="text-slate-900">${rec.nom_zona}</b>`
-      : `<span class="text-slate-400 italic">No identificada</span>`;
-    const zonaBadge = rec.id_zona
-      ? `<span class="px-1.5 py-0.5 text-[10px] rounded bg-indigo-100 text-indigo-800 font-mono font-bold">ID: ${rec.id_zona}</span>`
-      : `<span class="px-1.5 py-0.5 text-[10px] rounded bg-slate-100 text-slate-500 font-mono">ID: -</span>`;
+      ? `<span class="font-medium text-slate-900">${escapeHtml(rec.nom_zona)}</span>`
+      : `<span class="text-slate-400 italic">No determinada</span>`;
+    const zonaIdBadge = rec.id_zona
+      ? `<span class="text-[10px] text-slate-500 font-mono font-medium">(ID: ${rec.id_zona})</span>`
+      : '';
 
-    // Mz / Lt / Slote
-    const mzLtParts = [];
-    if (rec.manzana) mzLtParts.push(`<b>Mz:</b> ${rec.manzana}`);
-    if (rec.lote) mzLtParts.push(`<b>Lt:</b> ${rec.lote}`);
-    if (rec.slote) mzLtParts.push(`<b>Slote:</b> ${rec.slote}`);
-    const mzLtText = mzLtParts.length > 0 ? mzLtParts.join(' &bull; ') : '<span class="text-slate-400 italic">-</span>';
+    // Mz y Lote
+    const parts = [];
+    if (rec.manzana) parts.push(`Mz. ${escapeHtml(rec.manzana)}`);
+    if (rec.lote) parts.push(`Lt. ${escapeHtml(rec.lote)}`);
+    if (rec.slote) parts.push(`Slote. ${escapeHtml(rec.slote)}`);
+    const mzLtText = parts.length > 0 ? parts.join(', ') : '<span class="text-slate-400">-</span>';
 
-    // Bloque de observación detallada
+    // Alerta de observación si corresponde
     let obsBox = '';
     if (!isValid && rec.observacion) {
       obsBox = `
-        <div class="mt-3 p-2.5 rounded-lg bg-amber-100/70 border border-amber-300 text-xs text-amber-900 flex items-start gap-2">
-          <span class="text-sm">⚠️</span>
-          <div>
-            <span class="font-bold uppercase tracking-wider text-[11px] text-amber-950">Motivo de Observación:</span>
-            <p class="font-mono mt-0.5 text-[11.5px]">${escapeHtml(rec.observacion)}</p>
-          </div>
+        <div class="mt-2.5 p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
+          <span class="font-semibold text-amber-950">Motivo:</span> ${escapeHtml(rec.observacion)}
         </div>
       `;
     }
 
     card.innerHTML = `
-      <div class="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-100">
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
         <div class="flex items-center space-x-2">
-          <span class="px-2 py-0.5 text-xs font-mono font-black bg-slate-800 text-white rounded">
+          <span class="px-1.5 py-0.5 text-[11px] font-mono font-bold bg-slate-100 text-slate-800 rounded border border-slate-200">
             #${rec.id_licencia}
           </span>
-          <span class="text-xs text-slate-500 font-medium">
+          <span class="text-[11px] text-slate-400">
             Registro ${rec.index} de ${rec.total}
           </span>
-          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] border ${methodBadgeClass}">
-            ${methodIcon} ${escapeHtml(rec.metodo || 'Heurístico')}
+          <span class="px-1.5 py-0.5 text-[10px] rounded bg-slate-50 text-slate-600 border border-slate-200">
+            ${escapeHtml(methodLabel)}
           </span>
         </div>
-        <div class="flex items-center space-x-2">
+        <div>
           ${statusBadge}
         </div>
       </div>
 
       <!-- Dirección Original -->
-      <div class="mt-2.5">
-        <span class="text-[11px] font-bold uppercase tracking-wider text-slate-400">Texto Original:</span>
-        <div class="text-xs font-semibold text-slate-800 bg-slate-50 p-2 rounded-lg border border-slate-200 mt-1 font-mono">
-          "${escapeHtml(rec.raw_text)}"
+      <div class="mt-2">
+        <div class="text-[11px] text-slate-400 font-medium">Texto original:</div>
+        <div class="font-mono text-xs text-slate-800 bg-slate-50 px-2 py-1 rounded border border-slate-200 mt-0.5">
+          ${escapeHtml(rec.raw_text)}
         </div>
       </div>
 
-      <!-- Resultado Catastral Normalizado -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-xs">
-        <div class="p-2 bg-white rounded-lg border border-slate-100 shadow-2xs">
-          <div class="flex items-center justify-between text-slate-500 mb-1">
-            <span class="text-[10px] font-bold uppercase">🛣️ Vía Oficial:</span>
-            ${viaBadge}
-          </div>
-          <div>${viaText}</div>
+      <!-- Datos Catastrales -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-2.5 pt-2 border-t border-slate-100 text-[11px]">
+        <div>
+          <span class="text-slate-400 block font-medium">Vía homologada:</span>
+          <div>${viaText} ${viaIdBadge}</div>
         </div>
 
-        <div class="p-2 bg-white rounded-lg border border-slate-100 shadow-2xs">
-          <div class="flex items-center justify-between text-slate-500 mb-1">
-            <span class="text-[10px] font-bold uppercase">🏘️ Zona Oficial:</span>
-            ${zonaBadge}
-          </div>
-          <div>${zonaText}</div>
+        <div>
+          <span class="text-slate-400 block font-medium">Zona / Habilitación:</span>
+          <div>${zonaText} ${zonaIdBadge}</div>
         </div>
 
-        <div class="p-2 bg-white rounded-lg border border-slate-100 shadow-2xs">
-          <div class="text-[10px] font-bold uppercase text-slate-500 mb-1">📐 Mz / Lt / Slote:</div>
+        <div>
+          <span class="text-slate-400 block font-medium">Manzana / Lote:</span>
           <div>${mzLtText}</div>
         </div>
       </div>
@@ -409,6 +397,30 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
 
     recordsContainer.insertBefore(card, recordsContainer.firstChild);
+  }
+
+  // ==========================================
+  // FILTRADO Y BÚSQUEDA INTERACTIVA
+  // ==========================================
+
+  function applyItemVisibility(element, cardStatus, searchCorpus) {
+    const matchesFilter = currentCardFilter === 'all' || currentCardFilter === cardStatus;
+    const matchesSearch = !currentSearchQuery || searchCorpus.includes(currentSearchQuery);
+
+    if (matchesFilter && matchesSearch) {
+      element.style.display = 'block';
+    } else {
+      element.style.display = 'none';
+    }
+  }
+
+  function filterAllItems() {
+    const cards = recordsContainer.querySelectorAll('.result-row');
+    cards.forEach(c => {
+      const status = c.getAttribute('data-status');
+      const searchCorpus = c.getAttribute('data-search') || '';
+      applyItemVisibility(c, status, searchCorpus);
+    });
   }
 
   // ==========================================
@@ -440,7 +452,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const pct = Math.min(100, Math.round((processed / total) * 100));
       progressBarFill.style.width = `${pct}%`;
       progressPercentageLabel.textContent = `${pct}%`;
-      progressCountLabel.textContent = `${processed} de ${total} registros procesados`;
+      progressCountLabel.textContent = `${processed.toLocaleString()} de ${total.toLocaleString()} registros`;
 
       const validPct = ((valid / total) * 100).toFixed(1);
       const obsPct = ((observed / total) * 100).toFixed(1);
@@ -452,7 +464,7 @@ document.addEventListener('DOMContentLoaded', () => {
       statElapsed.textContent = `${stats.elapsed_seconds}s`;
       if (stats.elapsed_seconds > 0 && processed > 0) {
         const speed = (processed / stats.elapsed_seconds).toFixed(1);
-        statSpeed.textContent = `${speed} reg/seg`;
+        statSpeed.textContent = `${speed} reg/s`;
       }
     }
   }
@@ -460,39 +472,36 @@ document.addEventListener('DOMContentLoaded', () => {
   function appendLog(message) {
     const timestamp = new Date().toLocaleTimeString();
     const line = document.createElement('div');
-    line.className = 'hover:bg-slate-900 px-1 py-0.5 rounded leading-relaxed';
+    line.className = 'py-0.5 leading-relaxed font-mono';
 
     let colorClass = 'text-slate-300';
-    if (message.includes('ERROR')) colorClass = 'text-rose-400 font-bold';
-    else if (message.includes('✅') || message.includes('exitosamente')) colorClass = 'text-emerald-400';
-    else if (message.includes('⚠️') || message.includes('Aviso')) colorClass = 'text-amber-400';
-    else if (message.includes('🤖')) colorClass = 'text-purple-300';
-    else if (message.includes('⏳')) colorClass = 'text-cyan-300';
+    if (message.includes('Error') || message.includes('ERROR')) colorClass = 'text-rose-400 font-semibold';
+    else if (message.includes('finalizado') || message.includes('exitosamente')) colorClass = 'text-emerald-400 font-medium';
+    else if (message.includes('Aviso')) colorClass = 'text-amber-300';
 
     line.innerHTML = `<span class="text-slate-500">[${timestamp}]</span> <span class="${colorClass}">${escapeHtml(message)}</span>`;
     logsContainer.appendChild(line);
 
-    // Auto-scroll al fondo
     viewLogs.scrollTop = viewLogs.scrollHeight;
   }
 
   // ==========================================
-  // ACCIONES Y MANEJADORES DE EVENTOS
+  // MANEJADORES DE EVENTOS
   // ==========================================
 
   function setupEventHandlers() {
-    // Cambio de esquema
+    // Cambio de esquema o tabla
     schemaSelect.addEventListener('change', () => {
-      activeSchemaBadge.textContent = `Esquema: ${schemaSelect.value} | Tabla: ${tableInput.value.trim()}`;
+      activeSchemaBadge.textContent = `${schemaSelect.value}.${tableInput.value.trim()}`;
       refreshCounts();
     });
 
     tableInput.addEventListener('change', () => {
-      activeSchemaBadge.textContent = `Esquema: ${schemaSelect.value} | Tabla: ${tableInput.value.trim()}`;
+      activeSchemaBadge.textContent = `${schemaSelect.value}.${tableInput.value.trim()}`;
       refreshCounts();
     });
 
-    // Recalcular meta en vivo al cambiar filtro o límite
+    // Recálculo dinámico de objetivo
     filterSelect.addEventListener('change', () => {
       recalcTargetToProcess();
     });
@@ -501,12 +510,32 @@ document.addEventListener('DOMContentLoaded', () => {
       recalcTargetToProcess();
     });
 
-    // Atajos de límite rápido (10, 50, 100, Todos)
+    // Atajos de cantidad
     document.querySelectorAll('.limit-shortcut').forEach(btn => {
       btn.addEventListener('click', () => {
-        const val = btn.getAttribute('data-limit');
-        limitInput.value = val;
+        limitInput.value = btn.getAttribute('data-limit');
         recalcTargetToProcess();
+      });
+    });
+
+    // Búsqueda interactiva en resultados
+    searchFilterInput.addEventListener('input', () => {
+      currentSearchQuery = searchFilterInput.value.trim().toLowerCase();
+      filterAllItems();
+    });
+
+    // Filtros por chip (Todos, Validados, Observados)
+    filterChips.forEach(chip => {
+      chip.addEventListener('click', () => {
+        filterChips.forEach(c => {
+          c.classList.remove('bg-slate-200', 'text-slate-800');
+          c.classList.add('text-slate-600');
+        });
+        chip.classList.add('bg-slate-200', 'text-slate-800');
+        chip.classList.remove('text-slate-600');
+
+        currentCardFilter = chip.getAttribute('data-filter');
+        filterAllItems();
       });
     });
 
@@ -516,14 +545,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isRunning) return;
 
       const rawLimit = limitInput.value.trim();
-      const parsedLimit = (rawLimit !== "" && !isNaN(rawLimit)) ? parseInt(rawLimit, 10) : null;
+      const parsedLimit = (rawLimit !== '' && !isNaN(rawLimit)) ? parseInt(rawLimit, 10) : null;
 
       let filterMode = filterSelect.value;
-      if (filterMode === "unprocessed") filterMode = "observed";
+      if (filterMode === 'unprocessed') filterMode = 'observed';
 
       const payload = {
         schema_name: schemaSelect.value,
-        table_name: tableInput.value.trim() || "direcciones_actual",
+        table_name: tableInput.value.trim() || 'direcciones_actual',
         filter_mode: filterMode,
         limit: parsedLimit,
         batch_size: parseInt(batchInput.value, 10) || 10,
@@ -532,11 +561,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       try {
         setRunningState(true);
-        statusText.textContent = 'EJECUTANDO ⚡';
-        statusText.className = 'text-blue-400 font-black';
-        progressStatusLabel.textContent = `Procesando en [${payload.schema_name}.${payload.table_name}]...`;
+        statusText.textContent = 'Procesando';
+        statusText.className = 'font-semibold text-slate-900';
+        progressStatusLabel.textContent = `Procesando en ${payload.schema_name}.${payload.table_name}...`;
 
-        // Switch to records view
         switchView('records');
 
         const res = await fetch('/api/start', {
@@ -547,58 +575,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!res.ok) {
           const errData = await res.json();
-          throw new Error(errData.detail || 'Error al iniciar pipeline');
+          throw new Error(errData.detail || 'Error al iniciar');
         }
 
-        const limText = payload.limit ? `${payload.limit}` : 'Todos los pendientes';
-        appendLog(`[SISTEMA] Pipeline iniciado en [${payload.schema_name}.${payload.table_name}] (Filtro: ${payload.filter_mode}, Límite: ${limText}, Lote: ${payload.batch_size}).`);
+        const limText = payload.limit ? `${payload.limit} registros` : 'todos los pendientes';
+        appendLog(`[Sistema] Iniciado en ${payload.schema_name}.${payload.table_name} (Límite: ${limText}, Lote: ${payload.batch_size}).`);
       } catch (err) {
         setRunningState(false);
         alert(`No se pudo iniciar: ${err.message}`);
-        appendLog(`[ERROR] Inicio fallido: ${err.message}`);
+        appendLog(`[Error] Fallo al iniciar: ${err.message}`);
       }
     });
 
-    // Detener pipeline
+    // Detener proceso
     btnStop.addEventListener('click', async () => {
       if (!isRunning) return;
       btnStop.disabled = true;
-      btnStop.innerHTML = '<span>⏳</span><span>Deteniendo...</span>';
+      btnStop.textContent = 'Deteniendo...';
 
       try {
         const res = await fetch('/api/stop', { method: 'POST' });
         const data = await res.json();
-        appendLog(`[SISTEMA] ${data.message}`);
+        appendLog(`[Sistema] ${data.message}`);
       } catch (err) {
-        appendLog(`[ERROR] Fallo al solicitar detención: ${err.message}`);
-      }
-    });
-
-    // Diagnóstico Rápido
-    btnQuickDiag.addEventListener('click', () => {
-      diagModal.classList.remove('hidden');
-    });
-
-    btnCloseDiag.addEventListener('click', () => {
-      diagModal.classList.add('hidden');
-    });
-
-    btnRunSampleAi.addEventListener('click', async () => {
-      btnRunSampleAi.disabled = true;
-      btnRunSampleAi.textContent = 'Consultando Ollama...';
-      try {
-        const res = await fetch('/api/test-ai', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          diagAiDetail.textContent = `✅ Éxito (${data.latency_ms} ms) - Modelo: ${data.model}\nResultado: ${JSON.stringify(data.parsed)}`;
-        } else {
-          diagAiDetail.textContent = `❌ Falló: ${data.message}`;
-        }
-      } catch (err) {
-        diagAiDetail.textContent = `❌ Error: ${err.message}`;
-      } finally {
-        btnRunSampleAi.disabled = false;
-        btnRunSampleAi.textContent = 'Probar Inferencia IA en Vivo';
+        appendLog(`[Error] ${err.message}`);
       }
     });
 
@@ -614,30 +614,31 @@ document.addEventListener('DOMContentLoaded', () => {
     tabBtnRecords.addEventListener('click', () => switchView('records'));
     tabBtnLogs.addEventListener('click', () => switchView('logs'));
 
-    // Filtros de tarjetas
-    filterChips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        filterChips.forEach(c => {
-          c.classList.remove('bg-slate-200', 'text-slate-800');
-          c.classList.add('text-slate-600');
-        });
-        chip.classList.add('bg-slate-200', 'text-slate-800');
-        chip.classList.remove('text-slate-600');
-
-        currentCardFilter = chip.getAttribute('data-filter');
-        applyCardFilter(currentCardFilter);
-      });
+    // Modal de diagnóstico
+    btnQuickDiag.addEventListener('click', () => {
+      diagModal.classList.remove('hidden');
     });
-  }
 
-  function applyCardFilter(filter) {
-    const cards = recordsContainer.querySelectorAll('.record-card');
-    cards.forEach(c => {
-      const status = c.getAttribute('data-status');
-      if (filter === 'all' || filter === status) {
-        c.style.display = 'block';
-      } else {
-        c.style.display = 'none';
+    btnCloseDiag.addEventListener('click', () => {
+      diagModal.classList.add('hidden');
+    });
+
+    btnRunSampleAi.addEventListener('click', async () => {
+      btnRunSampleAi.disabled = true;
+      btnRunSampleAi.textContent = 'Consultando...';
+      try {
+        const res = await fetch('/api/test-ai', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          diagAiDetail.textContent = `Correcto (${data.latency_ms} ms) - Modelo: ${data.model}\nResultado: ${JSON.stringify(data.parsed)}`;
+        } else {
+          diagAiDetail.textContent = `Fallo: ${data.message}`;
+        }
+      } catch (err) {
+        diagAiDetail.textContent = `Error: ${err.message}`;
+      } finally {
+        btnRunSampleAi.disabled = false;
+        btnRunSampleAi.textContent = 'Probar inferencia con dirección de prueba';
       }
     });
   }
@@ -646,13 +647,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (target === 'records') {
       viewRecords.classList.remove('hidden');
       viewLogs.classList.add('hidden');
-      tabBtnRecords.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm border border-slate-200 flex items-center gap-1.5 transition';
-      tabBtnLogs.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 border border-transparent transition flex items-center gap-1.5';
+      tabBtnRecords.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 border border-slate-200 shadow-2xs transition';
+      tabBtnLogs.className = 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 border border-transparent transition';
     } else {
       viewRecords.classList.add('hidden');
       viewLogs.classList.remove('hidden');
-      tabBtnLogs.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm border border-slate-200 flex items-center gap-1.5 transition';
-      tabBtnRecords.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 border border-transparent transition flex items-center gap-1.5';
+      tabBtnLogs.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 border border-slate-200 shadow-2xs transition';
+      tabBtnRecords.className = 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 border border-transparent transition';
     }
   }
 
@@ -660,9 +661,9 @@ document.addEventListener('DOMContentLoaded', () => {
     isRunning = running;
     if (running) {
       btnStart.disabled = true;
-      btnStart.classList.add('opacity-50', 'cursor-not-allowed');
+      btnStart.classList.add('opacity-40', 'cursor-not-allowed');
       btnStop.disabled = false;
-      btnStop.classList.remove('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+      btnStop.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
       btnStop.classList.add('bg-rose-600', 'hover:bg-rose-700', 'text-white', 'cursor-pointer');
       schemaSelect.disabled = true;
       tableInput.disabled = true;
@@ -671,11 +672,11 @@ document.addEventListener('DOMContentLoaded', () => {
       batchInput.disabled = true;
     } else {
       btnStart.disabled = false;
-      btnStart.classList.remove('opacity-50', 'cursor-not-allowed');
+      btnStart.classList.remove('opacity-40', 'cursor-not-allowed');
       btnStop.disabled = true;
-      btnStop.classList.add('bg-slate-200', 'text-slate-400', 'cursor-not-allowed');
+      btnStop.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
       btnStop.classList.remove('bg-rose-600', 'hover:bg-rose-700', 'text-white', 'cursor-pointer');
-      btnStop.innerHTML = '<span>⏹️</span><span>Detener Seguro</span>';
+      btnStop.textContent = 'Detener';
       schemaSelect.disabled = false;
       tableInput.disabled = false;
       filterSelect.disabled = false;
@@ -694,7 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateTableCountsDisplay(counts);
       }
     } catch (err) {
-      console.warn('Error refrescando conteos:', err);
+      console.warn('Error al refrescar conteos:', err);
     }
   }
 
@@ -705,6 +706,5 @@ document.addEventListener('DOMContentLoaded', () => {
     return div.innerHTML;
   }
 
-  // Arrancar
   init();
 });

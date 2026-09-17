@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MPCH - ETL de Migración Catastral con IA</title>
+  <title>MPCH - Normalización Catastral de Direcciones</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            mpch: {
-              50: '#f0fdf4',
-              100: '#dcfce7',
-              500: '#22c55e',
-              700: '#15803d',
-              800: '#166534',
-              900: '#14532d',
+            brand: {
+              50: '#f8fafc',
+              100: '#f1f5f9',
+              500: '#0f766e',
+              600: '#0d9488',
+              700: '#115e59',
+              900: '#134e4a',
             }
           }
         }
@@ -24,255 +24,258 @@
     }
   </script>
   <style>
-    .record-card {
-      transition: all 0.25s ease-in-out;
+    .result-row {
+      transition: background-color 0.15s ease;
     }
-    .record-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-    }
-    /* Scrollbar personalizada */
     ::-webkit-scrollbar {
-      width: 8px;
-      height: 8px;
+      width: 6px;
+      height: 6px;
     }
     ::-webkit-scrollbar-track {
-      background: #f1f5f9;
+      background: #f8fafc;
     }
     ::-webkit-scrollbar-thumb {
       background: #cbd5e1;
-      border-radius: 4px;
+      border-radius: 3px;
     }
     ::-webkit-scrollbar-thumb:hover {
       background: #94a3b8;
     }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
 
-  <!-- ENCABEZADO INSTITUCIONAL -->
-  <header class="bg-slate-900 text-white border-b-4 border-emerald-600 shadow-md sticky top-0 z-50">
+  <!-- CABECERA INSTITUCIONAL -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center space-x-3">
-        <div class="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center font-black text-xl shadow text-white">
-          🏛️
+        <div class="w-9 h-9 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
+          MPCH
         </div>
         <div>
-          <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-            MUNICIPALIDAD PROVINCIAL DE CHICLAYO
-            <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-700 text-emerald-100 uppercase tracking-wider">ETL Catastral IA</span>
+          <h1 class="text-base font-semibold text-slate-900 leading-tight">
+            Municipalidad Provincial de Chiclayo
           </h1>
-          <p class="text-xs text-slate-300">
-            Normalización In-Place de Direcciones • Motor Híbrido IA Local (Ollama) & Catastro Oficial
+          <p class="text-xs text-slate-500">
+            Sistema de Normalización y Homologación Catastral de Direcciones
           </p>
         </div>
       </div>
 
-      <!-- BADGES DE SALUD DEL SISTEMA -->
-      <div class="flex items-center gap-2.5 text-xs font-medium">
-        <div id="db-status-pill" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" id="db-indicator"></span>
-          <span>BD: <b id="db-name" class="text-white">Conectando...</b></span>
+      <!-- ESTADO DE SERVICIOS -->
+      <div class="flex items-center gap-2 text-xs">
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700">
+          <span id="db-indicator" class="w-2 h-2 rounded-full bg-slate-400"></span>
+          <span>BD: <span id="db-name" class="font-medium">Conectando...</span></span>
         </div>
-        <div id="ai-status-pill" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse" id="ai-indicator"></span>
-          <span>IA: <b id="ai-name" class="text-white">Verificando...</b></span>
+
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700">
+          <span id="ai-indicator" class="w-2 h-2 rounded-full bg-slate-400"></span>
+          <span>Servicio IA: <span id="ai-name" class="font-medium">Verificando...</span></span>
         </div>
-        <div id="status-pill" class="px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700 font-bold uppercase text-slate-300">
-          ESTADO: <span id="status-text" class="text-emerald-400">INACTIVO</span>
+
+        <div class="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700">
+          Estado: <span id="status-text" class="font-semibold text-slate-900">En espera</span>
         </div>
       </div>
     </div>
   </header>
 
   <!-- CONTENIDO PRINCIPAL -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex-1 w-full space-y-5">
 
-    <!-- PANEL DE CONFIGURACIÓN Y EJECUCIÓN -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-      <div class="bg-gradient-to-r from-slate-50 to-slate-100 px-6 py-3.5 border-b border-slate-200 flex items-center justify-between">
+    <!-- PANEL DE CONFIGURACIÓN -->
+    <div class="bg-white rounded-lg border border-slate-200 shadow-xs">
+      <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
         <div class="flex items-center space-x-2">
-          <span class="text-slate-600 font-bold text-sm uppercase tracking-wide">⚙️ Parámetros de Ejecución</span>
-          <span id="active-schema-badge" class="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-0.5 rounded-full border border-emerald-300">
-            Esquema: public
+          <span class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Parámetros del Proceso</span>
+          <span id="active-schema-badge" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+            public.direcciones_actual
           </span>
         </div>
-        <button id="btn-quick-diag" class="text-xs text-slate-600 hover:text-emerald-700 font-medium flex items-center gap-1 transition">
-          <span>🩺 Diagnóstico Rápido</span>
+        <button type="button" id="btn-quick-diag" class="text-xs text-slate-500 hover:text-slate-800 font-medium">
+          Verificar conexiones
         </button>
       </div>
 
-      <div class="p-6">
-        <form id="etl-form" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
-          <!-- Esquema -->
-          <div class="lg:col-span-1">
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="schema-select">
-              Esquema Destino
-            </label>
-            <select id="schema-select" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border">
-              <option value="public" selected>public</option>
-            </select>
-          </div>
+      <div class="p-5">
+        <form id="etl-form" class="space-y-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3.5">
+            <!-- Esquema -->
+            <div class="lg:col-span-1">
+              <label class="block text-xs font-medium text-slate-600 mb-1" for="schema-select">
+                Esquema
+              </label>
+              <select id="schema-select" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border focus:border-slate-500 focus:ring-1 focus:ring-slate-500">
+                <option value="public" selected>public</option>
+              </select>
+            </div>
 
-          <!-- Tabla -->
-          <div class="lg:col-span-1">
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="table-input">
-              Tabla Origen
-            </label>
-            <input type="text" id="table-input" value="direcciones_actual" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border font-mono" />
-          </div>
+            <!-- Tabla -->
+            <div class="lg:col-span-1">
+              <label class="block text-xs font-medium text-slate-600 mb-1" for="table-input">
+                Tabla
+              </label>
+              <input type="text" id="table-input" value="direcciones_actual" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border font-mono focus:border-slate-500 focus:ring-1 focus:ring-slate-500" />
+            </div>
 
-          <!-- Filtro de Reanudación -->
-          <div class="lg:col-span-1">
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="filter-select">
-              Filtro / Reanudar
-            </label>
-            <select id="filter-select" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border font-semibold">
-              <option value="pending" selected>⚡ Solo Pendientes (NULL) [Opción 3]</option>
-              <option value="observed">⚠️ Solo Observados</option>
-              <option value="all">🔄 Todos los Registros</option>
-            </select>
-          </div>
+            <!-- Filtro de registros -->
+            <div class="lg:col-span-2">
+              <label class="block text-xs font-medium text-slate-600 mb-1" for="filter-select">
+                Modo de selección
+              </label>
+              <select id="filter-select" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border font-medium focus:border-slate-500 focus:ring-1 focus:ring-slate-500">
+                <option value="pending" selected>Pendientes de procesar (Recomendado)</option>
+                <option value="observed">Observados para reevaluar</option>
+                <option value="all">Todos los registros (Reevaluar completo)</option>
+              </select>
+            </div>
 
-          <!-- Límite -->
-          <div class="lg:col-span-1">
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="limit-input">
-              Límite (Vacío=Todos)
-            </label>
-            <input type="number" id="limit-input" placeholder="Todos (o ej: 10)" min="1" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border" />
-            <div class="flex items-center gap-1 mt-1 text-[11px] text-slate-400">
-              <span>Atajos:</span>
-              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="10">10</button>
-              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="50">50</button>
-              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="100">100</button>
-              <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold" data-limit="">Todos</button>
+            <!-- Límite de registros -->
+            <div class="lg:col-span-1">
+              <label class="block text-xs font-medium text-slate-600 mb-1" for="limit-input">
+                Cantidad a procesar
+              </label>
+              <input type="number" id="limit-input" placeholder="Todos" min="1" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border focus:border-slate-500 focus:ring-1 focus:ring-slate-500" />
+              <div class="flex items-center gap-1 mt-1 text-[11px] text-slate-400">
+                <span>Atajos:</span>
+                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="10">10</button>
+                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="50">50</button>
+                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="100">100</button>
+                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="">Todos</button>
+              </div>
+            </div>
+
+            <!-- Tamaño de lote -->
+            <div class="lg:col-span-1">
+              <label class="block text-xs font-medium text-slate-600 mb-1" for="batch-input">
+                Lote por bloque
+              </label>
+              <input type="number" id="batch-input" value="10" min="1" max="100" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border focus:border-slate-500 focus:ring-1 focus:ring-slate-500" />
             </div>
           </div>
 
-          <!-- Tamaño de Lote -->
-          <div class="lg:col-span-1">
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5" for="batch-input">
-              Tamaño de Lote
-            </label>
-            <input type="number" id="batch-input" value="10" min="1" max="100" class="w-full rounded-lg border-slate-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500 text-sm bg-white p-2 border" />
-          </div>
+          <!-- FILA INFERIOR: OPCIONES Y BOTONES DE ACCIÓN -->
+          <div class="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-3">
+            <div class="flex items-center space-x-2">
+              <input type="checkbox" id="require-ai-checkbox" checked class="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500" />
+              <label for="require-ai-checkbox" class="text-xs text-slate-600 select-none cursor-pointer">
+                Exigir validación estricta con IA (detener si el servicio no responde)
+              </label>
+            </div>
 
-          <!-- Switch Modo IA -->
-          <div class="lg:col-span-1 flex flex-col justify-end">
-            <label class="flex items-center space-x-2 cursor-pointer select-none pb-2">
-              <input type="checkbox" id="require-ai-checkbox" checked class="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" />
-              <span class="text-xs font-bold text-slate-700 uppercase">Modo IA Estricto</span>
-            </label>
-          </div>
+            <div class="flex items-center gap-2.5">
+              <button type="button" id="btn-stop" disabled class="px-4 py-2 rounded-md font-medium text-xs bg-slate-100 text-slate-400 cursor-not-allowed transition">
+                Detener
+              </button>
 
-          <!-- BOTONES DE ACCIÓN -->
-          <div class="lg:col-span-6 flex flex-wrap items-center justify-end gap-3 pt-3 border-t border-slate-100">
-            <button type="button" id="btn-stop" disabled class="px-5 py-2.5 rounded-lg font-bold text-sm bg-slate-200 text-slate-400 cursor-not-allowed transition flex items-center gap-2">
-              <span>⏹️</span>
-              <span>Detener Seguro</span>
-            </button>
-
-            <button type="submit" id="btn-start" class="px-6 py-2.5 rounded-lg font-bold text-sm bg-emerald-600 hover:bg-emerald-700 text-white shadow-md hover:shadow-lg transition flex items-center gap-2">
-              <span>⚡</span>
-              <span>Iniciar Procesamiento ETL</span>
-            </button>
+              <button type="submit" id="btn-start" class="px-5 py-2 rounded-md font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition">
+                Iniciar normalización
+              </button>
+            </div>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- TARJETAS DE CONTEO Y MÉTRICAS (KPIS) -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Total BD</div>
-        <div id="stat-total-bd" class="text-2xl font-black text-slate-800 mt-1">-</div>
-        <div class="text-xs text-slate-400 mt-0.5">En tabla origen</div>
+    <!-- TARJETAS DE MÉTRICAS -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
+        <div class="text-[11px] font-medium text-slate-500">Total en tabla</div>
+        <div id="stat-total-bd" class="text-xl font-semibold text-slate-900 mt-1">-</div>
+        <div class="text-[11px] text-slate-400 mt-0.5">Registros registrados</div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">A Procesar</div>
-        <div id="stat-to-process" class="text-2xl font-black text-blue-600 mt-1">0</div>
-        <div class="text-xs text-slate-400 mt-0.5">Objetivo actual</div>
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
+        <div class="text-[11px] font-medium text-slate-500">Por procesar</div>
+        <div id="stat-to-process" class="text-xl font-semibold text-slate-900 mt-1">0</div>
+        <div class="text-[11px] text-slate-400 mt-0.5">Según filtro actual</div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-emerald-200 bg-emerald-50/30">
-        <div class="text-xs font-bold text-emerald-700 uppercase tracking-wider">Válidos ✅</div>
-        <div id="stat-valid" class="text-2xl font-black text-emerald-700 mt-1">0</div>
-        <div id="stat-valid-pct" class="text-xs text-emerald-600 font-semibold mt-0.5">0.0%</div>
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
+        <div class="text-[11px] font-medium text-slate-500">Validados en catastro</div>
+        <div id="stat-valid" class="text-xl font-semibold text-emerald-700 mt-1">0</div>
+        <div id="stat-valid-pct" class="text-[11px] text-emerald-600 mt-0.5">0.0%</div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-amber-200 bg-amber-50/30">
-        <div class="text-xs font-bold text-amber-700 uppercase tracking-wider">Observados ⚠️</div>
-        <div id="stat-observed" class="text-2xl font-black text-amber-600 mt-1">0</div>
-        <div id="stat-observed-pct" class="text-xs text-amber-600 font-semibold mt-0.5">0.0%</div>
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
+        <div class="text-[11px] font-medium text-slate-500">Observados</div>
+        <div id="stat-observed" class="text-xl font-semibold text-amber-700 mt-1">0</div>
+        <div id="stat-observed-pct" class="text-[11px] text-amber-600 mt-0.5">0.0%</div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-purple-200 bg-purple-50/30">
-        <div class="text-xs font-bold text-purple-700 uppercase tracking-wider">Inferencia IA 🤖</div>
-        <div id="stat-ai-count" class="text-2xl font-black text-purple-700 mt-1">0</div>
-        <div class="text-xs text-purple-600 font-semibold mt-0.5" id="stat-ai-model">patroclo</div>
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
+        <div class="text-[11px] font-medium text-slate-500">Resolución con IA</div>
+        <div id="stat-ai-count" class="text-xl font-semibold text-slate-700 mt-1">0</div>
+        <div class="text-[11px] text-slate-400 mt-0.5" id="stat-ai-model">patroclo</div>
       </div>
 
-      <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Tiempo / Lote</div>
-        <div id="stat-elapsed" class="text-2xl font-black text-slate-700 mt-1">0s</div>
-        <div class="text-xs text-slate-400 mt-0.5" id="stat-speed">-</div>
+      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
+        <div class="text-[11px] font-medium text-slate-500">Tiempo de ejecución</div>
+        <div id="stat-elapsed" class="text-xl font-semibold text-slate-700 mt-1">0s</div>
+        <div class="text-[11px] text-slate-400 mt-0.5" id="stat-speed">-</div>
       </div>
     </div>
 
-    <!-- BARRA DE PROGRESO EN VIVO -->
-    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-2">
-      <div class="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-slate-600">
-        <span id="progress-status-label">Progreso de la Ejecución</span>
-        <span id="progress-percentage-label" class="text-emerald-700 font-black">0%</span>
+    <!-- BARRA DE PROGRESO -->
+    <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1.5">
+      <div class="flex justify-between items-center text-xs font-medium text-slate-600">
+        <span id="progress-status-label">Progreso</span>
+        <span id="progress-percentage-label" class="font-semibold text-slate-900">0%</span>
       </div>
-      <div class="w-full bg-slate-200 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-300">
-        <div id="progress-bar-fill" class="bg-gradient-to-r from-emerald-500 to-teal-500 h-full rounded-full transition-all duration-300 ease-out" style="width: 0%"></div>
+      <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+        <div id="progress-bar-fill" class="bg-slate-800 h-full rounded-full transition-all duration-200 ease-out" style="width: 0%"></div>
       </div>
-      <div class="flex justify-between items-center text-xs text-slate-500">
+      <div class="flex justify-between items-center text-[11px] text-slate-500">
         <span id="progress-count-label">0 de 0 registros</span>
-        <span id="progress-pending-label">Pendientes restantes: -</span>
+        <span id="progress-pending-label">Pendientes: -</span>
       </div>
     </div>
 
-    <!-- SECCIÓN DE RESULTADOS REGISTRO POR REGISTRO Y LOGS -->
-    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[460px]">
-      <!-- PESTAÑAS Y FILTROS DEL FEED -->
-      <div class="border-b border-slate-200 bg-slate-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+    <!-- SECCIÓN DE RESULTADOS -->
+    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col min-h-[460px]">
+      <!-- BARRA SUPERIOR DE PESTAÑAS Y BÚSQUEDA INTERACTIVA -->
+      <div class="border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
         <div class="flex items-center space-x-2">
-          <button id="tab-btn-records" class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-sm border border-slate-200 flex items-center gap-1.5 transition">
-            <span>📋 Registro por Registro</span>
-            <span id="badge-records-count" class="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[10px]">0</span>
+          <button id="tab-btn-records" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 border border-slate-200 shadow-2xs transition">
+            Resultados (<span id="badge-records-count">0</span>)
           </button>
-          <button id="tab-btn-logs" class="px-3.5 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-slate-900 border border-transparent transition flex items-center gap-1.5">
-            <span>📜 Consola de Logs</span>
+          <button id="tab-btn-logs" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 border border-transparent transition">
+            Registro de eventos (Logs)
           </button>
         </div>
 
-        <!-- Filtros rápidos para las tarjetas -->
-        <div id="cards-filter-controls" class="flex items-center space-x-1.5 text-xs">
-          <span class="text-slate-400 font-medium">Ver:</span>
-          <button data-filter="all" class="filter-chip px-2.5 py-1 rounded bg-slate-200 text-slate-800 font-semibold text-xs">Todos</button>
-          <button data-filter="valid" class="filter-chip px-2.5 py-1 rounded hover:bg-slate-200 text-slate-600 font-semibold text-xs">Solo Válidos ✅</button>
-          <button data-filter="observed" class="filter-chip px-2.5 py-1 rounded hover:bg-slate-200 text-slate-600 font-semibold text-xs">Solo Observados ⚠️</button>
-          <button id="btn-clear-feed" class="ml-2 text-xs text-slate-400 hover:text-red-500 underline font-medium">Limpiar</button>
+        <!-- FILTROS Y BÚSQUEDA EN TIEMPO REAL -->
+        <div class="flex items-center space-x-2 text-xs">
+          <input
+            type="text"
+            id="search-filter-input"
+            placeholder="Filtrar por ID, vía, zona o texto..."
+            class="px-2.5 py-1 text-xs border border-slate-300 rounded-md bg-white focus:border-slate-500 focus:outline-none w-56 placeholder-slate-400"
+          />
+
+          <div id="cards-filter-controls" class="flex items-center space-x-1 border-l border-slate-200 pl-2">
+            <button data-filter="all" class="filter-chip px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-medium text-xs">Todos</button>
+            <button data-filter="valid" class="filter-chip px-2 py-0.5 rounded text-slate-600 hover:bg-slate-200 font-medium text-xs">Validados</button>
+            <button data-filter="observed" class="filter-chip px-2 py-0.5 rounded text-slate-600 hover:bg-slate-200 font-medium text-xs">Observados</button>
+            <button id="btn-clear-feed" class="ml-1 text-[11px] text-slate-400 hover:text-slate-700 underline">Limpiar</button>
+          </div>
         </div>
       </div>
 
-      <!-- VISTA 1: FEED DE TARJETAS DE REGISTRO POR REGISTRO -->
-      <div id="view-records" class="p-4 overflow-y-auto max-h-[600px] flex-1 space-y-3">
-        <div id="empty-state" class="py-16 text-center text-slate-400 space-y-2">
-          <div class="text-4xl">📬</div>
-          <p class="text-sm font-semibold">Esperando inicio de procesamiento...</p>
-          <p class="text-xs">Los registros normalizados aparecerán aquí en vivo con sus datos catastrales oficiales.</p>
+      <!-- VISTA 1: LISTADO DE RESULTADOS INTERACTIVO -->
+      <div id="view-records" class="p-4 overflow-y-auto max-h-[600px] flex-1 space-y-2.5">
+        <div id="empty-state" class="py-16 text-center text-slate-400 space-y-1">
+          <p class="text-sm font-medium text-slate-600">No hay registros procesados en esta sesión.</p>
+          <p class="text-xs text-slate-400">Presiona "Iniciar normalización" para comenzar a procesar el lote configurado.</p>
         </div>
-        <div id="records-container" class="space-y-3"></div>
+        <div id="records-container" class="space-y-2.5"></div>
       </div>
 
-      <!-- VISTA 2: CONSOLA DE LOGS EN VIVO -->
-      <div id="view-logs" class="p-4 bg-slate-950 text-slate-200 font-mono text-xs overflow-y-auto max-h-[600px] flex-1 hidden space-y-1">
+      <!-- VISTA 2: CONSOLA DE LOGS -->
+      <div id="view-logs" class="p-4 bg-slate-900 text-slate-200 font-mono text-xs overflow-y-auto max-h-[600px] flex-1 hidden space-y-1">
         <div id="logs-container" class="space-y-1">
-          <div class="text-slate-500">[SISTEMA] Consola de eventos iniciada. Conectando a SSE...</div>
+          <div class="text-slate-400">[Sistema] Consola de eventos iniciada.</div>
         </div>
       </div>
     </div>
@@ -280,32 +283,30 @@
   </main>
 
   <!-- PIE DE PÁGINA -->
-  <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500">
-    Municipalidad Provincial de Chiclayo • Gerencia de Desarrollo Urbano & Catastro • Sistema ETL v2.0
+  <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400">
+    Municipalidad Provincial de Chiclayo &bull; Gerencia de Desarrollo Urbano & Catastro &bull; 2026
   </footer>
 
-  <!-- MODAL DE DIAGNÓSTICO RÁPIDO -->
-  <div id="diag-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 space-y-4">
-      <div class="flex justify-between items-center border-b border-slate-100 pb-3">
-        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
-          <span>🩺 Diagnóstico de Salud del Sistema</span>
-        </h3>
-        <button id="btn-close-diag" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+  <!-- MODAL DE DIAGNÓSTICO -->
+  <div id="diag-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-lg max-w-lg w-full p-5 shadow-lg border border-slate-200 space-y-3.5">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-2.5">
+        <h3 class="text-sm font-semibold text-slate-900">Estado de Conexiones</h3>
+        <button id="btn-close-diag" class="text-slate-400 hover:text-slate-600 text-base">&times;</button>
       </div>
-      <div id="diag-content" class="text-xs space-y-3 text-slate-700">
-        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-          <p class="font-bold text-slate-800">Conexión PostgreSQL:</p>
-          <p id="diag-db-detail" class="mt-1 text-slate-600 font-mono">Verificando...</p>
+      <div class="text-xs space-y-2.5 text-slate-700">
+        <div class="p-3 bg-slate-50 rounded border border-slate-200">
+          <div class="font-medium text-slate-800">Base de datos (PostgreSQL):</div>
+          <div id="diag-db-detail" class="mt-1 text-slate-600 font-mono text-[11px]">Verificando...</div>
         </div>
-        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
-          <p class="font-bold text-slate-800">Modelo IA Ollama:</p>
-          <p id="diag-ai-detail" class="mt-1 text-slate-600 font-mono">Comprobando inferencia...</p>
+        <div class="p-3 bg-slate-50 rounded border border-slate-200">
+          <div class="font-medium text-slate-800">Servicio de inferencia (Ollama):</div>
+          <div id="diag-ai-detail" class="mt-1 text-slate-600 font-mono text-[11px]">Comprobando...</div>
         </div>
       </div>
-      <div class="flex justify-end pt-2">
-        <button id="btn-run-sample-ai" class="px-4 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 transition">
-          Probar Inferencia IA en Vivo
+      <div class="flex justify-end pt-1">
+        <button id="btn-run-sample-ai" class="px-3.5 py-1.5 bg-slate-900 text-white rounded text-xs font-medium hover:bg-slate-800 transition">
+          Probar inferencia con dirección de prueba
         </button>
       </div>
     </div>
