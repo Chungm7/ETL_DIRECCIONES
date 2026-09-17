@@ -3,315 +3,663 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>MPCH - Normalización Catastral de Direcciones</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              50: '#f8fafc',
-              100: '#f1f5f9',
-              500: '#0f766e',
-              600: '#0d9488',
-              700: '#115e59',
-              900: '#134e4a',
-            }
-          }
-        }
-      }
-    }
-  </script>
+  <title>MPCH - Normalización de Direcciones</title>
   <style>
-    .result-row {
-      transition: background-color 0.15s ease;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --blue:    #1d4ed8;
+      --blue-lt: #3b82f6;
+      --blue-bg: #eff6ff;
+      --green:   #15803d;
+      --green-lt:#22c55e;
+      --green-bg:#f0fdf4;
+      --amber:   #b45309;
+      --amber-lt:#f59e0b;
+      --amber-bg:#fffbeb;
+      --red:     #b91c1c;
+      --red-lt:  #ef4444;
+      --red-bg:  #fef2f2;
+      --gray:    #374151;
+      --gray-lt: #6b7280;
+      --gray-bg: #f9fafb;
+      --border:  #e5e7eb;
+      --white:   #ffffff;
+      --radius:  8px;
+      --shadow:  0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
     }
-    ::-webkit-scrollbar {
-      width: 6px;
-      height: 6px;
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f3f4f6;
+      color: var(--gray);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
     }
-    ::-webkit-scrollbar-track {
-      background: #f8fafc;
+
+    /* ── Header ── */
+    header {
+      background: var(--blue);
+      color: white;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.18);
     }
-    ::-webkit-scrollbar-thumb {
-      background: #cbd5e1;
-      border-radius: 3px;
+    header .logo {
+      width: 40px; height: 40px;
+      background: rgba(255,255,255,.18);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 20px; font-weight: 700; letter-spacing: -1px;
     }
-    ::-webkit-scrollbar-thumb:hover {
-      background: #94a3b8;
+    header h1 { font-size: 17px; font-weight: 600; }
+    header p  { font-size: 12px; opacity: .75; margin-top: 1px; }
+
+    /* ── Wizard Steps Bar ── */
+    .wizard-bar {
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 0 24px;
+      display: flex;
+      gap: 0;
+      overflow-x: auto;
+    }
+    .step-tab {
+      display: flex; align-items: center; gap: 8px;
+      padding: 14px 20px 12px;
+      border-bottom: 3px solid transparent;
+      cursor: default;
+      white-space: nowrap;
+      font-size: 13px;
+      color: var(--gray-lt);
+      user-select: none;
+      transition: color .15s, border-color .15s;
+    }
+    .step-tab .num {
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      background: #e5e7eb;
+      color: var(--gray-lt);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-weight: 700;
+      transition: background .15s, color .15s;
+    }
+    .step-tab.active {
+      color: var(--blue);
+      border-bottom-color: var(--blue);
+    }
+    .step-tab.active .num {
+      background: var(--blue);
+      color: white;
+    }
+    .step-tab.done {
+      color: var(--green);
+    }
+    .step-tab.done .num {
+      background: var(--green);
+      color: white;
+    }
+
+    /* ── Main ── */
+    main {
+      flex: 1;
+      max-width: 900px;
+      width: 100%;
+      margin: 28px auto;
+      padding: 0 20px;
+    }
+
+    .panel {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+      margin-bottom: 20px;
+    }
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--gray);
+      margin-bottom: 18px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Forms ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .form-grid .full { grid-column: 1 / -1; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--gray);
+      margin-bottom: 5px;
+      letter-spacing: .3px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      color: var(--gray);
+      background: white;
+      transition: border-color .15s, box-shadow .15s;
+      outline: none;
+    }
+    .field input:focus, .field select:focus {
+      border-color: var(--blue-lt);
+      box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+    }
+    .field input::placeholder { color: #9ca3af; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 20px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+    .btn-primary { background: var(--blue); color: white; }
+    .btn-primary:hover:not(:disabled) { background: #1e40af; }
+    .btn-green  { background: var(--green); color: white; }
+    .btn-green:hover:not(:disabled)  { background: #166534; }
+    .btn-red    { background: var(--red); color: white; }
+    .btn-red:hover:not(:disabled)    { background: #991b1b; }
+    .btn-ghost  { background: transparent; color: var(--gray); border: 1px solid var(--border); }
+    .btn-ghost:hover:not(:disabled)  { background: var(--gray-bg); }
+
+    /* ── Alert banner ── */
+    .alert {
+      padding: 10px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      margin-bottom: 14px;
+      border-left: 3px solid;
+    }
+    .alert-error  { background: var(--red-bg);   border-color: var(--red-lt);   color: var(--red); }
+    .alert-ok     { background: var(--green-bg);  border-color: var(--green-lt); color: var(--green); }
+    .alert-info   { background: var(--blue-bg);   border-color: var(--blue-lt);  color: var(--blue); }
+    .alert-warn   { background: var(--amber-bg);  border-color: var(--amber-lt); color: var(--amber); }
+    .hidden { display: none !important; }
+
+    /* ── Schema/Table cards grid ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .card-item {
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      background: white;
+    }
+    .card-item:hover { border-color: var(--blue-lt); background: var(--blue-bg); }
+    .card-item.selected { border-color: var(--blue); background: var(--blue-bg); }
+    .card-item .card-name { font-size: 14px; font-weight: 600; color: var(--gray); margin-bottom: 4px; }
+    .card-item .card-meta { font-size: 12px; color: var(--gray-lt); }
+
+    /* ── Table inspection ── */
+    .table-columns {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+    .col-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      background: var(--gray-bg);
+      border: 1px solid var(--border);
+      color: var(--gray);
+    }
+    .col-badge.id-col    { background: var(--blue-bg); border-color: var(--blue-lt); color: var(--blue); }
+    .col-badge.addr-col  { background: var(--green-bg); border-color: var(--green-lt); color: var(--green); }
+
+    /* ── Preview table ── */
+    .preview-wrap {
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 12px;
+    }
+    .preview-wrap table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    .preview-wrap th {
+      background: var(--gray-bg);
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+      color: var(--gray-lt);
+      border-bottom: 1px solid var(--border);
+    }
+    .preview-wrap td {
+      padding: 7px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      max-width: 400px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .preview-wrap tr:last-child td { border-bottom: none; }
+    .preview-wrap tr:hover td { background: var(--gray-bg); }
+
+    /* ── KPI cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .kpi {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      background: white;
+    }
+    .kpi .kpi-label { font-size: 11px; font-weight: 600; color: var(--gray-lt); letter-spacing: .4px; text-transform: uppercase; margin-bottom: 4px; }
+    .kpi .kpi-val   { font-size: 26px; font-weight: 700; color: var(--gray); line-height: 1; }
+    .kpi.blue  { border-top: 3px solid var(--blue);    } .kpi.blue  .kpi-val { color: var(--blue);  }
+    .kpi.green { border-top: 3px solid var(--green-lt); } .kpi.green .kpi-val { color: var(--green); }
+    .kpi.amber { border-top: 3px solid var(--amber-lt); } .kpi.amber .kpi-val { color: var(--amber); }
+    .kpi.red   { border-top: 3px solid var(--red-lt);  } .kpi.red   .kpi-val { color: var(--red);   }
+
+    /* ── Progress bar ── */
+    .progress-bar-wrap {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-bottom: 6px;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--blue-lt);
+      border-radius: 4px;
+      transition: width .3s ease;
+    }
+
+    /* ── Log feed ── */
+    .log-feed {
+      background: #1e293b;
+      color: #cbd5e1;
+      border-radius: var(--radius);
+      padding: 14px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      height: 200px;
+      overflow-y: auto;
+    }
+    .log-feed .log-ok   { color: #86efac; }
+    .log-feed .log-err  { color: #fca5a5; }
+    .log-feed .log-warn { color: #fde68a; }
+    .log-feed .log-info { color: #93c5fd; }
+
+    /* ── Records feed ── */
+    .records-feed { margin-top: 16px; }
+    .record-row {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 8px 10px;
+      border-radius: 6px;
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      animation: fadeIn .2s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+    .record-row:last-child { border-bottom: none; }
+    .record-row:hover { background: var(--gray-bg); }
+    .record-badge {
+      flex-shrink: 0;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+    .badge-ok   { background: var(--green-bg); color: var(--green); }
+    .badge-obs  { background: var(--amber-bg); color: var(--amber); }
+    .badge-err  { background: var(--red-bg);   color: var(--red);   }
+    .badge-ai   { background: var(--blue-bg);  color: var(--blue);  }
+    .record-text { flex: 1; color: var(--gray); word-break: break-word; }
+    .record-text .orig { font-weight: 600; }
+    .record-text .normalized { color: var(--gray-lt); font-size: 12px; }
+
+    .records-list { max-height: 360px; overflow-y: auto; }
+
+    /* ── AI status badge ── */
+    .ai-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 10px; border-radius: 12px;
+      font-size: 12px; font-weight: 600;
+    }
+    .ai-on  { background: var(--green-bg); color: var(--green); }
+    .ai-off { background: var(--red-bg);   color: var(--red);   }
+    .dot { width: 7px; height: 7px; border-radius: 50%; }
+    .dot-green { background: var(--green-lt); }
+    .dot-red   { background: var(--red-lt); }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Section separator ── */
+    .section-header {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--gray-lt);
+      letter-spacing: .3px;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+      margin-top: 20px;
+    }
+
+    @media (max-width: 640px) {
+      .kpi-grid { grid-template-columns: 1fr 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
-<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col font-sans">
+<body>
 
-  <!-- CABECERA INSTITUCIONAL -->
-  <header class="bg-white border-b border-slate-200 sticky top-0 z-40">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
-      <div class="flex items-center space-x-3">
-        <div class="w-9 h-9 rounded-md bg-slate-900 text-white flex items-center justify-center font-bold text-sm">
-          MPCH
+<!-- HEADER -->
+<header>
+  <div class="logo">MP</div>
+  <div>
+    <h1>Normalización Catastral de Direcciones</h1>
+    <p>Municipalidad Provincial de Chiclayo — ETL In-Place</p>
+  </div>
+</header>
+
+<!-- WIZARD STEPS BAR -->
+<div class="wizard-bar" id="wizardBar">
+  <div class="step-tab active" id="tab1">
+    <span class="num">1</span> Conexión a BD
+  </div>
+  <div class="step-tab" id="tab2">
+    <span class="num">2</span> Esquema
+  </div>
+  <div class="step-tab" id="tab3">
+    <span class="num">3</span> Tabla de Direcciones
+  </div>
+  <div class="step-tab" id="tab4">
+    <span class="num">4</span> Ejecución ETL
+  </div>
+</div>
+
+<!-- MAIN -->
+<main>
+
+  <!-- ════ PASO 1: CONEXIÓN ════ -->
+  <div id="step1">
+    <div class="panel">
+      <div class="panel-title">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l2.5 2.5"/></svg>
+        Conexión a la Base de Datos
+      </div>
+
+      <div id="alertConnect"></div>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Servidor (Host)</label>
+          <input type="text" id="db_host" value="localhost" placeholder="localhost" />
         </div>
-        <div>
-          <h1 class="text-base font-semibold text-slate-900 leading-tight">
-            Municipalidad Provincial de Chiclayo
-          </h1>
-          <p class="text-xs text-slate-500">
-            Sistema de Normalización y Homologación Catastral de Direcciones
-          </p>
+        <div class="field">
+          <label>Puerto</label>
+          <input type="number" id="db_port" value="5432" placeholder="5432" />
+        </div>
+        <div class="field">
+          <label>Base de Datos</label>
+          <input type="text" id="db_name" value="bd_mpch" placeholder="bd_mpch" />
+        </div>
+        <div class="field">
+          <label>Usuario</label>
+          <input type="text" id="db_user" value="postgres" placeholder="postgres" />
+        </div>
+        <div class="field full">
+          <label>Contraseña</label>
+          <input type="password" id="db_pass" value="postgres" placeholder="••••••••" />
         </div>
       </div>
 
-      <!-- ESTADO DE SERVICIOS -->
-      <div class="flex items-center gap-2 text-xs">
-        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700">
-          <span id="db-indicator" class="w-2 h-2 rounded-full bg-slate-400"></span>
-          <span>BD: <span id="db-name" class="font-medium">Conectando...</span></span>
-        </div>
-
-        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700">
-          <span id="ai-indicator" class="w-2 h-2 rounded-full bg-slate-400"></span>
-          <span>Servicio IA: <span id="ai-name" class="font-medium">Verificando...</span></span>
-        </div>
-
-        <div class="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 text-slate-700">
-          Estado: <span id="status-text" class="font-semibold text-slate-900">En espera</span>
-        </div>
-      </div>
-    </div>
-  </header>
-
-  <!-- CONTENIDO PRINCIPAL -->
-  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5 flex-1 w-full space-y-5">
-
-    <!-- PANEL DE CONFIGURACIÓN -->
-    <div class="bg-white rounded-lg border border-slate-200 shadow-xs">
-      <div class="px-5 py-3 border-b border-slate-100 flex items-center justify-between">
-        <div class="flex items-center space-x-2">
-          <span class="text-xs font-semibold text-slate-700 uppercase tracking-wider">Parámetros del Proceso</span>
-          <span id="active-schema-badge" class="text-xs bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-            public.direcciones_actual
-          </span>
-        </div>
-        <button type="button" id="btn-quick-diag" class="text-xs text-slate-500 hover:text-slate-800 font-medium">
-          Verificar conexiones
+      <div style="margin-top:20px; display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-primary" id="btnConnect" onclick="connectDB()">
+          Conectar y continuar
         </button>
+        <span id="spinConnect" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color: var(--blue);"></div></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ PASO 2: ESQUEMA ════ -->
+  <div id="step2" class="hidden">
+    <div class="panel">
+      <div class="panel-title">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="16" height="12" rx="2"/><path d="M6 5V3h8v2"/></svg>
+        Seleccionar Esquema
       </div>
 
-      <div class="p-5">
-        <form id="etl-form" class="space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-3.5">
-            <!-- Esquema -->
-            <div class="lg:col-span-1">
-              <label class="block text-xs font-medium text-slate-600 mb-1" for="schema-select">
-                Esquema
-              </label>
-              <select id="schema-select" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border focus:border-slate-500 focus:ring-1 focus:ring-slate-500">
-                <option value="public" selected>public</option>
-              </select>
-            </div>
+      <div id="alertSchema"></div>
+      <p style="font-size:13px; color:var(--gray-lt); margin-bottom:16px;">
+        Seleccione el esquema donde reside la tabla de direcciones que desea normalizar.
+      </p>
 
-            <!-- Tabla -->
-            <div class="lg:col-span-1">
-              <label class="block text-xs font-medium text-slate-600 mb-1" for="table-input">
-                Tabla
-              </label>
-              <input type="text" id="table-input" value="direcciones_actual" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border font-mono focus:border-slate-500 focus:ring-1 focus:ring-slate-500" />
-            </div>
+      <div class="cards-grid" id="schemaCards"></div>
 
-            <!-- Filtro de registros -->
-            <div class="lg:col-span-2">
-              <label class="block text-xs font-medium text-slate-600 mb-1" for="filter-select">
-                Modo de selección
-              </label>
-              <select id="filter-select" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border font-medium focus:border-slate-500 focus:ring-1 focus:ring-slate-500">
-                <option value="pending" selected>Pendientes de procesar (Recomendado)</option>
-                <option value="observed">Observados para reevaluar</option>
-                <option value="all">Todos los registros (Reevaluar completo)</option>
-              </select>
-            </div>
+      <div style="margin-top:8px; display:flex; gap:10px;">
+        <button class="btn btn-ghost" onclick="goStep(1)">Volver</button>
+        <button class="btn btn-primary" id="btnSchema" onclick="inspectSchema()" disabled>
+          Continuar con este esquema
+        </button>
+        <span id="spinSchema" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color:var(--blue);"></div></span>
+      </div>
+    </div>
+  </div>
 
-            <!-- Límite de registros -->
-            <div class="lg:col-span-1">
-              <label class="block text-xs font-medium text-slate-600 mb-1" for="limit-input">
-                Cantidad a procesar
-              </label>
-              <input type="number" id="limit-input" placeholder="Todos" min="1" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border focus:border-slate-500 focus:ring-1 focus:ring-slate-500" />
-              <div class="flex items-center gap-1 mt-1 text-[11px] text-slate-400">
-                <span>Atajos:</span>
-                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="10">10</button>
-                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="50">50</button>
-                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="100">100</button>
-                <button type="button" class="limit-shortcut px-1.5 py-0.5 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium" data-limit="">Todos</button>
-              </div>
-            </div>
+  <!-- ════ PASO 3: TABLA ════ -->
+  <div id="step3" class="hidden">
+    <div class="panel">
+      <div class="panel-title">
+        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 7h16M6 3v14"/></svg>
+        Identificar Tabla de Direcciones
+      </div>
 
-            <!-- Tamaño de lote -->
-            <div class="lg:col-span-1">
-              <label class="block text-xs font-medium text-slate-600 mb-1" for="batch-input">
-                Lote por bloque
-              </label>
-              <input type="number" id="batch-input" value="10" min="1" max="100" class="w-full rounded-md border-slate-300 shadow-xs text-xs bg-white p-2 border focus:border-slate-500 focus:ring-1 focus:ring-slate-500" />
-            </div>
+      <div id="alertTable"></div>
+
+      <p style="font-size:13px; color:var(--gray-lt); margin-bottom:14px;">
+        Esquema seleccionado: <strong id="labelSchema" style="color:var(--blue)"></strong>
+      </p>
+
+      <div class="section-header">Tablas disponibles</div>
+      <div class="cards-grid" id="tableCards"></div>
+
+      <!-- Configuración de columnas -->
+      <div id="colConfig" class="hidden" style="margin-top:16px; padding:16px; background:var(--blue-bg); border:1px solid #bfdbfe; border-radius:8px;">
+        <p style="font-size:13px; font-weight:600; color:var(--blue); margin-bottom:12px;">
+          Configurar columnas de la tabla: <strong id="labelTable"></strong>
+        </p>
+        <div class="form-grid">
+          <div class="field">
+            <label>Columna ID (identificador único)</label>
+            <select id="sel_id_col"></select>
           </div>
-
-          <!-- FILA INFERIOR: OPCIONES Y BOTONES DE ACCIÓN -->
-          <div class="flex flex-wrap items-center justify-between pt-2 border-t border-slate-100 gap-3">
-            <div class="flex items-center space-x-2">
-              <input type="checkbox" id="require-ai-checkbox" checked class="h-4 w-4 rounded border-slate-300 text-slate-800 focus:ring-slate-500" />
-              <label for="require-ai-checkbox" class="text-xs text-slate-600 select-none cursor-pointer">
-                Exigir validación estricta con IA (detener si el servicio no responde)
-              </label>
-            </div>
-
-            <div class="flex items-center gap-2.5">
-              <button type="button" id="btn-stop" disabled class="px-4 py-2 rounded-md font-medium text-xs bg-slate-100 text-slate-400 cursor-not-allowed transition">
-                Detener
-              </button>
-
-              <button type="submit" id="btn-start" class="px-5 py-2 rounded-md font-semibold text-xs bg-slate-900 hover:bg-slate-800 text-white shadow-xs transition">
-                Iniciar normalización
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <!-- TARJETAS DE MÉTRICAS -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
-        <div class="text-[11px] font-medium text-slate-500">Total en tabla</div>
-        <div id="stat-total-bd" class="text-xl font-semibold text-slate-900 mt-1">-</div>
-        <div class="text-[11px] text-slate-400 mt-0.5">Registros registrados</div>
-      </div>
-
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
-        <div class="text-[11px] font-medium text-slate-500">Por procesar</div>
-        <div id="stat-to-process" class="text-xl font-semibold text-slate-900 mt-1">0</div>
-        <div class="text-[11px] text-slate-400 mt-0.5">Según filtro actual</div>
-      </div>
-
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
-        <div class="text-[11px] font-medium text-slate-500">Validados en catastro</div>
-        <div id="stat-valid" class="text-xl font-semibold text-emerald-700 mt-1">0</div>
-        <div id="stat-valid-pct" class="text-[11px] text-emerald-600 mt-0.5">0.0%</div>
-      </div>
-
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
-        <div class="text-[11px] font-medium text-slate-500">Observados</div>
-        <div id="stat-observed" class="text-xl font-semibold text-amber-700 mt-1">0</div>
-        <div id="stat-observed-pct" class="text-[11px] text-amber-600 mt-0.5">0.0%</div>
-      </div>
-
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
-        <div class="text-[11px] font-medium text-slate-500">Resolución con IA</div>
-        <div id="stat-ai-count" class="text-xl font-semibold text-slate-700 mt-1">0</div>
-        <div class="text-[11px] text-slate-400 mt-0.5" id="stat-ai-model">patroclo</div>
-      </div>
-
-      <div class="bg-white p-3.5 rounded-lg border border-slate-200">
-        <div class="text-[11px] font-medium text-slate-500">Tiempo de ejecución</div>
-        <div id="stat-elapsed" class="text-xl font-semibold text-slate-700 mt-1">0s</div>
-        <div class="text-[11px] text-slate-400 mt-0.5" id="stat-speed">-</div>
-      </div>
-    </div>
-
-    <!-- BARRA DE PROGRESO -->
-    <div class="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1.5">
-      <div class="flex justify-between items-center text-xs font-medium text-slate-600">
-        <span id="progress-status-label">Progreso</span>
-        <span id="progress-percentage-label" class="font-semibold text-slate-900">0%</span>
-      </div>
-      <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-        <div id="progress-bar-fill" class="bg-slate-800 h-full rounded-full transition-all duration-200 ease-out" style="width: 0%"></div>
-      </div>
-      <div class="flex justify-between items-center text-[11px] text-slate-500">
-        <span id="progress-count-label">0 de 0 registros</span>
-        <span id="progress-pending-label">Pendientes: -</span>
-      </div>
-    </div>
-
-    <!-- SECCIÓN DE RESULTADOS -->
-    <div class="bg-white rounded-lg border border-slate-200 overflow-hidden flex flex-col min-h-[460px]">
-      <!-- BARRA SUPERIOR DE PESTAÑAS Y BÚSQUEDA INTERACTIVA -->
-      <div class="border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
-        <div class="flex items-center space-x-2">
-          <button id="tab-btn-records" class="px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 border border-slate-200 shadow-2xs transition">
-            Resultados (<span id="badge-records-count">0</span>)
-          </button>
-          <button id="tab-btn-logs" class="px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 border border-transparent transition">
-            Registro de eventos (Logs)
-          </button>
-        </div>
-
-        <!-- FILTROS Y BÚSQUEDA EN TIEMPO REAL -->
-        <div class="flex items-center space-x-2 text-xs">
-          <input
-            type="text"
-            id="search-filter-input"
-            placeholder="Filtrar por ID, vía, zona o texto..."
-            class="px-2.5 py-1 text-xs border border-slate-300 rounded-md bg-white focus:border-slate-500 focus:outline-none w-56 placeholder-slate-400"
-          />
-
-          <div id="cards-filter-controls" class="flex items-center space-x-1 border-l border-slate-200 pl-2">
-            <button data-filter="all" class="filter-chip px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-medium text-xs">Todos</button>
-            <button data-filter="valid" class="filter-chip px-2 py-0.5 rounded text-slate-600 hover:bg-slate-200 font-medium text-xs">Validados</button>
-            <button data-filter="observed" class="filter-chip px-2 py-0.5 rounded text-slate-600 hover:bg-slate-200 font-medium text-xs">Observados</button>
-            <button id="btn-clear-feed" class="ml-1 text-[11px] text-slate-400 hover:text-slate-700 underline">Limpiar</button>
+          <div class="field">
+            <label>Columna Dirección (texto completo)</label>
+            <select id="sel_addr_col"></select>
           </div>
         </div>
+        <button class="btn btn-primary" style="margin-top:14px;" id="btnPreview" onclick="previewTable()">
+          Ver vista previa
+        </button>
+        <span id="spinPreview" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color:var(--blue);"></div></span>
       </div>
 
-      <!-- VISTA 1: LISTADO DE RESULTADOS INTERACTIVO -->
-      <div id="view-records" class="p-4 overflow-y-auto max-h-[600px] flex-1 space-y-2.5">
-        <div id="empty-state" class="py-16 text-center text-slate-400 space-y-1">
-          <p class="text-sm font-medium text-slate-600">No hay registros procesados en esta sesión.</p>
-          <p class="text-xs text-slate-400">Presiona "Iniciar normalización" para comenzar a procesar el lote configurado.</p>
-        </div>
-        <div id="records-container" class="space-y-2.5"></div>
-      </div>
-
-      <!-- VISTA 2: CONSOLA DE LOGS -->
-      <div id="view-logs" class="p-4 bg-slate-900 text-slate-200 font-mono text-xs overflow-y-auto max-h-[600px] flex-1 hidden space-y-1">
-        <div id="logs-container" class="space-y-1">
-          <div class="text-slate-400">[Sistema] Consola de eventos iniciada.</div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-
-  <!-- PIE DE PÁGINA -->
-  <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400">
-    Municipalidad Provincial de Chiclayo &bull; Gerencia de Desarrollo Urbano & Catastro &bull; 2026
-  </footer>
-
-  <!-- MODAL DE DIAGNÓSTICO -->
-  <div id="diag-modal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4 hidden">
-    <div class="bg-white rounded-lg max-w-lg w-full p-5 shadow-lg border border-slate-200 space-y-3.5">
-      <div class="flex justify-between items-center border-b border-slate-100 pb-2.5">
-        <h3 class="text-sm font-semibold text-slate-900">Estado de Conexiones</h3>
-        <button id="btn-close-diag" class="text-slate-400 hover:text-slate-600 text-base">&times;</button>
-      </div>
-      <div class="text-xs space-y-2.5 text-slate-700">
-        <div class="p-3 bg-slate-50 rounded border border-slate-200">
-          <div class="font-medium text-slate-800">Base de datos (PostgreSQL):</div>
-          <div id="diag-db-detail" class="mt-1 text-slate-600 font-mono text-[11px]">Verificando...</div>
-        </div>
-        <div class="p-3 bg-slate-50 rounded border border-slate-200">
-          <div class="font-medium text-slate-800">Servicio de inferencia (Ollama):</div>
-          <div id="diag-ai-detail" class="mt-1 text-slate-600 font-mono text-[11px]">Comprobando...</div>
+      <!-- Preview -->
+      <div id="previewSection" class="hidden" style="margin-top:16px;">
+        <div class="section-header">Vista previa de registros</div>
+        <div id="tableCountInfo" style="display:flex; gap:14px; margin-bottom:10px; flex-wrap:wrap;"></div>
+        <div class="preview-wrap">
+          <table id="previewTable">
+            <thead><tr><th>ID</th><th>Dirección</th></tr></thead>
+            <tbody id="previewBody"></tbody>
+          </table>
         </div>
       </div>
-      <div class="flex justify-end pt-1">
-        <button id="btn-run-sample-ai" class="px-3.5 py-1.5 bg-slate-900 text-white rounded text-xs font-medium hover:bg-slate-800 transition">
-          Probar inferencia con dirección de prueba
+
+      <div style="margin-top:20px; display:flex; gap:10px;">
+        <button class="btn btn-ghost" onclick="goStep(2)">Volver</button>
+        <button class="btn btn-green" id="btnConfirmTable" onclick="confirmTable()" disabled>
+          Confirmar tabla y continuar
         </button>
       </div>
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <!-- ════ PASO 4: EJECUCIÓN ════ -->
+  <div id="step4" class="hidden">
+
+    <!-- Resumen de configuración -->
+    <div class="panel" style="padding:16px 20px;">
+      <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between;">
+        <div>
+          <span style="font-size:12px; color:var(--gray-lt); font-weight:600;">TABLA OBJETIVO</span>
+          <div style="font-size:15px; font-weight:700; color:var(--gray); margin-top:2px;">
+            <span id="summSchema" style="color:var(--blue)"></span>.<span id="summTable"></span>
+          </div>
+          <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;">
+            ID: <strong id="summId"></strong> &nbsp;|&nbsp; Dirección: <strong id="summAddr"></strong>
+          </div>
+        </div>
+        <div id="aiStatusBadge"></div>
+      </div>
+    </div>
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+      <div class="kpi blue">
+        <div class="kpi-label">Procesados</div>
+        <div class="kpi-val" id="kpiProcessed">0</div>
+      </div>
+      <div class="kpi green">
+        <div class="kpi-label">Normalizados</div>
+        <div class="kpi-val" id="kpiValid">0</div>
+      </div>
+      <div class="kpi amber">
+        <div class="kpi-label">Observados</div>
+        <div class="kpi-val" id="kpiObserved">0</div>
+      </div>
+      <div class="kpi red">
+        <div class="kpi-label">Con error</div>
+        <div class="kpi-val" id="kpiFailed">0</div>
+      </div>
+    </div>
+
+    <!-- Progreso + controles -->
+    <div class="panel">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+        <div>
+          <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px;">Panel de Ejecución</div>
+          <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;" id="statusLabel">En espera</div>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+          <!-- Controles de configuración ETL -->
+          <div style="display:flex; gap:8px; align-items:center;">
+            <div class="field" style="margin:0; min-width:90px;">
+              <label style="font-size:11px;">Límite</label>
+              <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:13px;" />
+            </div>
+            <div class="field" style="margin:0; min-width:80px;">
+              <label style="font-size:11px;">Lote</label>
+              <input type="number" id="inp_batch" value="50" min="1" max="100" style="padding:6px 8px; font-size:13px;" />
+            </div>
+            <div class="field" style="margin:0;">
+              <label style="font-size:11px;">Filtro</label>
+              <select id="inp_filter" style="padding:6px 8px; font-size:13px;">
+                <option value="pending">Pendientes</option>
+                <option value="all">Todos</option>
+                <option value="observed">Observados</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-green" id="btnStart" onclick="startETL()">Iniciar ETL</button>
+          <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>Detener</button>
+          <button class="btn btn-ghost" onclick="goStep(3)">Cambiar tabla</button>
+        </div>
+      </div>
+
+      <div class="progress-bar-wrap">
+        <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+      </div>
+      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--gray-lt); margin-bottom:14px;">
+        <span id="progressLabel">0 de 0 registros</span>
+        <span id="elapsedLabel">—</span>
+      </div>
+
+      <!-- Log de actividad -->
+      <div class="section-header">Actividad del proceso</div>
+      <div class="log-feed" id="logFeed"></div>
+    </div>
+
+    <!-- Registros procesados -->
+    <div class="panel">
+      <div class="panel-title" style="justify-content:space-between;">
+        <span>Registros procesados</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="text" id="searchRec" placeholder="Buscar..." style="padding:5px 10px; font-size:12px; border:1px solid var(--border); border-radius:5px; width:160px;" oninput="filterRecords()" />
+          <select id="filterStatus" style="padding:5px 8px; font-size:12px; border:1px solid var(--border); border-radius:5px;" onchange="filterRecords()">
+            <option value="">Todos</option>
+            <option value="ok">Normalizados</option>
+            <option value="obs">Observados</option>
+            <option value="err">Con error</option>
+          </select>
+        </div>
+      </div>
+      <div class="records-list" id="recordsList">
+        <p style="text-align:center; color:var(--gray-lt); padding:30px; font-size:13px;">
+          Los registros procesados aparecerán aquí durante la ejecución.
+        </p>
+      </div>
+    </div>
+
+  </div><!-- /step4 -->
+
+</main>
+
+<script src="/static/app.js"></script>
 </body>
 </html>

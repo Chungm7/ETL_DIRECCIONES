@@ -1,710 +1,554 @@
 /**
- * MPCH ETL - Cliente Frontend y Receptor en Tiempo Real
- * Interfaz profesional, limpia e interactiva para normalización de direcciones.
+ * app.js — Lógica del wizard ETL MPCH
+ * Flujo: Conexión → Esquema → Tabla → Ejecución ETL (SSE en tiempo real)
  */
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Elementos del formulario y controles
-  const form = document.getElementById('etl-form');
-  const schemaSelect = document.getElementById('schema-select');
-  const tableInput = document.getElementById('table-input');
-  const filterSelect = document.getElementById('filter-select');
-  const limitInput = document.getElementById('limit-input');
-  const batchInput = document.getElementById('batch-input');
-  const requireAiCheckbox = document.getElementById('require-ai-checkbox');
+// ── Estado del wizard ────────────────────────────────────────────────────────
+const wiz = {
+  step: 1,
+  schema: null,
+  table: null,
+  id_col: null,
+  addr_col: null,
+  columns: [],
+  allRecords: [],
+  evtSource: null,
+};
 
-  const btnStart = document.getElementById('btn-start');
-  const btnStop = document.getElementById('btn-stop');
-  const btnQuickDiag = document.getElementById('btn-quick-diag');
-  const btnCloseDiag = document.getElementById('btn-close-diag');
-  const btnRunSampleAi = document.getElementById('btn-run-sample-ai');
-  const btnClearFeed = document.getElementById('btn-clear-feed');
-  const searchFilterInput = document.getElementById('search-filter-input');
+// ── Navegación entre pasos ───────────────────────────────────────────────────
+function goStep(n) {
+  // Ocultar todos los pasos
+  [1, 2, 3, 4].forEach(i => {
+    document.getElementById(`step${i}`).classList.add('hidden');
+    const tab = document.getElementById(`tab${i}`);
+    tab.classList.remove('active', 'done');
+    if (i < n) tab.classList.add('done');
+  });
 
-  // Indicadores de estado
-  const dbIndicator = document.getElementById('db-indicator');
-  const dbName = document.getElementById('db-name');
-  const aiIndicator = document.getElementById('ai-indicator');
-  const aiName = document.getElementById('ai-name');
-  const statusText = document.getElementById('status-text');
-  const activeSchemaBadge = document.getElementById('active-schema-badge');
+  // Mostrar paso activo
+  document.getElementById(`step${n}`).classList.remove('hidden');
+  document.getElementById(`tab${n}`).classList.add('active');
+  wiz.step = n;
 
-  // KPIs
-  const statTotalBd = document.getElementById('stat-total-bd');
-  const statToProcess = document.getElementById('stat-to-process');
-  const statValid = document.getElementById('stat-valid');
-  const statValidPct = document.getElementById('stat-valid-pct');
-  const statObserved = document.getElementById('stat-observed');
-  const statObservedPct = document.getElementById('stat-observed-pct');
-  const statAiCount = document.getElementById('stat-ai-count');
-  const statAiModel = document.getElementById('stat-ai-model');
-  const statElapsed = document.getElementById('stat-elapsed');
-  const statSpeed = document.getElementById('stat-speed');
-
-  // Barra de progreso
-  const progressBarFill = document.getElementById('progress-bar-fill');
-  const progressPercentageLabel = document.getElementById('progress-percentage-label');
-  const progressCountLabel = document.getElementById('progress-count-label');
-  const progressPendingLabel = document.getElementById('progress-pending-label');
-  const progressStatusLabel = document.getElementById('progress-status-label');
-
-  // Vistas y contenedores
-  const tabBtnRecords = document.getElementById('tab-btn-records');
-  const tabBtnLogs = document.getElementById('tab-btn-logs');
-  const viewRecords = document.getElementById('view-records');
-  const viewLogs = document.getElementById('view-logs');
-  const recordsContainer = document.getElementById('records-container');
-  const logsContainer = document.getElementById('logs-container');
-  const emptyState = document.getElementById('empty-state');
-  const badgeRecordsCount = document.getElementById('badge-records-count');
-  const diagModal = document.getElementById('diag-modal');
-  const diagDbDetail = document.getElementById('diag-db-detail');
-  const diagAiDetail = document.getElementById('diag-ai-detail');
-
-  // Filtros
-  const filterChips = document.querySelectorAll('.filter-chip');
-  let currentCardFilter = 'all';
-  let currentSearchQuery = '';
-
-  // Estado
-  let isRunning = false;
-  let recordsList = [];
-  let eventSource = null;
-  let latestCounts = null;
-
-  // ==========================================
-  // INICIALIZACIÓN
-  // ==========================================
-
-  async function init() {
-    await loadStatus();
-    connectSSE();
-    setupEventHandlers();
+  // Marcar completados
+  for (let i = 1; i < n; i++) {
+    document.getElementById(`tab${i}`).classList.add('done');
+    document.getElementById(`tab${i}`).classList.remove('active');
   }
 
-  async function loadStatus() {
-    try {
-      const res = await fetch('/api/status');
-      if (!res.ok) throw new Error('Error al consultar estado');
-      const data = await res.json();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-      // Esquemas disponibles
-      if (data.available_schemas && data.available_schemas.length > 0) {
-        schemaSelect.innerHTML = '';
-        data.available_schemas.forEach(s => {
-          const opt = document.createElement('option');
-          opt.value = s;
-          opt.textContent = s;
-          if (s === data.active_schema) opt.selected = true;
-          schemaSelect.appendChild(opt);
-        });
-      }
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function showAlert(containerId, msg, type = 'error') {
+  const el = document.getElementById(containerId);
+  if (!msg) { el.innerHTML = ''; return; }
+  el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+}
 
-      // Conexión Base de Datos
-      if (data.db.connected) {
-        dbIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        dbName.textContent = data.db.schema;
-        diagDbDetail.textContent = `Conectado a PostgreSQL en esquema '${data.db.schema}' (Tabla disponible: ${data.db.table_exists ? 'Sí' : 'No'})`;
-      } else {
-        dbIndicator.className = 'w-2 h-2 rounded-full bg-rose-500';
-        dbName.textContent = 'Sin conexión';
-        diagDbDetail.textContent = `Fallo de conexión: ${data.db.message}`;
-      }
+function setLoading(btnId, spinId, loading) {
+  const btn = document.getElementById(btnId);
+  const spin = document.getElementById(spinId);
+  if (btn)  btn.disabled = loading;
+  if (spin) spin.classList.toggle('hidden', !loading);
+}
 
-      // Servicio de IA
-      statAiModel.textContent = data.ai.model || 'patroclo';
-      if (data.ai.connected) {
-        aiIndicator.className = 'w-2 h-2 rounded-full bg-emerald-500';
-        aiName.textContent = data.ai.model;
-        diagAiDetail.textContent = `Disponible: ${data.ai.message}`;
-      } else {
-        aiIndicator.className = 'w-2 h-2 rounded-full bg-amber-500';
-        aiName.textContent = 'Fuera de línea';
-        diagAiDetail.textContent = `Aviso: ${data.ai.message}`;
-      }
+function kpi(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val !== undefined && val !== null ? val : 0;
+}
 
-      // Valores activos en el formulario
-      if (data.active_schema) {
-        schemaSelect.value = data.active_schema;
-      }
-      if (data.active_table) {
-        tableInput.value = data.active_table;
-      }
+// ── PASO 1: Conexión ─────────────────────────────────────────────────────────
+async function connectDB() {
+  showAlert('alertConnect', '');
+  setLoading('btnConnect', 'spinConnect', true);
 
-      // Actualizar conteos
-      updateTableCountsDisplay(data.table_counts);
-      activeSchemaBadge.textContent = `${data.active_schema || 'public'}.${data.active_table || 'direcciones_actual'}`;
+  const body = {
+    host:     document.getElementById('db_host').value.trim() || 'localhost',
+    port:     parseInt(document.getElementById('db_port').value) || 5432,
+    dbname:   document.getElementById('db_name').value.trim() || 'bd_mpch',
+    user:     document.getElementById('db_user').value.trim() || 'postgres',
+    password: document.getElementById('db_pass').value,
+  };
 
-      // Registros previos si existieran
-      if (data.recent_records && data.recent_records.length > 0 && recordsList.length === 0) {
-        data.recent_records.forEach(r => renderRecordCard(r));
-      }
+  try {
+    const res = await fetch('/api/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
 
-      // Estado de ejecución activo
-      if (data.running) {
-        setRunningState(true);
-        updateStatsDisplay(data.stats);
-      }
-    } catch (err) {
-      console.error('Error cargando estado:', err);
-      appendLog(`[Error] No se pudo comunicar con el servidor: ${err.message}`);
-    }
-  }
-
-  function updateTableCountsDisplay(counts) {
-    if (!counts) return;
-    latestCounts = counts;
-
-    const total = counts.total != null ? Number(counts.total) : 0;
-    const pendientes = counts.pendientes != null ? Number(counts.pendientes) : 0;
-    const validos = counts.validos != null ? Number(counts.validos) : 0;
-    const observados = counts.observados != null ? Number(counts.observados) : 0;
-
-    statTotalBd.textContent = total.toLocaleString();
-
-    if (!isRunning) {
-      statValid.textContent = validos.toLocaleString();
-      statObserved.textContent = observados.toLocaleString();
-
-      const validPct = total > 0 ? ((validos / total) * 100).toFixed(1) : '0.0';
-      const obsPct = total > 0 ? ((observados / total) * 100).toFixed(1) : '0.0';
-      statValidPct.textContent = `${validPct}%`;
-      statObservedPct.textContent = `${obsPct}%`;
-
-      recalcTargetToProcess();
+    if (!res.ok) {
+      showAlert('alertConnect', data.detail || 'No se pudo conectar.', 'error');
+      return;
     }
 
-    progressPendingLabel.textContent = `Pendientes: ${pendientes.toLocaleString()}`;
+    // Renderizar tarjetas de esquemas
+    renderSchemaCards(data.schemas || []);
+    showAlert('alertConnect', '');
+    goStep(2);
+    showAlert('alertSchema', `Conectado a <strong>${body.dbname}</strong> en ${body.host}:${body.port}. Seleccione un esquema.`, 'ok');
+
+  } catch (e) {
+    showAlert('alertConnect', `Error de red: ${e.message}`, 'error');
+  } finally {
+    setLoading('btnConnect', 'spinConnect', false);
+  }
+}
+
+// ── PASO 2: Esquema ──────────────────────────────────────────────────────────
+function renderSchemaCards(schemas) {
+  const grid = document.getElementById('schemaCards');
+  grid.innerHTML = '';
+
+  if (!schemas.length) {
+    grid.innerHTML = '<p style="color:var(--gray-lt); font-size:13px;">No se encontraron esquemas disponibles.</p>';
+    return;
   }
 
-  function recalcTargetToProcess() {
-    if (!latestCounts || isRunning) return;
-
-    const total = latestCounts.total != null ? Number(latestCounts.total) : 0;
-    const pendientes = latestCounts.pendientes != null ? Number(latestCounts.pendientes) : 0;
-    const observados = latestCounts.observados != null ? Number(latestCounts.observados) : 0;
-
-    const filter = filterSelect ? filterSelect.value : 'pending';
-    let pool = pendientes;
-    if (filter === 'observed') {
-      pool = observados;
-    } else if (filter === 'all') {
-      pool = total;
-    }
-
-    const rawLimit = limitInput ? limitInput.value.trim() : '';
-    const limitNum = (rawLimit !== '' && !isNaN(rawLimit)) ? parseInt(rawLimit, 10) : null;
-    const target = limitNum ? Math.min(limitNum, pool) : pool;
-
-    statToProcess.textContent = target.toLocaleString();
-    progressCountLabel.textContent = `0 de ${target.toLocaleString()} registros`;
-  }
-
-  // ==========================================
-  // CONEXIÓN SSE
-  // ==========================================
-
-  function connectSSE() {
-    if (eventSource) {
-      eventSource.close();
-    }
-
-    eventSource = new EventSource('/api/stream');
-
-    eventSource.onopen = () => {
-      appendLog('[Sistema] Canal de eventos en vivo conectado.');
-    };
-
-    eventSource.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        handleServerEvent(msg);
-      } catch (err) {
-        console.warn('Mensaje SSE no JSON:', e.data);
-      }
-    };
-
-    eventSource.onerror = () => {
-      // Reconexión automática nativa
-    };
-  }
-
-  function handleServerEvent(event) {
-    const { type, payload } = event;
-
-    switch (type) {
-      case 'record':
-        renderRecordCard(payload);
-        break;
-
-      case 'stats':
-        updateStatsDisplay(payload);
-        break;
-
-      case 'log':
-        appendLog(payload);
-        break;
-
-      case 'done':
-        setRunningState(false);
-        statusText.textContent = 'Completado';
-        statusText.className = 'font-semibold text-emerald-700';
-        progressStatusLabel.textContent = 'Proceso finalizado correctamente';
-        appendLog('[Sistema] Proceso de normalización finalizado.');
-        refreshCounts();
-        break;
-
-      case 'error':
-        setRunningState(false);
-        statusText.textContent = 'Detenido con error';
-        statusText.className = 'font-semibold text-rose-600';
-        appendLog(`[Error] ${payload.error}`);
-        alert(`Aviso: ${payload.error}`);
-        break;
-
-      default:
-        break;
-    }
-  }
-
-  // ==========================================
-  // RENDERIZADO DE RESULTADOS
-  // ==========================================
-
-  function renderRecordCard(rec) {
-    if (emptyState) emptyState.style.display = 'none';
-
-    recordsList.unshift(rec);
-    if (recordsList.length > 400) recordsList.pop();
-
-    badgeRecordsCount.textContent = recordsList.length;
-
-    const isValid = !!rec.es_procesado;
-    const cardStatus = isValid ? 'valid' : 'observed';
-
+  schemas.forEach(s => {
     const card = document.createElement('div');
-    card.className = `result-row rounded-lg p-3.5 border text-xs transition bg-white ${
-      isValid ? 'border-slate-200 hover:border-slate-300' : 'border-amber-200 bg-amber-50/20'
-    }`;
+    card.className = 'card-item';
+    card.innerHTML = `
+      <div class="card-name">${s}</div>
+      <div class="card-meta">esquema PostgreSQL</div>
+    `;
+    card.onclick = () => {
+      document.querySelectorAll('.card-item[data-schema]').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      wiz.schema = s;
+      document.getElementById('btnSchema').disabled = false;
+    };
+    card.setAttribute('data-schema', s);
+    grid.appendChild(card);
+  });
+}
 
-    // Atributos de búsqueda y filtrado
-    card.setAttribute('data-status', cardStatus);
-    const searchCorpus = [
-      rec.id_licencia,
-      rec.raw_text,
-      rec.nom_via,
-      rec.nom_zona,
-      rec.observacion,
-    ].filter(Boolean).join(' ').toLowerCase();
-    card.setAttribute('data-search', searchCorpus);
+async function inspectSchema() {
+  if (!wiz.schema) return;
+  showAlert('alertSchema', '');
+  setLoading('btnSchema', 'spinSchema', true);
 
-    // Estado de visibilidad inicial
-    applyItemVisibility(card, cardStatus, searchCorpus);
+  try {
+    const res = await fetch('/api/inspect-schema', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ schema_name: wiz.schema }),
+    });
+    const data = await res.json();
 
-    // Método utilizado
-    let methodLabel = rec.metodo || 'Reglas';
-    if (methodLabel.includes('IA')) methodLabel = 'IA';
-    else if (methodLabel.includes('Híbrido')) methodLabel = 'Híbrido';
-    else methodLabel = 'Heurística';
-
-    // Badges de estado
-    const statusBadge = isValid
-      ? `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-           Validado en catastro
-         </span>`
-      : `<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-amber-50 text-amber-800 border border-amber-200">
-           Observado
-         </span>`;
-
-    // Datos de Vía
-    const viaText = rec.nom_via
-      ? `<span class="font-medium text-slate-900">${escapeHtml(rec.nom_via)}</span> ${rec.num_via ? `<span class="text-slate-600 font-mono">#${escapeHtml(rec.num_via)}</span>` : ''}`
-      : `<span class="text-slate-400 italic">No determinada</span>`;
-    const viaIdBadge = rec.id_via
-      ? `<span class="text-[10px] text-slate-500 font-mono font-medium">(ID: ${rec.id_via})</span>`
-      : '';
-
-    // Datos de Zona
-    const zonaText = rec.nom_zona
-      ? `<span class="font-medium text-slate-900">${escapeHtml(rec.nom_zona)}</span>`
-      : `<span class="text-slate-400 italic">No determinada</span>`;
-    const zonaIdBadge = rec.id_zona
-      ? `<span class="text-[10px] text-slate-500 font-mono font-medium">(ID: ${rec.id_zona})</span>`
-      : '';
-
-    // Mz y Lote
-    const parts = [];
-    if (rec.manzana) parts.push(`Mz. ${escapeHtml(rec.manzana)}`);
-    if (rec.lote) parts.push(`Lt. ${escapeHtml(rec.lote)}`);
-    if (rec.slote) parts.push(`Slote. ${escapeHtml(rec.slote)}`);
-    const mzLtText = parts.length > 0 ? parts.join(', ') : '<span class="text-slate-400">-</span>';
-
-    // Alerta de observación si corresponde
-    let obsBox = '';
-    if (!isValid && rec.observacion) {
-      obsBox = `
-        <div class="mt-2.5 p-2 rounded bg-amber-50 border border-amber-200 text-amber-900 text-[11px]">
-          <span class="font-semibold text-amber-950">Motivo:</span> ${escapeHtml(rec.observacion)}
-        </div>
-      `;
+    if (!res.ok) {
+      showAlert('alertSchema', data.detail || 'Error inspeccionando el esquema.', 'error');
+      return;
     }
 
+    renderTableCards(data.tables || []);
+    document.getElementById('labelSchema').textContent = wiz.schema;
+    goStep(3);
+
+  } catch (e) {
+    showAlert('alertSchema', `Error de red: ${e.message}`, 'error');
+  } finally {
+    setLoading('btnSchema', 'spinSchema', false);
+  }
+}
+
+// ── PASO 3: Tabla ────────────────────────────────────────────────────────────
+function renderTableCards(tables) {
+  const grid = document.getElementById('tableCards');
+  grid.innerHTML = '';
+
+  if (!tables.length) {
+    grid.innerHTML = '<p style="color:var(--gray-lt); font-size:13px;">No se encontraron tablas en este esquema.</p>';
+    return;
+  }
+
+  tables.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'card-item';
     card.innerHTML = `
-      <div class="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
-        <div class="flex items-center space-x-2">
-          <span class="px-1.5 py-0.5 text-[11px] font-mono font-bold bg-slate-100 text-slate-800 rounded border border-slate-200">
-            #${rec.id_licencia}
-          </span>
-          <span class="text-[11px] text-slate-400">
-            Registro ${rec.index} de ${rec.total}
-          </span>
-          <span class="px-1.5 py-0.5 text-[10px] rounded bg-slate-50 text-slate-600 border border-slate-200">
-            ${escapeHtml(methodLabel)}
-          </span>
-        </div>
-        <div>
-          ${statusBadge}
-        </div>
-      </div>
+      <div class="card-name">${t.name}</div>
+      <div class="card-meta">${t.row_count >= 0 ? t.row_count.toLocaleString() + ' registros' : 'N/A'}</div>
+      <div class="card-meta" style="margin-top:3px;">${t.columns.length} columnas</div>
+    `;
+    card.onclick = () => {
+      document.querySelectorAll('.card-item[data-table]').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      wiz.table = t.name;
+      wiz.columns = t.columns;
+      showColumnConfig(t);
+    };
+    card.setAttribute('data-table', t.name);
+    grid.appendChild(card);
+  });
+}
 
-      <!-- Dirección Original -->
-      <div class="mt-2">
-        <div class="text-[11px] text-slate-400 font-medium">Texto original:</div>
-        <div class="font-mono text-xs text-slate-800 bg-slate-50 px-2 py-1 rounded border border-slate-200 mt-0.5">
-          ${escapeHtml(rec.raw_text)}
-        </div>
-      </div>
+function showColumnConfig(tableInfo) {
+  const cfg = document.getElementById('colConfig');
+  cfg.classList.remove('hidden');
+  document.getElementById('labelTable').textContent = tableInfo.name;
 
-      <!-- Datos Catastrales -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-2.5 mt-2.5 pt-2 border-t border-slate-100 text-[11px]">
-        <div>
-          <span class="text-slate-400 block font-medium">Vía homologada:</span>
-          <div>${viaText} ${viaIdBadge}</div>
-        </div>
+  // Rellenar selects de columnas
+  const selId   = document.getElementById('sel_id_col');
+  const selAddr = document.getElementById('sel_addr_col');
+  selId.innerHTML = '';
+  selAddr.innerHTML = '';
 
-        <div>
-          <span class="text-slate-400 block font-medium">Zona / Habilitación:</span>
-          <div>${zonaText} ${zonaIdBadge}</div>
-        </div>
+  tableInfo.columns.forEach(col => {
+    const o1 = new Option(col.name + ' (' + col.type + ')', col.name);
+    const o2 = new Option(col.name + ' (' + col.type + ')', col.name);
+    selId.appendChild(o1);
+    selAddr.appendChild(o2);
+  });
 
-        <div>
-          <span class="text-slate-400 block font-medium">Manzana / Lote:</span>
-          <div>${mzLtText}</div>
-        </div>
-      </div>
+  // Heurística: pre-seleccionar columnas probables
+  const idHints   = ['id', 'id_', '_id', 'codigo', 'cod', 'pk', 'licencia', 'nro', 'correlativo'];
+  const addrHints = ['direccion', 'dir', 'address', 'emp_', 'domicilio', 'ubica'];
 
-      ${obsBox}
+  const bestId = tableInfo.columns.find(c =>
+    idHints.some(h => c.name.toLowerCase().includes(h))
+  );
+  const bestAddr = tableInfo.columns.find(c =>
+    addrHints.some(h => c.name.toLowerCase().includes(h))
+  );
+
+  if (bestId)   selId.value   = bestId.name;
+  if (bestAddr) selAddr.value = bestAddr.name;
+
+  // Ocultar preview anterior
+  document.getElementById('previewSection').classList.add('hidden');
+  document.getElementById('btnConfirmTable').disabled = true;
+}
+
+async function previewTable() {
+  const id_col   = document.getElementById('sel_id_col').value;
+  const addr_col = document.getElementById('sel_addr_col').value;
+
+  if (!id_col || !addr_col) {
+    showAlert('alertTable', 'Debe seleccionar la columna ID y la columna de dirección.', 'warn');
+    return;
+  }
+
+  showAlert('alertTable', '');
+  setLoading('btnPreview', 'spinPreview', true);
+
+  try {
+    const res = await fetch('/api/inspect-table', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        schema_name:  wiz.schema,
+        table_name:   wiz.table,
+        id_col,
+        address_col:  addr_col,
+      }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showAlert('alertTable', data.detail || 'Error al obtener vista previa.', 'error');
+      return;
+    }
+
+    wiz.id_col   = data.id_col;
+    wiz.addr_col = data.address_col;
+
+    // Mostrar conteos
+    const countDiv = document.getElementById('tableCountInfo');
+    const c = data.counts || {};
+    countDiv.innerHTML = `
+      <span style="font-size:13px;"><strong>${(c.total||0).toLocaleString()}</strong> total</span>
+      <span style="font-size:13px; color:var(--blue);"><strong>${(c.pendientes||0).toLocaleString()}</strong> pendientes</span>
+      <span style="font-size:13px; color:var(--green);"><strong>${(c.validos||0).toLocaleString()}</strong> normalizados</span>
+      <span style="font-size:13px; color:var(--amber);"><strong>${(c.observados||0).toLocaleString()}</strong> observados</span>
     `;
 
-    recordsContainer.insertBefore(card, recordsContainer.firstChild);
+    // Rellenar tabla preview
+    const tbody = document.getElementById('previewBody');
+    tbody.innerHTML = '';
+    (data.preview || []).forEach(row => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td style="font-family:monospace; color:var(--blue); font-weight:600;">${row.id ?? '—'}</td>
+        <td>${row.direccion ?? '—'}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    document.getElementById('previewSection').classList.remove('hidden');
+    document.getElementById('btnConfirmTable').disabled = false;
+
+  } catch (e) {
+    showAlert('alertTable', `Error de red: ${e.message}`, 'error');
+  } finally {
+    setLoading('btnPreview', 'spinPreview', false);
   }
+}
 
-  // ==========================================
-  // FILTRADO Y BÚSQUEDA INTERACTIVA
-  // ==========================================
+function confirmTable() {
+  if (!wiz.table || !wiz.id_col || !wiz.addr_col) return;
 
-  function applyItemVisibility(element, cardStatus, searchCorpus) {
-    const matchesFilter = currentCardFilter === 'all' || currentCardFilter === cardStatus;
-    const matchesSearch = !currentSearchQuery || searchCorpus.includes(currentSearchQuery);
+  // Actualizar resumen en paso 4
+  document.getElementById('summSchema').textContent  = wiz.schema;
+  document.getElementById('summTable').textContent   = wiz.table;
+  document.getElementById('summId').textContent      = wiz.id_col;
+  document.getElementById('summAddr').textContent    = wiz.addr_col;
 
-    if (matchesFilter && matchesSearch) {
-      element.style.display = 'block';
+  goStep(4);
+  initStep4();
+}
+
+// ── PASO 4: Ejecución ────────────────────────────────────────────────────────
+async function initStep4() {
+  // Verificar estado IA
+  try {
+    const res  = await fetch('/api/status');
+    const data = await res.json();
+    const ai   = data.ai || {};
+    const badge = document.getElementById('aiStatusBadge');
+    if (ai.connected && ai.installed) {
+      badge.innerHTML = `<span class="ai-badge ai-on"><span class="dot dot-green"></span>IA activa — ${ai.model}</span>`;
     } else {
-      element.style.display = 'none';
+      badge.innerHTML = `<span class="ai-badge ai-off"><span class="dot dot-red"></span>IA no disponible</span>`;
     }
-  }
+  } catch (_) {}
 
-  function filterAllItems() {
-    const cards = recordsContainer.querySelectorAll('.result-row');
-    cards.forEach(c => {
-      const status = c.getAttribute('data-status');
-      const searchCorpus = c.getAttribute('data-search') || '';
-      applyItemVisibility(c, status, searchCorpus);
-    });
-  }
+  // Conectar SSE si no está conectado
+  if (!wiz.evtSource) connectSSE();
+}
 
-  // ==========================================
-  // ACTUALIZACIÓN DE MÉTRICAS Y PROGRESO
-  // ==========================================
+function connectSSE() {
+  if (wiz.evtSource) { wiz.evtSource.close(); wiz.evtSource = null; }
 
-  function updateStatsDisplay(stats) {
-    if (!stats) return;
+  const es = new EventSource('/api/stream');
+  wiz.evtSource = es;
 
-    if (stats.total_to_process != null) {
-      statToProcess.textContent = Number(stats.total_to_process).toLocaleString();
-    }
-    if (stats.valid != null) {
-      statValid.textContent = Number(stats.valid).toLocaleString();
-    }
-    if (stats.observed != null) {
-      statObserved.textContent = Number(stats.observed).toLocaleString();
-    }
-    if (stats.ai_records != null) {
-      statAiCount.textContent = Number(stats.ai_records).toLocaleString();
-    }
-
-    const total = stats.total_to_process || 0;
-    const processed = stats.processed || 0;
-    const valid = stats.valid || 0;
-    const observed = stats.observed || 0;
-
-    if (total > 0) {
-      const pct = Math.min(100, Math.round((processed / total) * 100));
-      progressBarFill.style.width = `${pct}%`;
-      progressPercentageLabel.textContent = `${pct}%`;
-      progressCountLabel.textContent = `${processed.toLocaleString()} de ${total.toLocaleString()} registros`;
-
-      const validPct = ((valid / total) * 100).toFixed(1);
-      const obsPct = ((observed / total) * 100).toFixed(1);
-      statValidPct.textContent = `${validPct}%`;
-      statObservedPct.textContent = `${obsPct}%`;
-    }
-
-    if (stats.elapsed_seconds != null) {
-      statElapsed.textContent = `${stats.elapsed_seconds}s`;
-      if (stats.elapsed_seconds > 0 && processed > 0) {
-        const speed = (processed / stats.elapsed_seconds).toFixed(1);
-        statSpeed.textContent = `${speed} reg/s`;
-      }
-    }
-  }
-
-  function appendLog(message) {
-    const timestamp = new Date().toLocaleTimeString();
-    const line = document.createElement('div');
-    line.className = 'py-0.5 leading-relaxed font-mono';
-
-    let colorClass = 'text-slate-300';
-    if (message.includes('Error') || message.includes('ERROR')) colorClass = 'text-rose-400 font-semibold';
-    else if (message.includes('finalizado') || message.includes('exitosamente')) colorClass = 'text-emerald-400 font-medium';
-    else if (message.includes('Aviso')) colorClass = 'text-amber-300';
-
-    line.innerHTML = `<span class="text-slate-500">[${timestamp}]</span> <span class="${colorClass}">${escapeHtml(message)}</span>`;
-    logsContainer.appendChild(line);
-
-    viewLogs.scrollTop = viewLogs.scrollHeight;
-  }
-
-  // ==========================================
-  // MANEJADORES DE EVENTOS
-  // ==========================================
-
-  function setupEventHandlers() {
-    // Cambio de esquema o tabla
-    schemaSelect.addEventListener('change', () => {
-      activeSchemaBadge.textContent = `${schemaSelect.value}.${tableInput.value.trim()}`;
-      refreshCounts();
-    });
-
-    tableInput.addEventListener('change', () => {
-      activeSchemaBadge.textContent = `${schemaSelect.value}.${tableInput.value.trim()}`;
-      refreshCounts();
-    });
-
-    // Recálculo dinámico de objetivo
-    filterSelect.addEventListener('change', () => {
-      recalcTargetToProcess();
-    });
-
-    limitInput.addEventListener('input', () => {
-      recalcTargetToProcess();
-    });
-
-    // Atajos de cantidad
-    document.querySelectorAll('.limit-shortcut').forEach(btn => {
-      btn.addEventListener('click', () => {
-        limitInput.value = btn.getAttribute('data-limit');
-        recalcTargetToProcess();
-      });
-    });
-
-    // Búsqueda interactiva en resultados
-    searchFilterInput.addEventListener('input', () => {
-      currentSearchQuery = searchFilterInput.value.trim().toLowerCase();
-      filterAllItems();
-    });
-
-    // Filtros por chip (Todos, Validados, Observados)
-    filterChips.forEach(chip => {
-      chip.addEventListener('click', () => {
-        filterChips.forEach(c => {
-          c.classList.remove('bg-slate-200', 'text-slate-800');
-          c.classList.add('text-slate-600');
-        });
-        chip.classList.add('bg-slate-200', 'text-slate-800');
-        chip.classList.remove('text-slate-600');
-
-        currentCardFilter = chip.getAttribute('data-filter');
-        filterAllItems();
-      });
-    });
-
-    // Envío del formulario (Iniciar)
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      if (isRunning) return;
-
-      const rawLimit = limitInput.value.trim();
-      const parsedLimit = (rawLimit !== '' && !isNaN(rawLimit)) ? parseInt(rawLimit, 10) : null;
-
-      let filterMode = filterSelect.value;
-      if (filterMode === 'unprocessed') filterMode = 'observed';
-
-      const payload = {
-        schema_name: schemaSelect.value,
-        table_name: tableInput.value.trim() || 'direcciones_actual',
-        filter_mode: filterMode,
-        limit: parsedLimit,
-        batch_size: parseInt(batchInput.value, 10) || 10,
-        require_ai: requireAiCheckbox.checked,
-      };
-
-      try {
-        setRunningState(true);
-        statusText.textContent = 'Procesando';
-        statusText.className = 'font-semibold text-slate-900';
-        progressStatusLabel.textContent = `Procesando en ${payload.schema_name}.${payload.table_name}...`;
-
-        switchView('records');
-
-        const res = await fetch('/api/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.detail || 'Error al iniciar');
-        }
-
-        const limText = payload.limit ? `${payload.limit} registros` : 'todos los pendientes';
-        appendLog(`[Sistema] Iniciado en ${payload.schema_name}.${payload.table_name} (Límite: ${limText}, Lote: ${payload.batch_size}).`);
-      } catch (err) {
-        setRunningState(false);
-        alert(`No se pudo iniciar: ${err.message}`);
-        appendLog(`[Error] Fallo al iniciar: ${err.message}`);
-      }
-    });
-
-    // Detener proceso
-    btnStop.addEventListener('click', async () => {
-      if (!isRunning) return;
-      btnStop.disabled = true;
-      btnStop.textContent = 'Deteniendo...';
-
-      try {
-        const res = await fetch('/api/stop', { method: 'POST' });
-        const data = await res.json();
-        appendLog(`[Sistema] ${data.message}`);
-      } catch (err) {
-        appendLog(`[Error] ${err.message}`);
-      }
-    });
-
-    // Limpiar feed
-    btnClearFeed.addEventListener('click', () => {
-      recordsContainer.innerHTML = '';
-      recordsList = [];
-      badgeRecordsCount.textContent = '0';
-      if (emptyState) emptyState.style.display = 'block';
-    });
-
-    // Pestañas
-    tabBtnRecords.addEventListener('click', () => switchView('records'));
-    tabBtnLogs.addEventListener('click', () => switchView('logs'));
-
-    // Modal de diagnóstico
-    btnQuickDiag.addEventListener('click', () => {
-      diagModal.classList.remove('hidden');
-    });
-
-    btnCloseDiag.addEventListener('click', () => {
-      diagModal.classList.add('hidden');
-    });
-
-    btnRunSampleAi.addEventListener('click', async () => {
-      btnRunSampleAi.disabled = true;
-      btnRunSampleAi.textContent = 'Consultando...';
-      try {
-        const res = await fetch('/api/test-ai', { method: 'POST' });
-        const data = await res.json();
-        if (data.success) {
-          diagAiDetail.textContent = `Correcto (${data.latency_ms} ms) - Modelo: ${data.model}\nResultado: ${JSON.stringify(data.parsed)}`;
-        } else {
-          diagAiDetail.textContent = `Fallo: ${data.message}`;
-        }
-      } catch (err) {
-        diagAiDetail.textContent = `Error: ${err.message}`;
-      } finally {
-        btnRunSampleAi.disabled = false;
-        btnRunSampleAi.textContent = 'Probar inferencia con dirección de prueba';
-      }
-    });
-  }
-
-  function switchView(target) {
-    if (target === 'records') {
-      viewRecords.classList.remove('hidden');
-      viewLogs.classList.add('hidden');
-      tabBtnRecords.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 border border-slate-200 shadow-2xs transition';
-      tabBtnLogs.className = 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 border border-transparent transition';
-    } else {
-      viewRecords.classList.add('hidden');
-      viewLogs.classList.remove('hidden');
-      tabBtnLogs.className = 'px-3 py-1.5 rounded-md text-xs font-semibold bg-white text-slate-900 border border-slate-200 shadow-2xs transition';
-      tabBtnRecords.className = 'px-3 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 border border-transparent transition';
-    }
-  }
-
-  function setRunningState(running) {
-    isRunning = running;
-    if (running) {
-      btnStart.disabled = true;
-      btnStart.classList.add('opacity-40', 'cursor-not-allowed');
-      btnStop.disabled = false;
-      btnStop.classList.remove('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-      btnStop.classList.add('bg-rose-600', 'hover:bg-rose-700', 'text-white', 'cursor-pointer');
-      schemaSelect.disabled = true;
-      tableInput.disabled = true;
-      filterSelect.disabled = true;
-      limitInput.disabled = true;
-      batchInput.disabled = true;
-    } else {
-      btnStart.disabled = false;
-      btnStart.classList.remove('opacity-40', 'cursor-not-allowed');
-      btnStop.disabled = true;
-      btnStop.classList.add('bg-slate-100', 'text-slate-400', 'cursor-not-allowed');
-      btnStop.classList.remove('bg-rose-600', 'hover:bg-rose-700', 'text-white', 'cursor-pointer');
-      btnStop.textContent = 'Detener';
-      schemaSelect.disabled = false;
-      tableInput.disabled = false;
-      filterSelect.disabled = false;
-      limitInput.disabled = false;
-      batchInput.disabled = false;
-    }
-  }
-
-  async function refreshCounts() {
+  es.onmessage = e => {
     try {
-      const s = schemaSelect.value;
-      const t = tableInput.value.trim();
-      const res = await fetch(`/api/counts?schema=${encodeURIComponent(s)}&table=${encodeURIComponent(t)}`);
-      if (res.ok) {
-        const counts = await res.json();
-        updateTableCountsDisplay(counts);
-      }
-    } catch (err) {
-      console.warn('Error al refrescar conteos:', err);
+      const ev = JSON.parse(e.data);
+      handleEvent(ev);
+    } catch (_) {}
+  };
+
+  es.onerror = () => {
+    addLog('Conexión SSE interrumpida. Reconectando...', 'warn');
+  };
+}
+
+function handleEvent(ev) {
+  switch (ev.type) {
+    case 'connected':
+      addLog('Canal de eventos conectado.', 'info');
+      break;
+    case 'log':
+      addLog(ev.payload);
+      break;
+    case 'stats':
+      updateStats(ev.payload);
+      break;
+    case 'record':
+      addRecord(ev.payload);
+      break;
+    case 'done':
+      onDone(ev.payload);
+      break;
+    case 'error':
+      onError(ev.payload);
+      break;
+  }
+}
+
+function updateStats(s) {
+  kpi('kpiProcessed', s.processed);
+  kpi('kpiValid',     s.valid);
+  kpi('kpiObserved',  s.observed);
+  kpi('kpiFailed',    s.failed);
+
+  const pct   = s.progress_pct || 0;
+  const total = s.total_to_process || 0;
+  const proc  = s.processed || 0;
+  const secs  = s.elapsed_seconds || 0;
+
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressLabel').textContent =
+    `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
+
+  if (secs > 0) {
+    const m = Math.floor(secs / 60);
+    const s2 = Math.floor(secs % 60);
+    document.getElementById('elapsedLabel').textContent =
+      `Tiempo: ${m > 0 ? m + 'm ' : ''}${s2}s`;
+  }
+
+  const status = s.status || 'IDLE';
+  const labels = { RUNNING: 'Ejecutando...', IDLE: 'En espera', FINISHED: 'Completado', ERROR: 'Error durante ejecución' };
+  document.getElementById('statusLabel').textContent = labels[status] || status;
+}
+
+function addRecord(r) {
+  wiz.allRecords.unshift(r);
+  if (wiz.allRecords.length > 300) wiz.allRecords.pop();
+  filterRecords();
+}
+
+function filterRecords() {
+  const search  = (document.getElementById('searchRec')?.value || '').toLowerCase();
+  const status  = document.getElementById('filterStatus')?.value || '';
+
+  const filtered = wiz.allRecords.filter(r => {
+    const orig = (r.original_address || '').toLowerCase();
+    const norm = (r.normalized_address || '').toLowerCase();
+    const matchSearch = !search || orig.includes(search) || norm.includes(search);
+
+    let matchStatus = true;
+    if (status === 'ok')  matchStatus = r.status === 'VALID' || r.status === 'OK';
+    if (status === 'obs') matchStatus = r.status === 'OBSERVED' || r.is_observed;
+    if (status === 'err') matchStatus = r.status === 'ERROR' || r.status === 'FAILED';
+
+    return matchSearch && matchStatus;
+  });
+
+  renderRecords(filtered.slice(0, 100));
+}
+
+function renderRecords(records) {
+  const list = document.getElementById('recordsList');
+  if (!records.length) {
+    list.innerHTML = '<p style="text-align:center; color:var(--gray-lt); padding:30px; font-size:13px;">Sin registros que mostrar.</p>';
+    return;
+  }
+
+  list.innerHTML = records.map(r => {
+    const st = (r.status || '').toUpperCase();
+    const isObs = r.is_observed || st === 'OBSERVED';
+    const isErr = st === 'ERROR' || st === 'FAILED';
+    const isAI  = r.method === 'ai' || r.method === 'AI';
+
+    let badgeClass = 'badge-ok';
+    let badgeText  = 'OK';
+    if (isErr) { badgeClass = 'badge-err'; badgeText = 'Error'; }
+    else if (isObs) { badgeClass = 'badge-obs'; badgeText = 'Observado'; }
+
+    const aiBadge = isAI ? `<span class="record-badge badge-ai" style="margin-left:4px;">IA</span>` : '';
+
+    const orig  = r.original_address || r.address || '—';
+    const norm  = r.normalized_address || '';
+    const normLine = norm && norm !== orig
+      ? `<div class="normalized">${norm}</div>`
+      : '';
+
+    return `
+      <div class="record-row">
+        <div>
+          <span class="record-badge ${badgeClass}">${badgeText}</span>
+          ${aiBadge}
+        </div>
+        <div class="record-text">
+          <div class="orig">${escapeHtml(orig)}</div>
+          ${normLine}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function addLog(msg, level = '') {
+  const feed = document.getElementById('logFeed');
+  if (!feed) return;
+
+  const cls =
+    level === 'warn' ? 'log-warn' :
+    level === 'info' ? 'log-info' :
+    msg.toLowerCase().includes('error') ? 'log-err' :
+    msg.toLowerCase().includes('exitoso') || msg.toLowerCase().includes('completado') ? 'log-ok' :
+    '';
+
+  const time = new Date().toLocaleTimeString('es-PE', { hour12: false });
+  const line = document.createElement('div');
+  line.className = cls;
+  line.textContent = `[${time}] ${msg}`;
+  feed.appendChild(line);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// ── Iniciar ETL ──────────────────────────────────────────────────────────────
+async function startETL() {
+  const limit    = parseInt(document.getElementById('inp_limit').value) || null;
+  const batch    = parseInt(document.getElementById('inp_batch').value) || 50;
+  const filter   = document.getElementById('inp_filter').value || 'pending';
+
+  // Reset records y stats visuales
+  wiz.allRecords = [];
+  renderRecords([]);
+  kpi('kpiProcessed', 0); kpi('kpiValid', 0);
+  kpi('kpiObserved', 0);  kpi('kpiFailed', 0);
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressLabel').textContent = '0 de 0 registros';
+  document.getElementById('logFeed').innerHTML = '';
+
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').disabled  = false;
+
+  const body = {
+    schema_name:  wiz.schema,
+    table_name:   wiz.table,
+    id_col:       wiz.id_col,
+    address_col:  wiz.addr_col,
+    batch_size:   batch,
+    filter_mode:  filter,
+    limit,
+  };
+
+  try {
+    const res  = await fetch('/api/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      addLog('Error al iniciar: ' + (data.detail || 'Error desconocido'), 'warn');
+      document.getElementById('btnStart').disabled = false;
+      document.getElementById('btnStop').disabled  = true;
+    } else {
+      addLog('Pipeline iniciado correctamente.', 'info');
     }
+  } catch (e) {
+    addLog('Error de red: ' + e.message);
+    document.getElementById('btnStart').disabled = false;
+    document.getElementById('btnStop').disabled  = true;
   }
+}
 
-  function escapeHtml(str) {
-    if (!str) return '';
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
+// ── Detener ETL ──────────────────────────────────────────────────────────────
+async function stopETL() {
+  document.getElementById('btnStop').disabled = true;
+  addLog('Solicitando detención del pipeline...', 'warn');
+  try {
+    await fetch('/api/stop', { method: 'POST' });
+  } catch (_) {}
+}
 
-  init();
-});
+// ── Callbacks de fin/error ───────────────────────────────────────────────────
+function onDone(data) {
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled  = true;
+  document.getElementById('statusLabel').textContent = 'Completado';
+  addLog(`ETL completado. Procesados: ${data.processed_records ?? data.processed ?? 0} | Normalizados: ${data.valid_processed_records ?? data.valid ?? 0}`, '');
+}
+
+function onError(data) {
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled  = true;
+  document.getElementById('statusLabel').textContent = 'Error';
+  addLog('Error: ' + (data.error || 'Error desconocido'));
+}

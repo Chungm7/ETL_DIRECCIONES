@@ -37,6 +37,9 @@ class ExecutionState:
         self.thread: Optional[threading.Thread] = None
         self.active_schema: str = settings.db.schema
         self.active_table: str = settings.db.table
+        # Conexión dinámica establecida por el wizard (puede ser None antes de conectar)
+        self.dynamic_db_service: Optional[DatabaseService] = None
+        self.dynamic_db_settings: Optional[Any] = None
         self.recent_records: List[Dict[str, Any]] = []
         self.max_recent_records: int = 150
         self.log_history: List[str] = []
@@ -177,9 +180,32 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
+# ── Modelos para el flujo wizard ───────────────────────────────────────────────
+
+class ConnectRequest(BaseModel):
+    host: str = Field(default="localhost", description="Host del servidor PostgreSQL")
+    port: int = Field(default=5432, description="Puerto de conexión")
+    dbname: str = Field(default="bd_mpch", description="Nombre de la base de datos")
+    user: str = Field(default="postgres", description="Usuario de PostgreSQL")
+    password: str = Field(default="postgres", description="Contraseña del usuario")
+
+
+class InspectSchemaRequest(BaseModel):
+    schema_name: str = Field(..., description="Nombre del esquema a inspeccionar")
+
+
+class InspectTableRequest(BaseModel):
+    schema_name: str = Field(..., description="Nombre del esquema")
+    table_name: str = Field(..., description="Nombre de la tabla de direcciones")
+    id_col: Optional[str] = Field(default=None, description="Columna que actúa como ID/PK")
+    address_col: Optional[str] = Field(default=None, description="Columna con la dirección completa")
+
+
 class StartPipelineRequest(BaseModel):
     schema_name: str = Field(default_factory=lambda: get_settings().db.schema, description="Esquema destino en PostgreSQL")
     table_name: str = Field(default_factory=lambda: get_settings().db.table, description="Nombre de tabla de direcciones")
+    id_col: Optional[str] = Field(default=None, description="Columna ID a conservar")
+    address_col: Optional[str] = Field(default=None, description="Columna de dirección a normalizar")
     limit: Optional[int] = Field(default=None, description="Límite máximo de registros a procesar")
     batch_size: int = Field(default_factory=lambda: get_settings().etl.batch_size, ge=1, le=100, description="Tamaño de lote por transacción")
     filter_mode: str = Field(default="pending", description="Filtro: pending, all, o observed")
@@ -258,12 +284,167 @@ async def get_table_counts(
 ):
     """Devuelve los conteos catastrales de la tabla especificada."""
     try:
-        db_svc = DatabaseService()
+        db_svc = state.dynamic_db_service or DatabaseService()
         extractor = DatabaseExtractor(db_service=db_svc, schema=schema, table=table)
         counts = extractor.get_status_counts()
         return counts
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error obteniendo conteo: {e}")
+
+
+# ── Endpoints del Wizard ────────────────────────────────────────────────────────
+
+@app.post("/api/connect")
+async def wizard_connect(req: ConnectRequest):
+    """Paso 1 del wizard: prueba la conexión con parámetros dinámicos y retorna esquemas disponibles."""
+    from src.config.settings import DatabaseSettings
+
+    try:
+        dyn_settings = DatabaseSettings(
+            DB_HOST=req.host,
+            DB_PORT=req.port,
+            DB_NAME=req.dbname,
+            DB_USER=req.user,
+            DB_PASSWORD=req.password,
+        )
+        db_svc = DatabaseService(settings=dyn_settings)
+        schemas = db_svc.get_available_schemas()
+
+        if not schemas:
+            # Si get_available_schemas retorna vacío, intentar verificar conexión
+            health = db_svc.check_connection()
+            if not health.get("connected"):
+                raise HTTPException(status_code=400, detail=health.get("message", "No se pudo conectar a la base de datos."))
+            schemas = health.get("available_schemas", [])
+
+        # Guardar la conexión en el estado compartido
+        state.dynamic_db_service = db_svc
+        state.dynamic_db_settings = dyn_settings
+
+        return {
+            "success": True,
+            "message": f"Conexión exitosa a '{req.dbname}' en {req.host}:{req.port}",
+            "schemas": schemas,
+            "host": req.host,
+            "port": req.port,
+            "dbname": req.dbname,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error de conexión: {str(e)}")
+
+
+@app.post("/api/inspect-schema")
+async def wizard_inspect_schema(req: InspectSchemaRequest):
+    """Paso 2 del wizard: lista tablas del esquema seleccionado con columnas y cantidad de filas."""
+    db_svc = state.dynamic_db_service or DatabaseService()
+
+    try:
+        from sqlalchemy import text as sa_text
+
+        tables_info = []
+        with db_svc.get_session() as session:
+            # Consultar tablas del esquema
+            rows = session.execute(sa_text("""
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = :schema
+                  AND table_type = 'BASE TABLE'
+                ORDER BY table_name;
+            """), {"schema": req.schema_name}).fetchall()
+
+            for (tname,) in rows:
+                # Obtener columnas de cada tabla
+                col_rows = session.execute(sa_text("""
+                    SELECT column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = :schema AND table_name = :table
+                    ORDER BY ordinal_position;
+                """), {"schema": req.schema_name, "table": tname}).fetchall()
+
+                columns = [{"name": c[0], "type": c[1]} for c in col_rows]
+
+                # Obtener conteo de filas
+                try:
+                    count_val = session.execute(
+                        sa_text(f'SELECT COUNT(*) FROM "{req.schema_name}"."{tname}";')
+                    ).scalar() or 0
+                except Exception:
+                    count_val = -1
+
+                tables_info.append({
+                    "name": tname,
+                    "columns": columns,
+                    "row_count": count_val,
+                })
+
+        return {
+            "schema": req.schema_name,
+            "tables": tables_info,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error inspeccionando esquema '{req.schema_name}': {str(e)}")
+
+
+@app.post("/api/inspect-table")
+async def wizard_inspect_table(req: InspectTableRequest):
+    """Paso 3 del wizard: preview de filas y conteos de estado de la tabla de direcciones seleccionada."""
+    db_svc = state.dynamic_db_service or DatabaseService()
+    settings = get_settings()
+
+    id_col = req.id_col or settings.db.id_col
+    address_col = req.address_col or settings.db.dir_col
+
+    try:
+        from sqlalchemy import text as sa_text
+
+        with db_svc.get_session() as session:
+            # Obtener preview de primeras 10 filas con las columnas clave
+            preview_rows = session.execute(sa_text(f"""
+                SELECT "{id_col}", "{address_col}"
+                FROM "{req.schema_name}"."{req.table_name}"
+                LIMIT 10;
+            """)).fetchall()
+
+            preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
+
+            # Conteo total
+            total = session.execute(
+                sa_text(f'SELECT COUNT(*) FROM "{req.schema_name}"."{req.table_name}";')
+            ).scalar() or 0
+
+            # Intentar obtener conteos de estado si la columna es_procesado existe
+            try:
+                counts = session.execute(sa_text(f"""
+                    SELECT
+                        COUNT(*) FILTER (WHERE es_procesado IS NULL)     AS pendientes,
+                        COUNT(*) FILTER (WHERE es_procesado = TRUE)       AS validos,
+                        COUNT(*) FILTER (WHERE es_procesado = FALSE)      AS observados
+                    FROM "{req.schema_name}"."{req.table_name}";
+                """)).fetchone()
+                status_counts = {
+                    "total": total,
+                    "pendientes": counts[0] if counts else total,
+                    "validos": counts[1] if counts else 0,
+                    "observados": counts[2] if counts else 0,
+                }
+            except Exception:
+                status_counts = {"total": total, "pendientes": total, "validos": 0, "observados": 0}
+
+        return {
+            "schema": req.schema_name,
+            "table": req.table_name,
+            "id_col": id_col,
+            "address_col": address_col,
+            "counts": status_counts,
+            "preview": preview,
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Error al inspeccionar tabla '{req.schema_name}.{req.table_name}': {str(e)}"
+        )
 
 
 @app.post("/api/test-ai")
@@ -311,8 +492,10 @@ def _run_pipeline_worker(req: StartPipelineRequest):
     state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
     try:
-        db_svc = DatabaseService()
-        pipeline = ETLPipeline(
+        # Usar conexión dinámica del wizard si está disponible
+        db_svc = state.dynamic_db_service or DatabaseService()
+
+        pipeline_kwargs: Dict[str, Any] = dict(
             schema=target_schema,
             table=target_table,
             batch_size=req.batch_size,
@@ -320,6 +503,13 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             require_ai=req.require_ai,
             on_record_processed=state.add_record,
         )
+        # Pasar columnas identificadas en el wizard si el pipeline las soporta
+        if req.id_col:
+            pipeline_kwargs["id_col"] = req.id_col
+        if req.address_col:
+            pipeline_kwargs["address_col"] = req.address_col
+
+        pipeline = ETLPipeline(**pipeline_kwargs)
         state.pipeline = pipeline
 
         state.add_log("Preparando entorno y tablas maestras...")
