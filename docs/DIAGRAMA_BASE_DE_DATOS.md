@@ -8,39 +8,17 @@ En este modelo, la tabla `direcciones_actual` elimina la duplicidad y redundanci
 
 ```mermaid
 erDiagram
-    TIPOS_VIA ||--o{ VIAS : "clasifica (1:N)"
-    TIPOS_ZONA ||--o{ ZONAS : "clasifica (1:N)"
     VIAS ||--o{ DIRECCIONES_ACTUAL : "asocia (0..N)"
     ZONAS ||--o{ DIRECCIONES_ACTUAL : "asocia (0..N)"
 
-    TIPOS_VIA {
-        int id_tipo_via PK "Identificador único (1..12)"
-        string nombre_tipo_via "Nombre oficial (AVENIDA, CALLE, etc.)"
-        string abreviatura "Abreviatura oficial (AV., CA., JR., etc.)"
-    }
-
-    TIPOS_ZONA {
-        int id_tipo_zona PK "Identificador único (1..28)"
-        string nombre_tipo_zona "Nombre oficial (URBANIZACION, A.H., etc.)"
-        string abreviatura "Abreviatura oficial (URB., A.H., etc.)"
-    }
-
     VIAS {
-        int id_via PK "ID único de la vía física (1..3024)"
-        string codigo_via "Código oficial de vía MPCH (ej. 002390)"
-        int id_tipo_via FK "Clave foránea hacia tipos_via"
-        string nom_via "Nombre oficial de la arteria/calle"
-        string clasificacion_vial "Arterial, Colectora, Local"
-        string jurisdiccion "CHICLAYO / MPCH"
+        int id_via PK "ID único de la vía oficial (1..3024)"
+        string nom_via "Nombre oficial de la vía / arteria (ej. 7 DE ENERO SUR, BALTA)"
     }
 
     ZONAS {
-        int id_zona PK "ID único de habilitación urbana (1..461)"
-        string codigo_zona "Código catastral de zona MPCH (ej. 0018)"
-        int id_tipo_zona FK "Clave foránea hacia tipos_zona"
-        string nom_zona "Nombre oficial del sector/urbanización"
-        string sector_catastral "Sector catastral municipal"
-        string condicion "Aprobado / Regularizado"
+        int id_zona PK "ID único de la zona / habilitación urbana (1..461)"
+        string nom_zona "Nombre oficial de la zona (ej. SANTA VICTORIA, REMIGIO B. SILVA)"
     }
 
     DIRECCIONES_ACTUAL {
@@ -125,10 +103,8 @@ flowchart TD
 SELECT 
     d.id_licencia,
     d.emp_direccion AS direccion_original,
-    tv.nombre_tipo_via,
-    v.nom_via AS calle_oficial,
+    v.nom_via AS via_oficial,
     d.num_via,
-    tz.nombre_tipo_zona,
     z.nom_zona AS zona_oficial,
     d.manzana,
     d.lote,
@@ -136,9 +112,7 @@ SELECT
     d.es_procesado
 FROM direcciones_actual d
 LEFT JOIN vias v ON d.id_via = v.id_via
-LEFT JOIN tipos_via tv ON v.id_tipo_via = tv.id_tipo_via
 LEFT JOIN zonas z ON d.id_zona = z.id_zona
-LEFT JOIN tipos_zona tz ON z.id_tipo_zona = tz.id_tipo_zona
 WHERE d.es_procesado = TRUE;
 ```
 

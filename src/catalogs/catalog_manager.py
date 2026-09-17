@@ -92,33 +92,25 @@ class CatalogManager:
         return cls._zonas_chiclayo_cache
 
     @classmethod
-    def get_official_physical_vias_tuples(cls) -> List[Tuple[int, str, Optional[int], str, str, str]]:
-        """Retorna [(id_via, codigo_via, id_tipo_via, nom_via, clasificacion, jurisdiccion), ...] para sembrar la tabla vias."""
+    def get_official_physical_vias_tuples(cls) -> List[Tuple[int, str]]:
+        """Retorna [(id_via, nom_via), ...] para sembrar la tabla vias."""
         catalog = cls.get_vias_chiclayo_catalog()
         return [
             (
                 item["id"],
-                item.get("codigo_via", ""),
-                item.get("id_tipo_via"),
                 item["nom_via"],
-                item.get("clasificacion_vial", ""),
-                item.get("jurisdiccion", "CHICLAYO"),
             )
             for item in catalog
         ]
 
     @classmethod
-    def get_official_physical_zonas_tuples(cls) -> List[Tuple[int, str, Optional[int], str, str, str]]:
-        """Retorna [(id_zona, codigo_zona, id_tipo_zona, nom_zona, sector, condicion), ...] para sembrar la tabla zonas."""
+    def get_official_physical_zonas_tuples(cls) -> List[Tuple[int, str]]:
+        """Retorna [(id_zona, nom_zona), ...] para sembrar la tabla zonas."""
         catalog = cls.get_zonas_chiclayo_catalog()
         return [
             (
                 item["id"],
-                item.get("codigo_zona", ""),
-                item.get("id_tipo_zona"),
                 item["nom_zona"],
-                item.get("sector_catastral", ""),
-                item.get("condicion", ""),
             )
             for item in catalog
         ]
