@@ -276,32 +276,36 @@ def test_pipeline_worker_uses_dynamic_services():
     mock_ollama_svc.base_url = "http://192.168.1.50:11434"
     mock_ollama_svc.model_name = "modelo-remoto:latest"
 
-    state.dynamic_db_service = mock_db_svc
-    state.dynamic_ollama_service = mock_ollama_svc
+    try:
+        state.dynamic_db_service = mock_db_svc
+        state.dynamic_ollama_service = mock_ollama_svc
 
-    with patch("src.ui.server.ETLPipeline") as mock_pipeline:
-        mock_pipe_inst = mock_pipeline.return_value
-        mock_pipe_inst.extractor.get_status_counts.return_value = {
-            "total": 5, "pendientes": 5, "validos": 0, "observados": 0
-        }
-        mock_pipe_inst.run.return_value = MagicMock(
-            total_records=5, processed_records=5, valid_processed_records=5,
-            observed_records=0, successful_records=5, failed_records=0,
-            ai_records=5, hybrid_records=0, heuristic_records=0
-        )
+        with patch("src.ui.server.ETLPipeline") as mock_pipeline:
+            mock_pipe_inst = mock_pipeline.return_value
+            mock_pipe_inst.extractor.get_status_counts.return_value = {
+                "total": 5, "pendientes": 5, "validos": 0, "observados": 0
+            }
+            mock_pipe_inst.run.return_value = MagicMock(
+                total_records=5, processed_records=5, valid_processed_records=5,
+                observed_records=0, successful_records=5, failed_records=0,
+                ai_records=5, hybrid_records=0, heuristic_records=0
+            )
 
-        req = StartPipelineRequest(
-            schema_name="public",
-            table_name="direcciones_actual",
-            limit=5,
-            filter_mode="pending",
-        )
-        _run_pipeline_worker(req)
+            req = StartPipelineRequest(
+                schema_name="public",
+                table_name="direcciones_actual",
+                limit=5,
+                filter_mode="pending",
+            )
+            _run_pipeline_worker(req)
 
-        # Verificar que ETLPipeline recibió el transformer y db_service dinámicos
-        call_kwargs = mock_pipeline.call_args.kwargs
-        assert call_kwargs["db_service"] is mock_db_svc
-        assert call_kwargs["transformer"].ai_parser.ollama is mock_ollama_svc
+            # Verificar que ETLPipeline recibió el transformer y db_service dinámicos
+            call_kwargs = mock_pipeline.call_args.kwargs
+            assert call_kwargs["db_service"] is mock_db_svc
+            assert call_kwargs["transformer"].ai_parser.ollama is mock_ollama_svc
+    finally:
+        state.dynamic_db_service = None
+        state.dynamic_ollama_service = None
 
 
 def test_cli_default_launches_gui():
@@ -514,6 +518,48 @@ def test_api_export_db_empty_raises_404(client):
         response = client.get("/api/export-db?schema=public&table=direcciones&scope=observed")
         assert response.status_code == 404
         assert "No se encontraron registros" in response.json()["detail"]
+
+
+def test_fetch_db_records_for_export_standard_table_resolution():
+    """Verifica que fetch_db_records_for_export resuelva nombres estándar de tabla y consulte sin errores SQL."""
+    from src.services.db_service import DatabaseService
+    from src.ui.server import fetch_db_records_for_export
+
+    db = DatabaseService()
+    if not db.check_connection().get("connected"):
+        pytest.skip("Base de datos PostgreSQL local no disponible")
+
+    # Prueba con nombre alternativo 'direcciones' que debe auto-resolver a 'direcciones_actual'
+    records_proc = fetch_db_records_for_export(db, schema="public", table="direcciones", scope="all")
+    assert isinstance(records_proc, list)
+    assert len(records_proc) > 0
+    first = records_proc[0]
+    assert "id_licencia" in first
+    assert "raw_text" in first
+    assert "estado" in first
+    assert "tipo_via_name" in first
+    assert "nom_via" in first
+
+
+def test_api_export_db_end_to_end_real_db(client):
+    """Verifica el endpoint /api/export-db end-to-end con la base de datos real."""
+    from src.services.db_service import DatabaseService
+    db = DatabaseService()
+    if not db.check_connection().get("connected"):
+        pytest.skip("Base de datos PostgreSQL local no disponible")
+
+    # Descarga en CSV con scope all
+    res_csv = client.get("/api/export-db?schema=public&table=direcciones_actual&scope=all&format=csv")
+    assert res_csv.status_code == 200
+    assert "text/csv" in res_csv.headers["content-type"]
+    assert len(res_csv.content) > 100
+
+    # Descarga en Excel con scope all
+    res_excel = client.get("/api/export-db?schema=public&table=direcciones_actual&scope=all&format=excel")
+    assert res_excel.status_code == 200
+    assert "application/vnd.openxmlformats-officedocument" in res_excel.headers["content-type"]
+    assert len(res_excel.content) > 1000
+
 
 
 

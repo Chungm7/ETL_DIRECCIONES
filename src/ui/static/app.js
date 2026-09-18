@@ -607,6 +607,10 @@ async function initStep5() {
       }
     }
 
+    if (data.active_table && !wiz.table) wiz.table = data.active_table;
+    if (data.active_schema && !wiz.schema) wiz.schema = data.active_schema;
+    if (data.table_counts && !wiz.tableCounts) wiz.tableCounts = data.table_counts;
+
     if (data.recent_records && data.recent_records.length > 0 && wiz.allRecords.length === 0) {
       data.recent_records.forEach(r => addRecord(r, false));
       filterInspectorRecords();
@@ -954,7 +958,7 @@ async function openExportModal() {
 
   const tableLabel = document.getElementById('exportModalTable');
   const schema = wiz.schema || 'public';
-  const table = wiz.table || 'direcciones';
+  const table = wiz.table || 'direcciones_actual';
   if (tableLabel) tableLabel.textContent = `${schema}.${table}`;
 
   // Actualizar contador en vivo de registros en pantalla
@@ -1054,7 +1058,7 @@ function renderExportModalCounts() {
 async function executeExport(scope, format) {
   const isDb = (currentExportDataSource === 'db');
   const schema = wiz.schema || 'public';
-  const table = wiz.table || 'direcciones';
+  const table = wiz.table || 'direcciones_actual';
 
   // Identificar botón clickeado para feedback visual (spinner)
   let btnId = '';

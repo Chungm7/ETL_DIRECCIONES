@@ -999,99 +999,235 @@ def generate_csv_report(records: List[Dict[str, Any]]) -> Any:
 
 def fetch_db_records_for_export(
     db_svc: DatabaseService,
-    schema: str,
-    table: str,
+    schema: Optional[str] = None,
+    table: Optional[str] = None,
     scope: str = "processed",  # 'processed', 'observed', 'valid', 'all'
     id_col: Optional[str] = None,
     dir_col: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Consulta la tabla en PostgreSQL y mapea descripciones catastrales completas para exportación."""
+    """Consulta la tabla en PostgreSQL con resolución dinámica de esquemas, catálogos y nombres estándar."""
     from sqlalchemy import text as sa_text
     from src.transformers.catalog_matcher import CatalogMatcher
     from src.config.settings import get_settings
 
     settings = get_settings()
-    id_col = id_col or settings.db.id_col
-    dir_col = dir_col or settings.db.dir_col
+    schema = (schema or state.active_schema or settings.db.schema).strip()
+    table = (table or state.active_table or settings.db.table).strip()
 
     try:
         CatalogMatcher.sync_with_db(db_svc, schema)
     except Exception as e:
         logger.debug("Aviso al sincronizar catálogos para exportación en '%s': %s", schema, e)
 
-    scope_lower = str(scope).lower().strip()
-    if scope_lower in ("observed", "observados"):
-        where_clause = 'd."es_procesado" IS FALSE'
-    elif scope_lower in ("valid", "validos", "normalizados"):
-        where_clause = 'd."es_procesado" IS TRUE'
-    elif scope_lower in ("processed", "procesados"):
-        where_clause = 'd."es_procesado" IS NOT NULL'
-    else:
-        where_clause = 'TRUE'
-
-    vias_table = settings.db.table_vias
-    zonas_table = settings.db.table_zonas
-
-    query_str = f"""
-        SELECT 
-            d."{id_col}" AS id_licencia,
-            d."{dir_col}" AS raw_text,
-            d."id_via",
-            v."nom_via",
-            v."tipo_via",
-            d."num_via",
-            d."id_zona",
-            z."nom_zona",
-            z."tipo_zona",
-            d."manzana",
-            d."lote",
-            d."slote",
-            d."referencia",
-            d."es_procesado",
-            d."observacion"
-        FROM "{schema}"."{table}" d
-        LEFT JOIN "{schema}"."{vias_table}" v ON d."id_via" = v."id_via"
-        LEFT JOIN "{schema}"."{zonas_table}" z ON d."id_zona" = z."id_zona"
-        WHERE {where_clause}
-        ORDER BY d."{id_col}" ASC;
-    """
-
-    records = []
     with db_svc.get_session() as session:
-        try:
-            rows = session.execute(sa_text(query_str)).fetchall()
-        except Exception as q_err:
-            logger.warning("Query con JOIN falló para %s.%s (%s), ejecutando fallback simple", schema, table, q_err)
-            fallback_query = f"""
-                SELECT 
-                    d."{id_col}" AS id_licencia,
-                    d."{dir_col}" AS raw_text,
-                    d."id_via",
-                    NULL AS nom_via,
-                    NULL AS tipo_via,
-                    d."num_via",
-                    d."id_zona",
-                    NULL AS nom_zona,
-                    NULL AS tipo_zona,
-                    d."manzana",
-                    d."lote",
-                    d."slote",
-                    d."referencia",
-                    d."es_procesado",
-                    d."observacion"
-                FROM "{schema}"."{table}" d
-                WHERE {where_clause}
-                ORDER BY d."{id_col}" ASC;
-            """
-            rows = session.execute(sa_text(fallback_query)).fetchall()
+        # 1. Comprobar si la tabla existe en el esquema. Si no existe, buscar nombres estándar comunes.
+        def check_table_exists(t_name: str) -> bool:
+            return bool(session.execute(sa_text("""
+                SELECT COUNT(*) 
+                FROM information_schema.tables 
+                WHERE table_schema = :schema AND table_name = :table;
+            """), {"schema": schema, "table": t_name}).scalar())
 
-        for r in rows:
-            t_via_val = r[4]
-            t_zona_val = r[8]
-            tipo_via_name = CatalogMatcher.get_via_name(t_via_val) if t_via_val else ""
-            tipo_zona_name = CatalogMatcher.get_zona_name(t_zona_val) if t_zona_val else ""
+        if not check_table_exists(table):
+            candidates = [
+                state.active_table,
+                settings.db.table,
+                f"{table}_actual",
+                table.replace("_actual", ""),
+                "direcciones_actual",
+                "direcciones",
+            ]
+            found = False
+            for cand in candidates:
+                if cand and check_table_exists(cand):
+                    logger.info("Tabla '%s' no existe en '%s'. Usando estándar detectado: '%s'", table, schema, cand)
+                    table = cand
+                    found = True
+                    break
+            if not found:
+                raise ValueError(f"La tabla '{table}' no existe en el esquema '{schema}'.")
 
-            es_proc = r[13]
+        # 2. Inspeccionar columnas existentes en la tabla seleccionada
+        col_rows = session.execute(sa_text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = :schema AND table_name = :table;
+        """), {"schema": schema, "table": table}).fetchall()
+        existing_cols = {r[0].lower() for r in col_rows}
+        actual_cols_map = {r[0].lower(): r[0] for r in col_rows}
+
+        # 3. Identificar columna ID estándar
+        target_id_col = None
+        for candidate_id in [id_col, settings.db.id_col, "id_licencia", "id", "id_direccion", "codigo"]:
+            if candidate_id and candidate_id.lower() in existing_cols:
+                target_id_col = actual_cols_map[candidate_id.lower()]
+                break
+        if not target_id_col:
+            target_id_col = col_rows[0][0] if col_rows else "id_licencia"
+
+        # 4. Identificar columna Dirección estándar
+        target_dir_col = None
+        for candidate_dir in [dir_col, settings.db.dir_col, "emp_direccion", "direccion", "dir", "raw_text", "texto_direccion"]:
+            if candidate_dir and candidate_dir.lower() in existing_cols:
+                target_dir_col = actual_cols_map[candidate_dir.lower()]
+                break
+
+        # 5. Detectar columnas normalizadas en la tabla
+        def get_col(conf_name: Optional[str], def_name: str) -> Optional[str]:
+            if conf_name and conf_name.lower() in existing_cols:
+                return actual_cols_map[conf_name.lower()]
+            if def_name and def_name.lower() in existing_cols:
+                return actual_cols_map[def_name.lower()]
+            return None
+
+        c_id_via       = get_col(settings.db.col_id_via, "id_via")
+        c_num_via      = get_col(settings.db.col_num_via, "num_via")
+        c_id_zona      = get_col(settings.db.col_id_zona, "id_zona")
+        c_manzana      = get_col(settings.db.col_manzana, "manzana")
+        c_lote         = get_col(settings.db.col_lote, "lote")
+        c_slote        = get_col(settings.db.col_slote, "slote")
+        c_referencia   = get_col(settings.db.col_referencia, "referencia")
+        c_es_procesado = get_col(settings.db.col_es_procesado, "es_procesado")
+        c_observacion  = get_col(settings.db.col_observacion, "observacion")
+
+        # 6. Evaluar scope y filtro WHERE
+        scope_lower = str(scope).lower().strip()
+        if c_es_procesado:
+            if scope_lower in ("observed", "observados"):
+                where_clause = f'd."{c_es_procesado}" IS FALSE'
+            elif scope_lower in ("valid", "validos", "normalizados"):
+                where_clause = f'd."{c_es_procesado}" IS TRUE'
+            elif scope_lower in ("processed", "procesados"):
+                where_clause = f'd."{c_es_procesado}" IS NOT NULL'
+            else:
+                where_clause = "TRUE"
+        else:
+            if scope_lower in ("observed", "observados", "valid", "validos", "normalizados", "processed", "procesados"):
+                return []
+            where_clause = "TRUE"
+
+        # 7. Inspeccionar tablas maestras en el esquema para resolver JOINs de forma estándar
+        vias_table = settings.db.table_vias
+        zonas_table = settings.db.table_zonas
+        tipo_via_table = settings.db.table_tipo_via
+        tipo_zona_table = settings.db.table_tipo_zona
+
+        has_vias = bool(c_id_via and check_table_exists(vias_table))
+        has_zonas = bool(c_id_zona and check_table_exists(zonas_table))
+        has_tipo_via = check_table_exists(tipo_via_table)
+        has_tipo_zona = check_table_exists(tipo_zona_table)
+
+        # Determinar columnas exactas en vias y zonas si existen
+        vias_cols = set()
+        if has_vias:
+            v_col_rows = session.execute(sa_text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = :schema AND table_name = :table;
+            """), {"schema": schema, "table": vias_table}).fetchall()
+            vias_cols = {r[0].lower() for r in v_col_rows}
+
+        zonas_cols = set()
+        if has_zonas:
+            z_col_rows = session.execute(sa_text("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_schema = :schema AND table_name = :table;
+            """), {"schema": schema, "table": zonas_table}).fetchall()
+            zonas_cols = {r[0].lower() for r in z_col_rows}
+
+        select_fields = [
+            f'd."{target_id_col}" AS id_licencia',
+            f'd."{target_dir_col}" AS raw_text' if target_dir_col else "NULL AS raw_text",
+            f'd."{c_id_via}" AS id_via' if c_id_via else "NULL AS id_via",
+            f'd."{c_num_via}" AS num_via' if c_num_via else "NULL AS num_via",
+            f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
+            f'd."{c_manzana}" AS manzana' if c_manzana else "NULL AS manzana",
+            f'd."{c_lote}" AS lote' if c_lote else "NULL AS lote",
+            f'd."{c_slote}" AS slote' if c_slote else "NULL AS slote",
+            f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
+            f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
+            f'd."{c_observacion}" AS observacion' if c_observacion else "NULL AS observacion",
+        ]
+
+        join_clauses = []
+
+        # Enriquecimiento Vías
+        if has_vias and "id_via" in vias_cols:
+            nom_via_expr = 'v."nom_via"' if "nom_via" in vias_cols else "NULL"
+            select_fields.append(f"{nom_via_expr} AS nom_via")
+            if "id_tipo_via" in vias_cols:
+                select_fields.append('v."id_tipo_via" AS id_tipo_via')
+                if has_tipo_via:
+                    select_fields.append('tv."nombre_tipo_via" AS tipo_via_name')
+                    join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
+                    join_clauses.append(f'LEFT JOIN "{schema}"."{tipo_via_table}" tv ON v."id_tipo_via" = tv."id_tipo_via"')
+                else:
+                    select_fields.append('NULL AS tipo_via_name')
+                    join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
+            elif "tipo_via" in vias_cols:
+                select_fields.append('v."tipo_via" AS id_tipo_via')
+                select_fields.append('NULL AS tipo_via_name')
+                join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
+            else:
+                select_fields.append('NULL AS id_tipo_via')
+                select_fields.append('NULL AS tipo_via_name')
+                join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
+        else:
+            select_fields.extend(["NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name"])
+
+        # Enriquecimiento Zonas
+        if has_zonas and "id_zona" in zonas_cols:
+            nom_zona_expr = 'z."nom_zona"' if "nom_zona" in zonas_cols else "NULL"
+            select_fields.append(f"{nom_zona_expr} AS nom_zona")
+            if "id_tipo_zona" in zonas_cols:
+                select_fields.append('z."id_tipo_zona" AS id_tipo_zona')
+                if has_tipo_zona:
+                    select_fields.append('tz."nombre_tipo_zona" AS tipo_zona_name')
+                    join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
+                    join_clauses.append(f'LEFT JOIN "{schema}"."{tipo_zona_table}" tz ON z."id_tipo_zona" = tz."id_tipo_zona"')
+                else:
+                    select_fields.append('NULL AS tipo_zona_name')
+                    join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
+            elif "tipo_zona" in zonas_cols:
+                select_fields.append('z."tipo_zona" AS id_tipo_zona')
+                select_fields.append('NULL AS tipo_zona_name')
+                join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
+            else:
+                select_fields.append('NULL AS id_tipo_zona')
+                select_fields.append('NULL AS tipo_zona_name')
+                join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
+        else:
+            select_fields.extend(["NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"])
+
+        fields_sql = ",\n            ".join(select_fields)
+        joins_sql = "\n        ".join(join_clauses)
+        query_sql = f"""
+            SELECT 
+                {fields_sql}
+            FROM "{schema}"."{table}" d
+            {joins_sql}
+            WHERE {where_clause}
+            ORDER BY d."{target_id_col}" ASC;
+        """
+
+        result_proxy = session.execute(sa_text(query_sql))
+        keys = list(result_proxy.keys())
+        raw_rows = result_proxy.fetchall()
+
+        records = []
+        for raw in raw_rows:
+            r = dict(zip(keys, raw))
+
+            id_tipo_via = r.get("id_tipo_via")
+            tipo_via_name = r.get("tipo_via_name")
+            if not tipo_via_name and id_tipo_via is not None:
+                tipo_via_name = CatalogMatcher.get_via_name(id_tipo_via)
+
+            id_tipo_zona = r.get("id_tipo_zona")
+            tipo_zona_name = r.get("tipo_zona_name")
+            if not tipo_zona_name and id_tipo_zona is not None:
+                tipo_zona_name = CatalogMatcher.get_zona_name(id_tipo_zona)
+
+            es_proc = r.get("es_procesado")
             if es_proc is True:
                 estado = "NORMALIZADO"
                 metodo = "Catastro Oficial"
@@ -1103,23 +1239,23 @@ def fetch_db_records_for_export(
                 metodo = "Sin Procesar"
 
             records.append({
-                "id_licencia": r[0],
-                "raw_text": r[1] or "",
-                "id_via": r[2],
-                "nom_via": r[3] or "",
-                "tipo_via": t_via_val,
-                "tipo_via_name": tipo_via_name,
-                "num_via": r[5] or "",
-                "id_zona": r[6],
-                "nom_zona": r[7] or "",
-                "tipo_zona": t_zona_val,
-                "tipo_zona_name": tipo_zona_name,
-                "manzana": r[9] or "",
-                "lote": r[10] or "",
-                "slote": r[11] or "",
-                "referencia": r[12] or "",
-                "es_procesado": bool(es_proc),
-                "observacion": r[14] or "",
+                "id_licencia": r.get("id_licencia"),
+                "raw_text": r.get("raw_text") or "",
+                "id_via": r.get("id_via"),
+                "nom_via": r.get("nom_via") or "",
+                "tipo_via": id_tipo_via,
+                "tipo_via_name": tipo_via_name or "",
+                "num_via": r.get("num_via") or "",
+                "id_zona": r.get("id_zona"),
+                "nom_zona": r.get("nom_zona") or "",
+                "tipo_zona": id_tipo_zona,
+                "tipo_zona_name": tipo_zona_name or "",
+                "manzana": r.get("manzana") or "",
+                "lote": r.get("lote") or "",
+                "slote": r.get("slote") or "",
+                "referencia": r.get("referencia") or "",
+                "es_procesado": bool(es_proc) if es_proc is not None else False,
+                "observacion": r.get("observacion") or "",
                 "estado": estado,
                 "metodo": metodo,
                 "success": True,
