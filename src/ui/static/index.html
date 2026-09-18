@@ -6,563 +6,136 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
   <meta http-equiv="Pragma" content="no-cache" />
   <meta http-equiv="Expires" content="0" />
-  <title>MPCH - Normalización de Direcciones</title>
+  <title>MPCH — Sistema de Normalización y Homologación Catastral</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --blue:    #1d4ed8;
-      --blue-lt: #3b82f6;
-      --blue-bg: #eff6ff;
-      --green:   #15803d;
-      --green-lt:#22c55e;
-      --green-bg:#f0fdf4;
-      --amber:   #b45309;
-      --amber-lt:#f59e0b;
-      --amber-bg:#fffbeb;
-      --red:     #b91c1c;
-      --red-lt:  #ef4444;
-      --red-bg:  #fef2f2;
-      --gray:    #374151;
-      --gray-lt: #6b7280;
-      --gray-bg: #f9fafb;
-      --border:  #e5e7eb;
-      --white:   #ffffff;
-      --radius:  8px;
-      --shadow:  0 1px 3px rgba(0,0,0,.10), 0 1px 2px rgba(0,0,0,.06);
+      /* Identidad Visual Institucional MPCH */
+      --mpch-navy:        #0c2340;
+      --mpch-navy-light:  #163a66;
+      --mpch-navy-hover:  #1e4b85;
+      --mpch-gold:        #c8963e;
+      --mpch-gold-hover:  #b38230;
+      --mpch-gold-bg:     #fef9ee;
+      --mpch-gold-border: #f6e0b5;
+
+      /* Semáforo funcional y accesible */
+      --green:            #059669;
+      --green-light:      #10b981;
+      --green-bg:         #ecfdf5;
+      --green-border:     #a7f3d0;
+
+      --amber:            #d97706;
+      --amber-light:      #f59e0b;
+      --amber-bg:         #fffbeb;
+      --amber-border:     #fde68a;
+
+      --red:              #dc2626;
+      --red-light:        #ef4444;
+      --red-bg:           #fef2f2;
+      --red-border:       #fecaca;
+
+      --blue-accent:      #2563eb;
+      --blue-accent-bg:   #eff6ff;
+      --blue-accent-border:#bfdbfe;
+
+      /* Escala Neutra Slate */
+      --slate-50:         #f8fafc;
+      --slate-100:        #f1f5f9;
+      --slate-200:        #e2e8f0;
+      --slate-300:        #cbd5e1;
+      --slate-400:        #94a3b8;
+      --slate-500:        #64748b;
+      --slate-600:        #475569;
+      --slate-700:        #334155;
+      --slate-800:        #1e293b;
+      --slate-900:        #0f172a;
+
+      --radius:           8px;
+      --radius-lg:        12px;
+      --shadow-sm:        0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow:           0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+      --shadow-md:        0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      --shadow-lg:        0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: #f3f4f6;
-      color: var(--gray);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--slate-50);
+      color: var(--slate-800);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      line-height: 1.45;
     }
 
-    /* ── Header ── */
+    /* ── Cabecera Institucional MPCH ── */
     header {
-      background: var(--blue);
-      color: white;
-      padding: 14px 24px;
+      background: linear-gradient(135deg, var(--mpch-navy) 0%, #112f55 100%);
+      color: #ffffff;
+      padding: 14px 28px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid var(--mpch-gold);
+      box-shadow: 0 4px 12px rgba(12, 35, 64, 0.25);
+    }
+    .header-brand {
       display: flex;
       align-items: center;
-      gap: 12px;
-      box-shadow: 0 2px 8px rgba(0,0,0,.18);
-    }
-    header .logo {
-      width: 40px; height: 40px;
-      background: rgba(255,255,255,.18);
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 20px; font-weight: 700; letter-spacing: -1px;
-    }
-    header h1 { font-size: 17px; font-weight: 600; }
-    header p  { font-size: 12px; opacity: .75; margin-top: 1px; }
-
-    /* ── Wizard Steps Bar ── */
-    .wizard-bar {
-      background: white;
-      border-bottom: 1px solid var(--border);
-      padding: 0 24px;
-      display: flex;
-      gap: 0;
-      overflow-x: auto;
-    }
-    .step-tab {
-      display: flex; align-items: center; gap: 8px;
-      padding: 14px 20px 12px;
-      border-bottom: 3px solid transparent;
-      cursor: default;
-      white-space: nowrap;
-      font-size: 13px;
-      color: var(--gray-lt);
-      user-select: none;
-      transition: color .15s, border-color .15s;
-    }
-    .step-tab .num {
-      width: 22px; height: 22px;
-      border-radius: 50%;
-      background: #e5e7eb;
-      color: var(--gray-lt);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 11px; font-weight: 700;
-      transition: background .15s, color .15s;
-    }
-    .step-tab.active {
-      color: var(--blue);
-      border-bottom-color: var(--blue);
-    }
-    .step-tab.active .num {
-      background: var(--blue);
-      color: white;
-    }
-    .step-tab.done {
-      color: var(--green);
-    }
-    .step-tab.done .num {
-      background: var(--green);
-      color: white;
-    }
-
-    /* ── Main ── */
-    main {
-      flex: 1;
-      max-width: 900px;
-      width: 100%;
-      margin: 28px auto;
-      padding: 0 20px;
-    }
-
-    .panel {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: var(--shadow);
-      padding: 28px;
-      margin-bottom: 20px;
-    }
-    .panel-title {
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--gray);
-      margin-bottom: 18px;
-      padding-bottom: 12px;
-      border-bottom: 1px solid var(--border);
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    /* ── Forms ── */
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
       gap: 14px;
     }
-    .form-grid .full { grid-column: 1 / -1; }
-    .field label {
-      display: block;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--gray);
-      margin-bottom: 5px;
-      letter-spacing: .3px;
-    }
-    .field input, .field select {
-      width: 100%;
-      padding: 9px 12px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 14px;
-      color: var(--gray);
-      background: white;
-      transition: border-color .15s, box-shadow .15s;
-      outline: none;
-    }
-    .field input:focus, .field select:focus {
-      border-color: var(--blue-lt);
-      box-shadow: 0 0 0 3px rgba(59,130,246,.12);
-    }
-    .field input::placeholder { color: #9ca3af; }
-
-    /* ── Buttons ── */
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 9px 20px;
-      border: none;
-      border-radius: 6px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .15s, transform .1s;
-    }
-    .btn:active { transform: scale(.98); }
-    .btn:disabled { opacity: .45; cursor: not-allowed; }
-    .btn-primary { background: var(--blue); color: white; }
-    .btn-primary:hover:not(:disabled) { background: #1e40af; }
-    .btn-green  { background: var(--green); color: white; }
-    .btn-green:hover:not(:disabled)  { background: #166534; }
-    .btn-red    { background: var(--red); color: white; }
-    .btn-red:hover:not(:disabled)    { background: #991b1b; }
-    .btn-ghost  { background: transparent; color: var(--gray); border: 1px solid var(--border); }
-    .btn-ghost:hover:not(:disabled)  { background: var(--gray-bg); }
-
-    /* ── Alert banner ── */
-    .alert {
-      padding: 10px 14px;
-      border-radius: 6px;
-      font-size: 13px;
-      margin-bottom: 14px;
-      border-left: 3px solid;
-    }
-    .alert-error  { background: var(--red-bg);   border-color: var(--red-lt);   color: var(--red); }
-    .alert-ok     { background: var(--green-bg);  border-color: var(--green-lt); color: var(--green); }
-    .alert-info   { background: var(--blue-bg);   border-color: var(--blue-lt);  color: var(--blue); }
-    .alert-warn   { background: var(--amber-bg);  border-color: var(--amber-lt); color: var(--amber); }
-    .hidden { display: none !important; }
-
-    /* ── Schema/Table cards grid ── */
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    .card-item {
-      border: 2px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px;
-      cursor: pointer;
-      transition: border-color .15s, background .15s;
-      background: white;
-    }
-    .card-item:hover { border-color: var(--blue-lt); background: var(--blue-bg); }
-    .card-item.selected { border-color: var(--blue); background: var(--blue-bg); }
-    .card-item .card-name { font-size: 14px; font-weight: 600; color: var(--gray); margin-bottom: 4px; }
-    .card-item .card-meta { font-size: 12px; color: var(--gray-lt); }
-
-    /* ── Table inspection ── */
-    .table-columns {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 8px;
-    }
-    .col-badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      background: var(--gray-bg);
-      border: 1px solid var(--border);
-      color: var(--gray);
-    }
-    .col-badge.id-col    { background: var(--blue-bg); border-color: var(--blue-lt); color: var(--blue); }
-    .col-badge.addr-col  { background: var(--green-bg); border-color: var(--green-lt); color: var(--green); }
-
-    /* ── Preview table ── */
-    .preview-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-top: 12px;
-    }
-    .preview-wrap table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 13px;
-    }
-    .preview-wrap th {
-      background: var(--gray-bg);
-      padding: 8px 12px;
-      text-align: left;
-      font-weight: 600;
-      color: var(--gray-lt);
-      border-bottom: 1px solid var(--border);
-    }
-    .preview-wrap td {
-      padding: 7px 12px;
-      border-bottom: 1px solid #f3f4f6;
-      max-width: 400px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .preview-wrap tr:last-child td { border-bottom: none; }
-    .preview-wrap tr:hover td { background: var(--gray-bg); }
-
-    /* ── KPI cards ── */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-    .kpi {
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      background: white;
-    }
-    .kpi .kpi-label { font-size: 11px; font-weight: 600; color: var(--gray-lt); letter-spacing: .4px; text-transform: uppercase; margin-bottom: 4px; }
-    .kpi .kpi-val   { font-size: 26px; font-weight: 700; color: var(--gray); line-height: 1; }
-    .kpi.blue  { border-top: 3px solid var(--blue);    } .kpi.blue  .kpi-val { color: var(--blue);  }
-    .kpi.green { border-top: 3px solid var(--green-lt); } .kpi.green .kpi-val { color: var(--green); }
-    .kpi.amber { border-top: 3px solid var(--amber-lt); } .kpi.amber .kpi-val { color: var(--amber); }
-    .kpi.red   { border-top: 3px solid var(--red-lt);  } .kpi.red   .kpi-val { color: var(--red);   }
-
-    /* ── Progress bar ── */
-    .progress-bar-wrap {
-      height: 8px;
-      background: #e5e7eb;
-      border-radius: 4px;
-      overflow: hidden;
-      margin-bottom: 6px;
-    }
-    .progress-bar-fill {
-      height: 100%;
-      background: var(--blue-lt);
-      border-radius: 4px;
-      transition: width .3s ease;
-    }
-
-    /* ── Filtros Rápidos de Estado (Pills con contadores) ── */
-    .status-pill-group {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .status-pill-btn {
-      background: white;
-      border: 1px solid var(--border);
-      padding: 5px 12px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--gray);
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      transition: all .15s ease;
-    }
-    .status-pill-btn:hover {
-      background: var(--blue-bg);
-      border-color: var(--blue-lt);
-      color: var(--blue);
-    }
-    .status-pill-btn.active {
-      background: var(--blue);
-      border-color: var(--blue);
-      color: white;
-    }
-    .status-pill-btn.active .pill-count {
-      background: rgba(255,255,255,0.25);
-      color: white;
-    }
-    .pill-count {
-      background: #f1f5f9;
-      padding: 1px 7px;
-      border-radius: 10px;
-      font-size: 11px;
-      color: var(--gray-lt);
-    }
-
-    /* ── Tarjetas Concisas de Registro en Tiempo Real ── */
-    .record-card {
-      border: 1px solid #e2e8f0;
-      border-left: 4px solid #cbd5e1;
-      border-radius: 6px;
-      padding: 11px 14px;
-      margin-bottom: 8px;
-      background: white;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
-      transition: background .12s, box-shadow .12s;
-    }
-    .record-card:hover {
-      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
-      border-color: #cbd5e1;
-    }
-    .record-card.card-valid {
-      border-left-color: #22c55e;
+    .header-logo {
+      width: 44px;
+      height: 44px;
       background: #ffffff;
-    }
-    .record-card.card-observed {
-      border-left-color: #f59e0b;
-      background: #fffdf8;
-    }
-    .record-card.card-error {
-      border-left-color: #ef4444;
-      background: #fffafa;
-    }
-
-    .record-header {
+      color: var(--mpch-navy);
+      border: 2px solid var(--mpch-gold);
+      border-radius: var(--radius);
       display: flex;
+      flex-direction: column;
       align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 8px;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 15px;
+      letter-spacing: -0.5px;
+      line-height: 1;
+      box-shadow: var(--shadow-sm);
+    }
+    .header-logo span {
+      font-size: 8px;
+      color: var(--mpch-gold);
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin-top: 2px;
+    }
+    .header-titles h1 {
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.2px;
+      color: #ffffff;
+    }
+    .header-titles p {
       font-size: 12px;
-      margin-bottom: 6px;
-    }
-    .record-meta {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-    .record-id-chip {
-      font-family: monospace;
-      font-weight: 700;
-      color: var(--blue);
-      background: var(--blue-bg);
-      padding: 2px 7px;
-      border-radius: 4px;
-      font-size: 12px;
-    }
-    .record-index {
-      color: var(--gray-lt);
-      font-size: 11px;
-      font-weight: 600;
+      color: var(--slate-300);
+      margin-top: 2px;
     }
 
-    .record-raw {
-      font-size: 13px;
-      color: #1e293b;
-      margin-bottom: 8px;
-      word-break: break-word;
-      display: flex;
-      align-items: baseline;
-      gap: 6px;
-    }
-    .record-raw .lbl-entrada {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .4px;
-      text-transform: uppercase;
-      color: var(--gray-lt);
-      background: #f1f5f9;
-      padding: 1px 6px;
-      border-radius: 3px;
-      flex-shrink: 0;
-    }
-    .record-raw .val-entrada {
-      font-weight: 600;
-      color: #334155;
-    }
-
-    /* Fila de desglose de campos normalizados concisos */
-    .record-breakdown {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px 16px;
-      padding: 7px 12px;
-      background: #f8fafc;
-      border-radius: 5px;
-      border: 1px solid #f1f5f9;
-      font-size: 12px;
-      align-items: center;
-    }
-    .breakdown-item {
-      display: inline-flex;
-      align-items: center;
-      gap: 5px;
-      white-space: nowrap;
-    }
-    .breakdown-lbl {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: .4px;
-      text-transform: uppercase;
-      color: var(--gray-lt);
-    }
-    .breakdown-val {
-      font-weight: 600;
-      color: #0f172a;
-    }
-    .chip-id {
-      padding: 0 5px;
-      border-radius: 3px;
-      font-size: 10px;
-      font-weight: 700;
-      font-family: monospace;
-    }
-    .chip-via { background: #dbeafe; color: #1e40af; }
-    .chip-zona { background: #f3e8ff; color: #6b21a8; }
-
-    /* Barra de diagnóstico concisa para observados */
-    .record-diagnosis {
-      margin-top: 6px;
-      padding: 6px 12px;
-      border-radius: 5px;
-      font-size: 12px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .record-diagnosis.diag-obs {
-      background: #fef3c7;
-      color: #92400e;
-      border: 1px solid #fde68a;
-    }
-    .record-diagnosis.diag-err {
-      background: #fee2e2;
-      color: #991b1b;
-      border: 1px solid #fecaca;
-    }
-
-    /* Badges genéricos */
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 11px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: .2px;
-    }
-    .badge-valid    { background: var(--green-bg); color: var(--green); border: 1px solid #bbf7d0; }
-    .badge-observed { background: var(--amber-bg); color: var(--amber); border: 1px solid #fde68a; }
-    .badge-error    { background: var(--red-bg);   color: var(--red);   border: 1px solid #fecaca; }
-    .badge-motor-ai { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-    .badge-motor-hy { background: #ecfeff; color: #0e7490; border: 1px solid #a5f3fc; }
-    .badge-motor-he { background: #fefce8; color: #a16207; border: 1px solid #fef08a; }
-
-    /* ── AI status badge ── */
-    .ai-badge {
-      display: inline-flex; align-items: center; gap: 4px;
-      padding: 3px 10px; border-radius: 12px;
-      font-size: 12px; font-weight: 600;
-    }
-    .ai-on  { background: var(--green-bg); color: var(--green); }
-    .ai-off { background: var(--red-bg);   color: var(--red);   }
-    .dot { width: 7px; height: 7px; border-radius: 50%; }
-    .dot-green { background: var(--green-lt); }
-    .dot-red   { background: var(--red-lt); }
-
-    /* ── Spinner ── */
-    .spinner {
-      width: 16px; height: 16px;
-      border: 2px solid rgba(255,255,255,.4);
-      border-top-color: white;
-      border-radius: 50%;
-      animation: spin .6s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Section separator ── */
-    .section-header {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--gray-lt);
-      letter-spacing: .3px;
-      text-transform: uppercase;
-      margin-bottom: 10px;
-      margin-top: 20px;
-    }
-
-    /* ── Botón de Apagado y Modal ── */
     .btn-shutdown-header {
-      background: #dc2626;
-      color: white;
-      border: 1px solid rgba(255,255,255,0.3);
-      padding: 7px 14px;
-      border-radius: 6px;
+      background: rgba(220, 38, 38, 0.9);
+      color: #ffffff;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 8px 16px;
+      border-radius: var(--radius);
       font-size: 13px;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
-      gap: 6px;
-      box-shadow: 0 1px 3px rgba(0,0,0,.15);
-      transition: background 0.15s, transform 0.1s;
+      gap: 7px;
+      transition: background 0.15s ease, transform 0.1s ease;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.15);
     }
     .btn-shutdown-header:hover {
       background: #b91c1c;
@@ -572,10 +145,620 @@
       transform: translateY(0);
     }
 
+    /* ── Barra del Asistente (Stepper) ── */
+    .wizard-bar {
+      background: #ffffff;
+      border-bottom: 1px solid var(--slate-200);
+      padding: 0 28px;
+      display: flex;
+      overflow-x: auto;
+      box-shadow: var(--shadow-sm);
+    }
+    .step-tab {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 14px 20px 12px;
+      border-bottom: 3px solid transparent;
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--slate-500);
+      user-select: none;
+      transition: all 0.15s ease;
+    }
+    .step-tab:hover:not(.locked) {
+      color: var(--mpch-navy);
+      background: var(--slate-50);
+    }
+    .step-tab.locked {
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .step-tab .tab-icon {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--slate-200);
+      color: var(--slate-600);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      transition: all 0.15s ease;
+    }
+    .step-tab.active {
+      color: var(--mpch-navy);
+      border-bottom-color: var(--mpch-navy);
+      font-weight: 600;
+    }
+    .step-tab.active .tab-icon {
+      background: var(--mpch-navy);
+      color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(12, 35, 64, 0.15);
+    }
+    .step-tab.done {
+      color: var(--green);
+    }
+    .step-tab.done .tab-icon {
+      background: var(--green);
+      color: #ffffff;
+    }
+
+    /* ── Contenedor Principal ── */
+    main {
+      flex: 1;
+      max-width: 960px;
+      width: 100%;
+      margin: 24px auto;
+      padding: 0 20px;
+    }
+
+    .panel {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      padding: 26px 28px;
+      margin-bottom: 20px;
+    }
+    .panel-title {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--mpch-navy);
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--slate-200);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel-title svg {
+      color: var(--mpch-navy-light);
+      flex-shrink: 0;
+    }
+
+    /* ── Formularios y Campos ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .form-grid .full { grid-column: 1 / -1; }
+    .field label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--slate-700);
+      margin-bottom: 6px;
+      letter-spacing: 0.2px;
+    }
+    .field input, .field select {
+      width: 100%;
+      padding: 9px 12px;
+      border: 1px solid var(--slate-300);
+      border-radius: var(--radius);
+      font-size: 13.5px;
+      color: var(--slate-900);
+      background: #ffffff;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field input:focus, .field select:focus {
+      border-color: var(--mpch-navy-light);
+      box-shadow: 0 0 0 3px rgba(22, 58, 102, 0.15);
+    }
+    .field input::placeholder {
+      color: var(--slate-400);
+    }
+
+    /* ── Botones ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s, opacity 0.15s;
+      user-select: none;
+      white-space: nowrap;
+    }
+    .btn:active:not(:disabled) { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-primary { background: var(--mpch-navy); color: #ffffff; }
+    .btn-primary:hover:not(:disabled) { background: var(--mpch-navy-light); }
+
+    .btn-action { background: var(--mpch-navy-light); color: #ffffff; }
+    .btn-action:hover:not(:disabled) { background: var(--mpch-navy-hover); }
+
+    .btn-green  { background: var(--green); color: #ffffff; }
+    .btn-green:hover:not(:disabled)  { background: #047857; }
+
+    .btn-red    { background: var(--red); color: #ffffff; }
+    .btn-red:hover:not(:disabled)    { background: #b91c1c; }
+
+    .btn-ghost  { background: #ffffff; color: var(--slate-700); border: 1px solid var(--slate-300); }
+    .btn-ghost:hover:not(:disabled)  { background: var(--slate-100); border-color: var(--slate-400); }
+
+    .btn-gold   { background: var(--mpch-gold); color: #ffffff; }
+    .btn-gold:hover:not(:disabled)   { background: var(--mpch-gold-hover); }
+
+    /* ── Tarjetas de Verificación y Diagnóstico ── */
+    .diag-box {
+      margin-top: 14px;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      line-height: 1.45;
+      animation: fadeIn 0.2s ease-out;
+    }
+    .diag-box.ok {
+      background: var(--green-bg);
+      border: 1px solid var(--green-border);
+      color: #065f46;
+    }
+    .diag-box.error {
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      color: #991b1b;
+    }
+    .diag-box.warn {
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-border);
+      color: #92400e;
+    }
+    .diag-box.info {
+      background: var(--blue-accent-bg);
+      border: 1px solid var(--blue-accent-border);
+      color: #1e40af;
+    }
+    .diag-icon {
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .diag-content strong {
+      display: block;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .diag-meta {
+      font-size: 11.5px;
+      margin-top: 5px;
+      opacity: 0.9;
+    }
+
+    /* ── Cuadrícula de Tarjetas (Esquemas y Tablas) ── */
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding: 2px;
+    }
+    .card-item {
+      background: #ffffff;
+      border: 1.5px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      position: relative;
+    }
+    .card-item:hover {
+      border-color: var(--mpch-navy-light);
+      box-shadow: var(--shadow);
+      transform: translateY(-1px);
+    }
+    .card-item.selected {
+      border-color: var(--mpch-navy);
+      background: var(--blue-accent-bg);
+      box-shadow: 0 0 0 2px rgba(12, 35, 64, 0.2);
+    }
+    .card-item.selected::after {
+      content: '';
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--mpch-navy);
+    }
+    .card-name {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--mpch-navy);
+      word-break: break-word;
+    }
+    .card-meta {
+      font-size: 11.5px;
+      color: var(--slate-500);
+      margin-top: 4px;
+    }
+
+    /* ── Resumen Ejecutivo (Paso 5) ── */
+    .summary-card {
+      background: linear-gradient(180deg, #ffffff 0%, var(--slate-50) 100%);
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+    .summary-group {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .summary-col-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .summary-col-val {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--mpch-navy);
+      margin-top: 2px;
+    }
+    .summary-col-sub {
+      font-size: 11.5px;
+      color: var(--slate-500);
+      margin-top: 2px;
+    }
+
+    /* ── KPIs Institucionales ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .kpi {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      box-shadow: var(--shadow-sm);
+      border-top: 3px solid transparent;
+      transition: transform 0.15s ease;
+    }
+    .kpi:hover { transform: translateY(-1px); }
+    .kpi.navy  { border-top-color: var(--mpch-navy); }
+    .kpi.green { border-top-color: var(--green); }
+    .kpi.amber { border-top-color: var(--amber); }
+    .kpi.red   { border-top-color: var(--red); }
+
+    .kpi-label {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .kpi-val {
+      font-size: 26px;
+      font-weight: 800;
+      color: var(--slate-900);
+      margin-top: 4px;
+      letter-spacing: -0.5px;
+    }
+
+    /* ── Barra de Progreso ── */
+    .progress-bar-wrap {
+      background: var(--slate-200);
+      border-radius: 9999px;
+      height: 8px;
+      overflow: hidden;
+      margin: 12px 0 6px 0;
+    }
+    .progress-bar-fill {
+      background: linear-gradient(90deg, var(--mpch-navy) 0%, var(--green) 100%);
+      height: 100%;
+      border-radius: 9999px;
+      transition: width 0.25s ease;
+    }
+
+    /* ── Inspector Catastral ── */
+    .inspector-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .inspector-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--mpch-navy);
+    }
+    .dot-live {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 2px rgba(5, 150, 105, 0.25);
+      animation: pulse 1.8s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.9); }
+    }
+
+    .filter-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 10px 14px;
+      background: var(--slate-100);
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      margin-bottom: 14px;
+    }
+    .status-pill-group {
+      display: flex;
+      gap: 5px;
+    }
+    .status-pill-btn {
+      background: transparent;
+      border: 1px solid var(--slate-300);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--slate-600);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.12s;
+    }
+    .status-pill-btn:hover {
+      background: var(--slate-200);
+      color: var(--slate-900);
+    }
+    .status-pill-btn.active {
+      background: var(--mpch-navy);
+      border-color: var(--mpch-navy);
+      color: #ffffff;
+    }
+    .pill-count {
+      font-size: 11px;
+      background: rgba(0,0,0,0.08);
+      padding: 1px 5px;
+      border-radius: 4px;
+    }
+    .status-pill-btn.active .pill-count {
+      background: rgba(255,255,255,0.2);
+    }
+
+    /* ── Tarjetas de Registros (Sin Emojis) ── */
+    .record-card {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      box-shadow: var(--shadow-sm);
+      border-left: 4px solid var(--slate-300);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .record-card.card-valid { border-left-color: var(--green); }
+    .record-card.card-observed { border-left-color: var(--amber); }
+    .record-card.card-error { border-left-color: var(--red); }
+
+    .record-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .record-meta {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .record-id-chip {
+      background: var(--slate-100);
+      border: 1px solid var(--slate-300);
+      color: var(--slate-700);
+      font-family: monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+    .record-index {
+      font-size: 11px;
+      color: var(--slate-500);
+    }
+
+    /* Badges de Estado y Motor */
+    .badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      letter-spacing: 0.2px;
+    }
+    .badge-valid    { background: var(--green-bg); color: var(--green); border: 1px solid var(--green-border); }
+    .badge-observed { background: var(--amber-bg); color: var(--amber); border: 1px solid var(--amber-border); }
+    .badge-error    { background: var(--red-bg);   color: var(--red);   border: 1px solid var(--red-border); }
+
+    .badge-motor-ai { background: var(--blue-accent-bg); color: var(--blue-accent); border: 1px solid var(--blue-accent-border); }
+    .badge-motor-hy { background: #fdf4ff; color: #9333ea; border: 1px solid #f0abfc; }
+    .badge-motor-he { background: var(--slate-100); color: var(--slate-600); border: 1px solid var(--slate-300); }
+
+    .record-raw {
+      background: var(--slate-50);
+      border: 1px solid var(--slate-200);
+      border-radius: 6px;
+      padding: 7px 10px;
+      font-size: 12.5px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    .lbl-entrada {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--slate-500);
+      letter-spacing: 0.5px;
+      flex-shrink: 0;
+    }
+    .val-entrada {
+      font-family: monospace;
+      color: var(--slate-900);
+      word-break: break-all;
+    }
+
+    .record-breakdown {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      font-size: 12px;
+    }
+    .breakdown-item {
+      background: #ffffff;
+      border: 1px solid var(--slate-200);
+      border-radius: 6px;
+      padding: 6px 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 6px;
+    }
+    .breakdown-lbl {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: var(--slate-500);
+      text-transform: uppercase;
+    }
+    .breakdown-val {
+      font-weight: 600;
+      color: var(--slate-800);
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .chip-id {
+      font-size: 10px;
+      font-family: monospace;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+    }
+    .chip-via  { background: #dbeafe; color: #1e40af; }
+    .chip-zona { background: #dcfce7; color: #166534; }
+
+    .record-diagnosis {
+      margin-top: 8px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .record-diagnosis.diag-obs {
+      background: var(--amber-bg);
+      border: 1px solid var(--amber-border);
+      color: #92400e;
+    }
+    .record-diagnosis.diag-err {
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      color: #991b1b;
+    }
+
+    /* ── Tabla de Previsualización ── */
+    .preview-wrap {
+      max-height: 220px;
+      overflow: auto;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      margin-top: 10px;
+    }
+    table.data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12.5px;
+      text-align: left;
+    }
+    table.data-table th {
+      background: var(--mpch-navy);
+      color: #ffffff;
+      padding: 8px 12px;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+    }
+    table.data-table td {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--slate-200);
+    }
+    table.data-table tr:hover td {
+      background: var(--slate-50);
+    }
+
+    /* ── Modal de Confirmación ── */
     .modal-overlay {
       position: fixed;
       top: 0; left: 0; right: 0; bottom: 0;
-      background: rgba(15, 23, 42, 0.65);
+      background: rgba(12, 35, 64, 0.65);
       backdrop-filter: blur(4px);
       display: flex;
       align-items: center;
@@ -584,17 +767,17 @@
     }
     .modal-overlay.hidden { display: none !important; }
     .modal-dialog {
-      background: white;
-      border-radius: 12px;
+      background: #ffffff;
+      border-radius: var(--radius-lg);
       padding: 24px;
       width: 100%;
       max-width: 440px;
-      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.25);
+      box-shadow: var(--shadow-lg);
       animation: modalFadeIn 0.2s ease-out;
     }
     @keyframes modalFadeIn {
-      from { opacity: 0; transform: scale(0.95); }
-      to { opacity: 1; transform: scale(1); }
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
     }
     .modal-header {
       display: flex;
@@ -602,22 +785,26 @@
       gap: 12px;
       margin-bottom: 12px;
     }
-    .modal-icon {
-      font-size: 22px;
-      width: 38px; height: 38px;
+    .modal-icon-badge {
+      width: 38px;
+      height: 38px;
       border-radius: 50%;
-      background: #fef2f2;
-      display: flex; align-items: center; justify-content: center;
+      background: var(--red-bg);
+      border: 1px solid var(--red-border);
+      color: var(--red);
+      display: flex;
+      align-items: center;
+      justify-content: center;
       flex-shrink: 0;
     }
     .modal-header h3 {
       font-size: 16px;
       font-weight: 700;
-      color: #1e293b;
+      color: var(--slate-900);
     }
     .modal-body {
       font-size: 13px;
-      color: #475569;
+      color: var(--slate-600);
       line-height: 1.5;
       margin-bottom: 20px;
     }
@@ -627,263 +814,337 @@
       gap: 10px;
     }
 
+    /* ── Spinners y Utilidades ── */
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--slate-300);
+      border-top-color: var(--mpch-navy);
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hidden { display: none !important; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
     @media (max-width: 640px) {
       .kpi-grid { grid-template-columns: 1fr 1fr; }
       .form-grid { grid-template-columns: 1fr; }
+      .summary-card { flex-direction: column; align-items: flex-start; }
     }
   </style>
 </head>
 <body>
 
-<!-- HEADER -->
-<header style="display:flex; justify-content:space-between; align-items:center;">
-  <div style="display:flex; align-items:center; gap:12px;">
-    <div class="logo">MP</div>
-    <div>
-      <h1>Normalización Catastral de Direcciones</h1>
-      <p>Municipalidad Provincial de Chiclayo — ETL In-Place</p>
+<!-- CABECERA INSTITUCIONAL MPCH -->
+<header>
+  <div class="header-brand">
+    <div class="header-logo">
+      MPCH
+      <span>CHICLAYO</span>
+    </div>
+    <div class="header-titles">
+      <h1>Municipalidad Provincial de Chiclayo</h1>
+      <p>Sistema de Normalización y Homologación Catastral — ETL In-Place</p>
     </div>
   </div>
   <div>
-    <button class="btn-shutdown-header" id="btnHeaderExit" onclick="confirmShutdown()" title="Apagar el servicio y cerrar la aplicación (Ctrl+C)">
-      🛑 Apagar
+    <button class="btn-shutdown-header" id="btnHeaderExit" onclick="confirmShutdown()" title="Finalizar el servicio y cerrar la aplicación de forma segura">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
+      </svg>
+      <span>Apagar Servicio</span>
     </button>
   </div>
 </header>
 
-<!-- WIZARD STEPS BAR -->
-<div class="wizard-bar" id="wizardBar">
-  <div class="step-tab active" id="tab1">
-    <span class="num">1</span> Conexión IA
+<!-- BARRA DEL ASISTENTE DE 5 PASOS -->
+<nav class="wizard-bar" id="wizardBar" aria-label="Progreso de configuración">
+  <div class="step-tab active" id="tab1" onclick="tryGoStep(1)">
+    <span class="tab-icon" id="tabIcon1">1</span>
+    <span>Conexión IA</span>
   </div>
-  <div class="step-tab" id="tab2">
-    <span class="num">2</span> Conexión a BD
+  <div class="step-tab locked" id="tab2" onclick="tryGoStep(2)">
+    <span class="tab-icon" id="tabIcon2">2</span>
+    <span>Conexión BD</span>
   </div>
-  <div class="step-tab" id="tab3">
-    <span class="num">3</span> Esquema
+  <div class="step-tab locked" id="tab3" onclick="tryGoStep(3)">
+    <span class="tab-icon" id="tabIcon3">3</span>
+    <span>Esquema</span>
   </div>
-  <div class="step-tab" id="tab4">
-    <span class="num">4</span> Tabla de Direcciones
+  <div class="step-tab locked" id="tab4" onclick="tryGoStep(4)">
+    <span class="tab-icon" id="tabIcon4">4</span>
+    <span>Tabla y Mapeo</span>
   </div>
-  <div class="step-tab" id="tab5">
-    <span class="num">5</span> Ejecución ETL
+  <div class="step-tab locked" id="tab5" onclick="tryGoStep(5)">
+    <span class="tab-icon" id="tabIcon5">5</span>
+    <span>Inspector Catastral</span>
   </div>
-</div>
+</nav>
 
-<!-- MAIN -->
+<!-- CONTENEDOR PRINCIPAL -->
 <main>
 
-  <!-- ════ PASO 1: CONEXIÓN IA ════ -->
-  <div id="step1">
+  <!-- ════ PASO 1: CONEXIÓN AL MOTOR IA ════ -->
+  <section id="step1">
     <div class="panel">
       <div class="panel-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V10a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="14" r="1.5"/><circle cx="15" cy="14" r="1.5"/><path d="M10 18h4"/></svg>
-        Conexión al Motor de Inteligencia Artificial (Ollama)
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
+        </svg>
+        Paso 1: Configuración del Motor de Inteligencia Artificial (Ollama)
       </div>
 
-      <div id="alertAI"></div>
-
-      <p style="font-size:13px; color:var(--gray-lt); margin-bottom:16px;">
-        Ingrese los parámetros de red y modelo de Ollama. La configuración es 100% dinámica en tiempo de ejecución sin depender de archivos de entorno.
+      <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
+        Verifique la conexión con el servidor Ollama local o en red. Podrá detectar los modelos descargados o ingresar uno manualmente.
       </p>
 
       <div class="form-grid">
         <div class="field">
-          <label>Host / IP del Servidor Ollama</label>
-          <input type="text" id="ai_host" placeholder="Ej. localhost o 192.168.1.50" />
+          <label for="ai_host">Servidor / Host de Ollama</label>
+          <input type="text" id="ai_host" placeholder="Ej. localhost o 192.168.1.50" value="localhost" />
         </div>
         <div class="field">
-          <label>Puerto</label>
-          <input type="number" id="ai_port" placeholder="Ej. 11434" />
+          <label for="ai_port">Puerto</label>
+          <input type="number" id="ai_port" placeholder="11434" value="11434" />
         </div>
         <div class="field full">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
-            <label style="margin:0;">Modelo de Lenguaje (LLM)</label>
-            <button type="button" class="btn btn-ghost" style="padding:2px 10px; font-size:11px;" onclick="detectAIModels()">
-              🔄 Detectar modelos en servidor
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <label for="ai_model_select" style="margin:0;">Modelo de Lenguaje (LLM)</label>
+            <button type="button" class="btn btn-ghost" style="padding:3px 10px; font-size:11.5px;" onclick="detectAIModels()">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Detectar modelos instalados</span>
             </button>
           </div>
           <select id="ai_model_select" onchange="onModelSelectChange()">
-            <option value="" disabled selected>-- Ingrese Host y detecte modelos --</option>
+            <option value="" disabled selected>-- Presione "Detectar modelos" o ingrese uno manualmente --</option>
             <option value="custom">Ingresar nombre de modelo manualmente...</option>
           </select>
           <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. patroclo-artesano-7b:latest o llama3:latest" />
         </div>
       </div>
 
-      <div style="margin-top:20px; display:flex; gap:10px; align-items:center;">
-        <button class="btn btn-primary" id="btnConnectAI" onclick="connectAI()">
-          Probar y Conectar IA
+      <!-- Tarjeta de Diagnóstico Interactivo de IA -->
+      <div id="diagAI"></div>
+
+      <div style="margin-top:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-primary" id="btnConnectAI" onclick="verifyAIConnection()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Verificar Conexión IA</span>
         </button>
-        <button class="btn btn-green hidden" id="btnGoStep2" onclick="goStep(2)">
-          Continuar a Conexión BD →
+        <button class="btn btn-green" id="btnGoStep2" onclick="goStep(2)" disabled>
+          <span>Continuar a Base de Datos</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
-        <span id="spinConnectAI" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color: var(--blue);"></div></span>
+        <span id="spinConnectAI" class="hidden"><div class="spinner"></div></span>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- ════ PASO 2: CONEXIÓN BD ════ -->
-  <div id="step2" class="hidden">
+  <!-- ════ PASO 2: CONEXIÓN A BASE DE DATOS ════ -->
+  <section id="step2" class="hidden">
     <div class="panel">
       <div class="panel-title">
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l2.5 2.5"/></svg>
-        Conexión a la Base de Datos
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+        </svg>
+        Paso 2: Conexión a la Base de Datos PostgreSQL
       </div>
 
-      <div id="alertConnect"></div>
+      <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
+        Ingrese las credenciales de conexión al servidor de base de datos donde reside la información catastral.
+      </p>
 
       <div class="form-grid">
         <div class="field">
-          <label>Servidor (Host)</label>
+          <label for="db_host">Servidor (Host / IP)</label>
           <input type="text" id="db_host" placeholder="Ej. localhost o 192.168.1.10" />
         </div>
         <div class="field">
-          <label>Puerto</label>
-          <input type="number" id="db_port" placeholder="Ej. 5432" />
+          <label for="db_port">Puerto</label>
+          <input type="number" id="db_port" placeholder="5432" />
         </div>
         <div class="field">
-          <label>Base de Datos</label>
+          <label for="db_name">Nombre de Base de Datos</label>
           <input type="text" id="db_name" placeholder="Ej. bd_mpch" />
         </div>
         <div class="field">
-          <label>Usuario</label>
+          <label for="db_user">Usuario</label>
           <input type="text" id="db_user" placeholder="Ej. postgres" />
         </div>
         <div class="field full">
-          <label>Contraseña</label>
+          <label for="db_pass">Contraseña</label>
           <input type="password" id="db_pass" placeholder="Contraseña de PostgreSQL" />
         </div>
       </div>
 
-      <div style="margin-top:20px; display:flex; gap:10px; align-items:center;">
-        <button class="btn btn-ghost" onclick="goStep(1)">Volver a IA</button>
-        <button class="btn btn-primary" id="btnConnect" onclick="connectDB()">
-          Conectar y continuar
+      <!-- Tarjeta de Diagnóstico Interactivo de BD -->
+      <div id="diagDB"></div>
+
+      <div style="margin-top:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="goStep(1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <span>Volver a IA</span>
         </button>
-        <span id="spinConnect" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color: var(--blue);"></div></span>
+        <button class="btn btn-primary" id="btnConnectDB" onclick="verifyDBConnection()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Verificar Conexión BD</span>
+        </button>
+        <button class="btn btn-green" id="btnGoStep3" onclick="goStep(3)" disabled>
+          <span>Continuar a Esquemas</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <span id="spinConnectDB" class="hidden"><div class="spinner"></div></span>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- ════ PASO 3: ESQUEMA ════ -->
-  <div id="step3" class="hidden">
+  <!-- ════ PASO 3: SELECCIÓN DE ESQUEMA ════ -->
+  <section id="step3" class="hidden">
     <div class="panel">
       <div class="panel-title">
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="16" height="12" rx="2"/><path d="M6 5V3h8v2"/></svg>
-        Seleccionar Esquema
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        Paso 3: Selección del Esquema de Trabajo
       </div>
 
-      <div id="alertSchema"></div>
-      <p style="font-size:13px; color:var(--gray-lt); margin-bottom:16px;">
-        Seleccione el esquema donde reside la tabla de direcciones que desea normalizar.
+      <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
+        Seleccione el esquema de PostgreSQL que contiene la tabla de direcciones a normalizar.
       </p>
 
+      <div id="alertSchema"></div>
       <div class="cards-grid" id="schemaCards"></div>
 
-      <div style="margin-top:8px; display:flex; gap:10px;">
-        <button class="btn btn-ghost" onclick="goStep(2)">Volver a BD</button>
-        <button class="btn btn-primary" id="btnSchema" onclick="inspectSchema()" disabled>
-          Continuar con este esquema
+      <div style="margin-top:16px; display:flex; gap:12px; align-items:center;">
+        <button class="btn btn-ghost" onclick="goStep(2)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <span>Volver a BD</span>
         </button>
-        <span id="spinSchema" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color:var(--blue);"></div></span>
+        <button class="btn btn-primary" id="btnSchema" onclick="inspectSchema()" disabled>
+          <span>Continuar con este Esquema</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <span id="spinSchema" class="hidden"><div class="spinner"></div></span>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- ════ PASO 4: TABLA ════ -->
-  <div id="step4" class="hidden">
+  <!-- ════ PASO 4: TABLA Y MAPEO DE COLUMNAS ════ -->
+  <section id="step4" class="hidden">
     <div class="panel">
       <div class="panel-title">
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 7h16M6 3v14"/></svg>
-        Identificar Tabla de Direcciones
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>
+        </svg>
+        Paso 4: Identificación de Tabla y Mapeo de Columnas
+      </div>
+
+      <div style="font-size:13px; color:var(--slate-600); margin-bottom:14px;">
+        Esquema activo: <strong id="labelSchema" style="color:var(--mpch-navy);"></strong>
       </div>
 
       <div id="alertTable"></div>
 
-      <p style="font-size:13px; color:var(--gray-lt); margin-bottom:14px;">
-        Esquema seleccionado: <strong id="labelSchema" style="color:var(--blue)"></strong>
-      </p>
+      <!-- Buscador de Tablas -->
+      <div style="margin-bottom:10px; display:flex; gap:8px;">
+        <input type="text" id="searchTable" placeholder="Filtrar tablas por nombre..." style="max-width:280px; padding:7px 12px; font-size:12.5px;" oninput="filterTableCards()" />
+      </div>
 
-      <div class="section-header">Tablas disponibles</div>
       <div class="cards-grid" id="tableCards"></div>
 
-      <!-- Configuración de columnas -->
-      <div id="colConfig" class="hidden" style="margin-top:16px; padding:16px; background:var(--blue-bg); border:1px solid #bfdbfe; border-radius:8px;">
-        <p style="font-size:13px; font-weight:600; color:var(--blue); margin-bottom:12px;">
-          Configurar columnas de la tabla: <strong id="labelTable"></strong>
-        </p>
+      <!-- Configuración y Mapeo de Columnas -->
+      <div id="colConfig" class="hidden" style="margin-top:16px; padding:18px; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius);">
+        <div style="font-size:13.5px; font-weight:700; color:var(--mpch-navy); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <span>Mapeo de Columnas: <strong id="labelTable"></strong></span>
+          <span style="font-size:11px; background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); padding:2px 8px; border-radius:4px; font-weight:600;">Columnas auto-detectadas</span>
+        </div>
+
         <div class="form-grid">
           <div class="field">
-            <label>Columna ID (identificador único)</label>
+            <label for="sel_id_col">Columna Identificador Único (ID / Clave Primaria)</label>
             <select id="sel_id_col"></select>
           </div>
           <div class="field">
-            <label>Columna Dirección (texto completo)</label>
+            <label for="sel_addr_col">Columna de Dirección (Texto completo)</label>
             <select id="sel_addr_col"></select>
           </div>
         </div>
-        <button class="btn btn-primary" style="margin-top:14px;" id="btnPreview" onclick="previewTable()">
-          Ver vista previa
-        </button>
-        <span id="spinPreview" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color:var(--blue);"></div></span>
+
+        <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+          <button class="btn btn-action" id="btnPreview" onclick="previewTable()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>Previsualizar Primeras Filas</span>
+          </button>
+          <span id="spinPreview" class="hidden"><div class="spinner"></div></span>
+        </div>
       </div>
 
-      <!-- Preview -->
+      <!-- Vista Previa de Registros Reales -->
       <div id="previewSection" class="hidden" style="margin-top:16px;">
-        <div class="section-header">Vista previa de registros</div>
-        <div id="tableCountInfo" style="display:flex; gap:14px; margin-bottom:10px; flex-wrap:wrap;"></div>
+        <div style="font-size:12px; font-weight:700; color:var(--slate-600); text-transform:uppercase; margin-bottom:8px;">
+          Muestra de Datos Reales (Primeras Filas)
+        </div>
+        <div id="tableCountInfo" style="display:flex; gap:16px; margin-bottom:10px; flex-wrap:wrap; font-size:12.5px;"></div>
         <div class="preview-wrap">
-          <table id="previewTable">
-            <thead><tr><th>ID</th><th>Dirección</th></tr></thead>
+          <table class="data-table" id="previewTable">
+            <thead><tr><th style="width:120px;">ID</th><th>Dirección Registrada</th></tr></thead>
             <tbody id="previewBody"></tbody>
           </table>
         </div>
       </div>
 
-      <div style="margin-top:20px; display:flex; gap:10px;">
-        <button class="btn btn-ghost" onclick="goStep(3)">Volver a Esquemas</button>
+      <div style="margin-top:22px; display:flex; gap:12px; align-items:center;">
+        <button class="btn btn-ghost" onclick="goStep(3)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <span>Volver a Esquemas</span>
+        </button>
         <button class="btn btn-green" id="btnConfirmTable" onclick="confirmTable()" disabled>
-          Confirmar tabla y continuar
+          <span>Confirmar Tabla y Continuar</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- ════ PASO 5: EJECUCIÓN ════ -->
-  <div id="step5" class="hidden">
+  <!-- ════ PASO 5: EJECUCIÓN Y MONITOREO CATASTRAL ════ -->
+  <section id="step5" class="hidden">
 
-    <!-- Resumen de configuración -->
-    <div class="panel" style="padding:16px 20px;">
-      <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between;">
-        <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:center;">
-          <div>
-            <span style="font-size:11px; color:var(--gray-lt); font-weight:700; text-transform:uppercase;">TABLA OBJETIVO</span>
-            <div style="font-size:15px; font-weight:700; color:var(--gray); margin-top:2px;">
-              <span id="summSchema" style="color:var(--blue)"></span>.<span id="summTable"></span>
-            </div>
-            <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;">
-              ID: <strong id="summId"></strong> &nbsp;|&nbsp; Dirección: <strong id="summAddr"></strong>
-            </div>
+    <!-- Resumen Ejecutivo de Configuración -->
+    <div class="summary-card">
+      <div class="summary-group">
+        <div>
+          <div class="summary-col-label">Tabla Catastral Objetivo</div>
+          <div class="summary-col-val">
+            <span id="summSchema"></span>.<span id="summTable"></span>
           </div>
-          <div style="border-left:1px solid var(--border); padding-left:24px;">
-            <span style="font-size:11px; color:var(--gray-lt); font-weight:700; text-transform:uppercase;">MOTOR IA ACTIVO</span>
-            <div style="font-size:14px; font-weight:700; color:var(--gray); margin-top:2px;">
-              <span id="summAiModel" style="color:#059669;"></span>
-            </div>
-            <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;">
-              Host: <span id="summAiHost" style="font-family:monospace;"></span>
-            </div>
+          <div class="summary-col-sub">
+            ID: <strong id="summId"></strong> &nbsp;|&nbsp; Dirección: <strong id="summAddr"></strong>
           </div>
         </div>
-        <div id="aiStatusBadge"></div>
+
+        <div style="border-left:1px solid var(--slate-300); padding-left:20px;">
+          <div class="summary-col-label">Motor de Inteligencia Artificial</div>
+          <div class="summary-col-val" style="color:var(--green);" id="summAiModel">Ollama</div>
+          <div class="summary-col-sub">
+            Endpoint: <span id="summAiHost" style="font-family:monospace;"></span>
+          </div>
+        </div>
       </div>
+
+      <div id="aiStatusBadge"></div>
     </div>
 
-    <!-- KPIs -->
+    <!-- Indicadores Clave de Desempeño (KPIs) -->
     <div class="kpi-grid">
-      <div class="kpi blue">
-        <div class="kpi-label">Procesados</div>
+      <div class="kpi navy">
+        <div class="kpi-label">Total Procesados</div>
         <div class="kpi-val" id="kpiProcessed">0</div>
       </div>
       <div class="kpi green">
@@ -895,107 +1156,117 @@
         <div class="kpi-val" id="kpiObserved">0</div>
       </div>
       <div class="kpi red">
-        <div class="kpi-label">Con error</div>
+        <div class="kpi-label">Con Error</div>
         <div class="kpi-val" id="kpiFailed">0</div>
       </div>
     </div>
 
-    <!-- Progreso + controles -->
+    <!-- Panel de Control y Ejecución -->
     <div class="panel">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
         <div>
-          <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px;">Panel de Ejecución</div>
-          <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;" id="statusLabel">En espera</div>
-        </div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
-          <!-- Controles de configuración ETL -->
-          <div style="display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap;">
-            <div class="field" style="margin:0; min-width:90px;">
-              <label style="font-size:11px;">Límite</label>
-              <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:13px;" />
-            </div>
-            <div class="field" style="margin:0; min-width:80px;">
-              <label style="font-size:11px;">Lote</label>
-              <input type="number" id="inp_batch" value="50" min="1" max="100" style="padding:6px 8px; font-size:13px;" />
-            </div>
-            <div class="field" style="margin:0;">
-              <label style="font-size:11px;">Filtro</label>
-              <select id="inp_filter" style="padding:6px 8px; font-size:13px;">
-                <option value="pending">Pendientes</option>
-                <option value="all">Todos</option>
-                <option value="observed">Observados</option>
-              </select>
-            </div>
-            <div style="display:flex; align-items:center; gap:5px; padding-bottom:2px;">
-              <input type="checkbox" id="inp_require_ai" checked style="width:14px; height:14px; cursor:pointer;" />
-              <label for="inp_require_ai" style="font-size:12px; font-weight:600; color:var(--gray); cursor:pointer; white-space:nowrap;">Requiere IA</label>
-            </div>
+          <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px;">
+            Control de Procesamiento Catastral
           </div>
-          <button class="btn btn-green" id="btnStart" onclick="startETL()">Iniciar ETL</button>
-          <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>Detener</button>
-          <button class="btn btn-ghost" onclick="goStep(3)">Cambiar tabla</button>
+          <div style="font-size:12px; color:var(--slate-500); margin-top:2px;" id="statusLabel">
+            Listo para iniciar
+          </div>
+        </div>
+
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
+          <div class="field" style="margin:0; min-width:85px;">
+            <label for="inp_limit" style="font-size:11px;">Límite</label>
+            <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:12.5px;" />
+          </div>
+          <div class="field" style="margin:0; min-width:75px;">
+            <label for="inp_batch" style="font-size:11px;">Lote</label>
+            <input type="number" id="inp_batch" value="50" min="1" max="100" style="padding:6px 8px; font-size:12.5px;" />
+          </div>
+          <div class="field" style="margin:0;">
+            <label for="inp_filter" style="font-size:11px;">Filtro</label>
+            <select id="inp_filter" style="padding:6px 8px; font-size:12.5px;">
+              <option value="pending">Pendientes</option>
+              <option value="all">Todos los registros</option>
+              <option value="observed">Solo Observados</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:center; gap:6px; padding-bottom:5px;">
+            <input type="checkbox" id="inp_require_ai" checked style="width:15px; height:15px; cursor:pointer;" />
+            <label for="inp_require_ai" style="font-size:12px; font-weight:600; color:var(--slate-700); cursor:pointer; white-space:nowrap;">Requiere IA</label>
+          </div>
+
+          <button class="btn btn-green" id="btnStart" onclick="startETL()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span>Iniciar Normalización</span>
+          </button>
+          <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
+            <span>Detener</span>
+          </button>
+          <button class="btn btn-ghost" onclick="goStep(3)">
+            <span>Cambiar tabla</span>
+          </button>
         </div>
       </div>
 
+      <!-- Barra de Progreso y Metadatos de Tiempo -->
       <div class="progress-bar-wrap">
         <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
       </div>
-      <div style="display:flex; justify-content:space-between; font-size:11px; color:var(--gray-lt); margin-bottom:14px;">
+      <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--slate-500); margin-bottom:12px;">
         <span id="progressLabel">0 de 0 registros</span>
         <span id="elapsedLabel">—</span>
       </div>
+    </div>
 
-    </div><!-- /panel controles y progreso -->
-
-    <!-- ════ INSPECTOR DE REGISTROS CATASTRALES (Visor Único de Ejecución) ════ -->
-    <div class="panel" style="padding: 16px 20px;">
-      <!-- Cabecera y Controles de Ejecución -->
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+    <!-- Inspector de Registros Catastrales en Tiempo Real -->
+    <div class="panel" style="padding: 20px 24px;">
+      <div class="inspector-header">
         <div>
-          <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px; display:flex; align-items:center; gap:8px;">
-            <span class="dot dot-green" id="termLiveDot"></span>
-            Inspector de Registros Catastrales
+          <div class="inspector-title">
+            <span class="dot-live" id="termLiveDot"></span>
+            <span>Inspector de Registros Catastrales</span>
           </div>
-          <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;" id="inspectorCountLabel">
+          <div style="font-size:12px; color:var(--slate-500); margin-top:3px;" id="inspectorCountLabel">
             Mostrando 0 de 0 registros procesados
           </div>
         </div>
+
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--gray); display:flex; align-items:center; gap:5px; cursor:pointer; user-select:none; margin-right:4px;">
+          <label style="font-size:12px; color:var(--slate-700); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; margin-right:4px;">
             <input type="checkbox" id="chkAutoScroll" checked onchange="toggleAutoScroll(this.checked)" />
             Seguir en vivo (auto-scroll)
           </label>
-          <button class="btn btn-ghost" style="padding:5px 10px; font-size:12px;" onclick="copyInspectorData()">
-            Copiar JSON
+          <button class="btn btn-ghost" style="padding:5px 10px; font-size:11.5px;" onclick="copyInspectorData()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Copiar JSON</span>
           </button>
-          <button class="btn btn-ghost" style="padding:5px 10px; font-size:12px;" onclick="clearRecords()">
-            Limpiar
+          <button class="btn btn-ghost" style="padding:5px 10px; font-size:11.5px;" onclick="clearRecords()">
+            <span>Limpiar Vista</span>
           </button>
         </div>
       </div>
 
       <!-- Barra de Filtros y Búsqueda -->
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 12px; background:#f8fafc; border:1px solid var(--border); border-radius:6px; margin-bottom:14px;">
-        <!-- Pills de Filtro de Estado -->
+      <div class="filter-bar">
         <div class="status-pill-group">
           <button class="status-pill-btn active" id="pillAll" onclick="setInspectorStatus('all')">
-            Todos <span class="pill-count" id="cntAll">0</span>
+            <span>Todos</span> <span class="pill-count" id="cntAll">0</span>
           </button>
           <button class="status-pill-btn" id="pillValid" onclick="setInspectorStatus('valid')">
-            Normalizados <span class="pill-count" id="cntValid">0</span>
+            <span>Normalizados</span> <span class="pill-count" id="cntValid">0</span>
           </button>
           <button class="status-pill-btn" id="pillObserved" onclick="setInspectorStatus('observed')">
-            Observados <span class="pill-count" id="cntObs">0</span>
+            <span>Observados</span> <span class="pill-count" id="cntObs">0</span>
           </button>
           <button class="status-pill-btn" id="pillError" onclick="setInspectorStatus('error')">
-            Errores <span class="pill-count" id="cntErr">0</span>
+            <span>Errores</span> <span class="pill-count" id="cntErr">0</span>
           </button>
         </div>
 
-        <!-- Búsqueda y Filtro de Motor -->
         <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; flex:1; justify-content:flex-end; min-width:280px;">
-          <input type="text" id="searchInspector" placeholder="Buscar dirección, vía, zona, ID o motivo..." style="padding:6px 12px; font-size:13px; border:1px solid var(--border); border-radius:6px; min-width:220px; flex:1; max-width:320px;" oninput="filterInspectorRecords()" />
-          <select id="filterInspectorMotor" style="padding:6px 10px; font-size:13px; border:1px solid var(--border); border-radius:6px;" onchange="filterInspectorRecords()">
+          <input type="text" id="searchInspector" placeholder="Buscar dirección, vía, zona o motivo..." style="padding:6px 12px; font-size:12.5px; border:1px solid var(--slate-300); border-radius:6px; min-width:220px; flex:1; max-width:320px;" oninput="filterInspectorRecords()" />
+          <select id="filterInspectorMotor" style="padding:6px 10px; font-size:12.5px; border:1px solid var(--slate-300); border-radius:6px;" onchange="filterInspectorRecords()">
             <option value="all">Todos los motores</option>
             <option value="ia">Motor IA</option>
             <option value="hibrido">Motor Híbrido</option>
@@ -1005,37 +1276,41 @@
       </div>
 
       <!-- Feed de Tarjetas Concisas de Registro -->
-      <div id="inspectorCardsList" style="max-height: 560px; overflow-y: auto; padding-right: 2px;">
-        <p style="text-align:center; color:var(--gray-lt); padding:40px; font-size:13px;" id="emptyInspectorMsg">
+      <div id="inspectorCardsList" style="max-height: 580px; overflow-y: auto; padding-right: 2px;">
+        <p style="text-align:center; color:var(--slate-400); padding:40px; font-size:13px;" id="emptyInspectorMsg">
           Los registros procesados aparecerán aquí en tiempo real a medida que avance el pipeline.
         </p>
       </div>
     </div>
 
-  </div><!-- /step5 -->
+  </section>
 </main>
 
-<!-- MODAL DE CONFIRMACIÓN DE APAGADO -->
-<div id="modalShutdownOverlay" class="modal-overlay hidden">
+<!-- MODAL INSTITUCIONAL DE APAGADO DE SERVICIO -->
+<div id="modalShutdownOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
   <div class="modal-dialog">
     <div class="modal-header">
-      <div class="modal-icon">🛑</div>
-      <h3 id="shutdownModalTitle">¿Apagar el servicio?</h3>
+      <div class="modal-icon-badge">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
+        </svg>
+      </div>
+      <h3 id="shutdownModalTitle">¿Desea apagar el servicio?</h3>
     </div>
     <div class="modal-body" id="shutdownModalBody">
       <p id="shutdownWarningText">
-        Esta acción detendrá el servidor y cerrará la aplicación (equivalente a presionar Ctrl + C en la consola). ¿Deseas apagar el servicio?
+        Esta acción detendrá de forma segura el servidor local de la aplicación (equivalente a presionar <strong>Ctrl + C</strong> en la terminal). ¿Confirma que desea cerrar el servicio?
       </p>
     </div>
     <div class="modal-footer" id="shutdownModalFooter">
       <button class="btn btn-ghost" onclick="closeShutdownModal()">Cancelar</button>
-      <button class="btn btn-red" id="btnConfirmShutdown" onclick="executeShutdown()" style="background:#dc2626; color:white;">
-        Sí, Apagar
+      <button class="btn btn-red" id="btnConfirmShutdown" onclick="executeShutdown()">
+        Sí, Apagar Servicio
       </button>
     </div>
   </div>
 </div>
 
-<script src="/static/app.js?v=shutdown_v1"></script>
+<script src="/static/app.js?v=ui_ux_mpch_v2"></script>
 </body>
 </html>

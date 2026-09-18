@@ -718,7 +718,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()})")
 
         if to_process == 0:
-            state.add_log(f"🎉 No hay registros pendientes para procesar en [{target_schema}.{target_table}] con filtro '{filter_mode}'.")
+            state.add_log(f"[INFO] No hay registros pendientes para procesar en [{target_schema}.{target_table}] con filtro '{filter_mode}'.")
             state.finish_run(summary_data={
                 "total_records": 0,
                 "processed_records": 0,
@@ -782,7 +782,7 @@ async def stop_pipeline():
         return {"status": "NOT_RUNNING", "message": "No hay un pipeline en ejecución activa."}
 
     state.pipeline.request_stop()
-    state.add_log("⏹️ Solicitud de detención manual recibida. Esperando finalización del registro actual...")
+    state.add_log("[INFO] Solicitud de detención manual recibida. Esperando finalización del registro actual...")
     return {"status": "STOPPING", "message": "Detención solicitada. El proceso finalizará en breve."}
 
 
@@ -792,14 +792,14 @@ async def shutdown_application():
     try:
         if state.is_running and state.pipeline:
             state.pipeline.request_stop()
-            state.add_log("🛑 Solicitud de apagado de servicio: deteniendo proceso ETL...")
+            state.add_log("[APAGADO] Solicitud de apagado de servicio: deteniendo proceso ETL...")
             state.finish_run(error="Servicio apagado por el usuario.")
     except Exception as e:
         logger.warning("Aviso al detener pipeline durante apagado: %s", e)
 
     def _trigger_ctrl_c():
         time.sleep(0.5)  # Breve lapso para despachar la respuesta HTTP 200 al navegador
-        logger.info("🛑 Apagando servicio de aplicación (equivalente a Ctrl + C)...")
+        logger.info("[APAGADO] Apagando servicio de aplicación (equivalente a Ctrl + C)...")
         try:
             # Enviar SIGINT (equivalente a Ctrl + C) al proceso de la aplicación
             os.kill(os.getpid(), signal.SIGINT)
