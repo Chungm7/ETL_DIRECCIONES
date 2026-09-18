@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -202,6 +202,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
@@ -233,18 +243,25 @@ class StartPipelineRequest(BaseModel):
     id_col: Optional[str] = Field(default=None, description="Columna ID a conservar")
     address_col: Optional[str] = Field(default=None, description="Columna de dirección a normalizar")
     limit: Optional[int] = Field(default=None, description="Límite máximo de registros a procesar")
-    batch_size: int = Field(default_factory=lambda: get_settings().etl.batch_size, ge=1, le=100, description="Tamaño de lote por transacción")
-    filter_mode: str = Field(default="pending", description="Filtro: pending, all, o observed")
-    require_ai: bool = Field(default_factory=lambda: get_settings().etl.require_ai, description="Si es True, exige disponibilidad del modelo IA")
+    batch_size: Optional[int] = Field(default=50, description="Tamaño de lote")
+    filter_mode: Optional[str] = Field(default="pending", description="Modo de filtro: pending, all, observed")
+    require_ai: bool = Field(default=True, description="Si es True, falla de inmediato si Ollama no está operativo")
 
 
 @app.get("/", response_class=FileResponse)
 async def serve_ui():
-    """Sirve la página de interfaz gráfica de escritorio."""
+    """Sirve la página de interfaz gráfica de escritorio sin caché."""
     index_path = STATIC_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Archivo UI index.html no encontrado.")
-    return FileResponse(str(index_path))
+    return FileResponse(
+        str(index_path),
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        },
+    )
 
 
 @app.get("/api/status")
