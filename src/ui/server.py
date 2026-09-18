@@ -821,6 +821,150 @@ async def clear_session_endpoint():
     return {"status": "CLEARED", "message": "Historial de registros de la sesión reiniciado correctamente."}
 
 
+def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
+    import io
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Direcciones MPCH"
+
+    headers = [
+        "ID Licencia",
+        "Dirección Registrada",
+        "Tipo Vía",
+        "Nombre Vía Homologada",
+        "N° Vía",
+        "ID Vía Oficial",
+        "Tipo Zona",
+        "Nombre Zona Homologada",
+        "ID Zona Oficial",
+        "Manzana",
+        "Lote",
+        "Sublote",
+        "Referencia",
+        "Método Normalización",
+        "Estado Catastral",
+        "Diagnóstico / Observación",
+        "Hora de Procesamiento",
+    ]
+    ws.append(headers)
+
+    header_fill = PatternFill(start_color="0C2340", end_color="0C2340", fill_type="solid")
+    header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
+
+    for col_idx in range(1, len(headers) + 1):
+        cell = ws.cell(row=1, column=col_idx)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    thin_border = Border(
+        left=Side(style="thin", color="E2E8F0"),
+        right=Side(style="thin", color="E2E8F0"),
+        top=Side(style="thin", color="E2E8F0"),
+        bottom=Side(style="thin", color="E2E8F0")
+    )
+
+    fill_valid = PatternFill(start_color="ECFDF5", end_color="ECFDF5", fill_type="solid")
+    font_valid = Font(name="Calibri", size=11, bold=True, color="065F46")
+    fill_obs   = PatternFill(start_color="FFFBEB", end_color="FFFBEB", fill_type="solid")
+    font_obs   = Font(name="Calibri", size=11, bold=True, color="92400E")
+    fill_err   = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
+    font_err   = Font(name="Calibri", size=11, bold=True, color="991B1B")
+    fill_zebra = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
+
+    for row_idx, r in enumerate(records, start=2):
+        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
+        is_obs = not r.get("es_procesado", False) and not is_err
+        estado = "ERROR" if is_err else ("OBSERVADO" if is_obs else "NORMALIZADO")
+
+        row_data = [
+            r.get("id_licencia", ""),
+            r.get("raw_text", ""),
+            r.get("tipo_via_name", ""),
+            r.get("nom_via", ""),
+            r.get("num_via", ""),
+            r.get("id_via", "") or "",
+            r.get("tipo_zona_name", ""),
+            r.get("nom_zona", ""),
+            r.get("id_zona", "") or "",
+            r.get("manzana", ""),
+            r.get("lote", ""),
+            r.get("slote", ""),
+            r.get("referencia", ""),
+            r.get("metodo", ""),
+            estado,
+            r.get("observacion", ""),
+            r.get("time", ""),
+        ]
+        ws.append(row_data)
+
+        is_even = (row_idx % 2 == 0)
+        for col_idx in range(1, len(headers) + 1):
+            cell = ws.cell(row=row_idx, column=col_idx)
+            cell.border = thin_border
+            if col_idx == 15:  # Columna Estado
+                if estado == "NORMALIZADO":
+                    cell.fill = fill_valid
+                    cell.font = font_valid
+                elif estado == "OBSERVADO":
+                    cell.fill = fill_obs
+                    cell.font = font_obs
+                else:
+                    cell.fill = fill_err
+                    cell.font = font_err
+                cell.alignment = Alignment(horizontal="center")
+            elif col_idx in (1, 5, 6, 9):
+                cell.alignment = Alignment(horizontal="center")
+                if is_even:
+                    cell.fill = fill_zebra
+            else:
+                if is_even:
+                    cell.fill = fill_zebra
+
+    for col in ws.columns:
+        max_len = max(len(str(cell.value or "")) for cell in col)
+        col_letter = get_column_letter(col[0].column)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+@app.post("/api/export-excel")
+async def export_excel_endpoint(payload: Optional[Dict[str, Any]] = None):
+    """Genera y descarga un libro de Excel (.xlsx) con formato institucional MPCH."""
+    from datetime import datetime
+
+    records = []
+    if payload and isinstance(payload, dict):
+        records = payload.get("records", [])
+    if not records:
+        records = state.recent_records
+
+    if not records:
+        raise HTTPException(status_code=400, detail="No hay registros disponibles para exportar.")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    buf = generate_excel_report(records)
+    filename = f"reporte_catastral_mpch_{timestamp}.xlsx"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+
 @app.post("/api/shutdown")
 async def shutdown_application():
     """Detiene cualquier pipeline ETL en ejecución y apaga el servicio de la aplicación (equivalente a Ctrl + C con confirmación)."""

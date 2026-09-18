@@ -925,19 +925,65 @@ function createConciseRecordCard(r) {
 function copySingleRecord(idLicencia) {
   const rec = wiz.allRecords.find(r => r.id_licencia == idLicencia);
   if (!rec) return;
-  navigator.clipboard.writeText(JSON.stringify(rec, null, 2)).then(() => {
-    alert(`Registro ID ${idLicencia} copiado en formato JSON.`);
-  });
+
+  const viaDesc = `${rec.tipo_via_name ? rec.tipo_via_name + ' ' : ''}${rec.nom_via || ''} ${rec.num_via ? 'N° ' + rec.num_via : 'S/N'}`.trim();
+  const zonaDesc = `${rec.tipo_zona_name ? rec.tipo_zona_name + ' ' : ''}${rec.nom_zona || ''}`.trim();
+  const catText = (rec.manzana || rec.lote) ? `Mz: ${rec.manzana || '-'} | Lt: ${rec.lote || '-'}${rec.slote ? ' | Slt: ' + rec.slote : ''}` : '';
+  const estado = (!rec.success || rec.metodo === 'ERROR') ? 'ERROR' : (rec.es_procesado ? 'NORMALIZADO' : 'OBSERVADO');
+
+  const text = `ID: ${rec.id_licencia} | Entrada: "${rec.raw_text}" | Vía: ${viaDesc || 'N/D'} | Zona: ${zonaDesc || 'N/D'}${catText ? ' | ' + catText : ''} | Estado: ${estado}${rec.observacion ? ' | Diagnóstico: ' + rec.observacion : ''}`;
+  navigator.clipboard.writeText(text);
 }
 
-function copyInspectorData() {
-  if (!wiz.allRecords.length) {
-    alert('No hay registros en el visor para copiar.');
+async function exportRecordsExcel() {
+  if (!wiz.allRecords || !wiz.allRecords.length) {
+    alert('No hay registros disponibles en el Inspector para exportar.');
     return;
   }
-  navigator.clipboard.writeText(JSON.stringify(wiz.allRecords, null, 2)).then(() => {
-    alert(`${wiz.allRecords.length} registros copiados en formato JSON.`);
-  });
+
+  const btn = document.getElementById('btnExportExcel');
+  const originalHtml = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `
+      <div class="spinner" style="width:12px; height:12px; border-width:1.8px; margin-right:4px;"></div>
+      <span>Generando Excel...</span>
+    `;
+  }
+
+  try {
+    const res = await fetch('/api/export-excel', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ records: wiz.allRecords }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      alert('Error al generar Excel: ' + (err.detail || 'Error desconocido'));
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+    a.href = url;
+    a.download = `reporte_catastral_mpch_${dateStr}_${timeStr}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error descargando Excel: ' + e.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalHtml;
+    }
+  }
 }
 
 function exportRecordsCSV() {

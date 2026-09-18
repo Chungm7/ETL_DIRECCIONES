@@ -367,4 +367,34 @@ def test_ui_state_cumulative_and_in_place_update():
     assert state.recent_records[0]["es_procesado"] is True
 
 
+def test_api_export_excel_endpoint(client):
+    """Verifica que /api/export-excel genere un archivo .xlsx descargable con los registros enviados."""
+    records_payload = [
+        {
+            "id_licencia": 501,
+            "raw_text": "CALLE SAN JOSE 123",
+            "nom_via": "SAN JOSE",
+            "tipo_via_name": "CALLE",
+            "num_via": "123",
+            "id_via": 10,
+            "nom_zona": "CHICLAYO",
+            "tipo_zona_name": "URB.",
+            "id_zona": 5,
+            "manzana": "A",
+            "lote": "1",
+            "es_procesado": True,
+            "metodo": "IA (patroclo)",
+            "observacion": "",
+            "time": "11:50:00"
+        }
+    ]
+
+    response = client.post("/api/export-excel", json={"records": records_payload})
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert "reporte_catastral_mpch_" in response.headers.get("content-disposition", "")
+    assert len(response.content) > 1000  # Archivo binario Excel generado válidamente
+
+
+
 
