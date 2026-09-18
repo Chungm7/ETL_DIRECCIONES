@@ -1,11 +1,15 @@
 /**
  * app.js — Lógica del wizard ETL MPCH
- * Flujo: Conexión → Esquema → Tabla → Inspector de Registros Catastrales en tiempo real
+ * Flujo de 5 Pasos:
+ * 1. Conexión IA (Ollama) -> 2. Conexión BD -> 3. Esquema -> 4. Tabla -> 5. Inspector de Registros Catastrales
  */
 
 // ── Estado del wizard ────────────────────────────────────────────────────────
 const wiz = {
   step: 1,
+  ai_host: 'localhost',
+  ai_port: 11434,
+  ai_model: 'patroclo-artesano-7b:latest',
   schema: null,
   table: null,
   id_col: null,
@@ -20,22 +24,30 @@ const wiz = {
   evtSource: null,
 };
 
-// ── Navegación entre pasos ───────────────────────────────────────────────────
+// ── Navegación entre pasos (1 a 5) ───────────────────────────────────────────
 function goStep(n) {
-  [1, 2, 3, 4].forEach(i => {
-    document.getElementById(`step${i}`).classList.add('hidden');
+  [1, 2, 3, 4, 5].forEach(i => {
+    const el = document.getElementById(`step${i}`);
+    if (el) el.classList.add('hidden');
     const tab = document.getElementById(`tab${i}`);
-    tab.classList.remove('active', 'done');
-    if (i < n) tab.classList.add('done');
+    if (tab) {
+      tab.classList.remove('active', 'done');
+      if (i < n) tab.classList.add('done');
+    }
   });
 
-  document.getElementById(`step${n}`).classList.remove('hidden');
-  document.getElementById(`tab${n}`).classList.add('active');
+  const curStep = document.getElementById(`step${n}`);
+  if (curStep) curStep.classList.remove('hidden');
+  const curTab = document.getElementById(`tab${n}`);
+  if (curTab) curTab.classList.add('active');
   wiz.step = n;
 
   for (let i = 1; i < n; i++) {
-    document.getElementById(`tab${i}`).classList.add('done');
-    document.getElementById(`tab${i}`).classList.remove('active');
+    const prevTab = document.getElementById(`tab${i}`);
+    if (prevTab) {
+      prevTab.classList.add('done');
+      prevTab.classList.remove('active');
+    }
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -68,7 +80,112 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
-// ── PASO 1: Conexión ─────────────────────────────────────────────────────────
+// ── PASO 1: Inteligencia Artificial (Ollama) ─────────────────────────────────
+function onModelSelectChange() {
+  const sel = document.getElementById('ai_model_select');
+  const custom = document.getElementById('ai_model_custom');
+  if (!sel || !custom) return;
+  if (sel.value === 'custom') {
+    custom.classList.remove('hidden');
+    custom.focus();
+  } else {
+    custom.classList.add('hidden');
+  }
+}
+
+async function detectAIModels() {
+  showAlert('alertAI', '');
+  const host = (document.getElementById('ai_host')?.value || 'localhost').trim();
+  const port = parseInt(document.getElementById('ai_port')?.value) || 11434;
+
+  showAlert('alertAI', `Consultando modelos en http://${host}:${port}/api/tags ...`, 'info');
+
+  try {
+    const res = await fetch('/api/detect-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port }),
+    });
+    const data = await res.json();
+
+    if (data.connected && data.models && data.models.length > 0) {
+      const sel = document.getElementById('ai_model_select');
+      sel.innerHTML = '';
+      data.models.forEach(m => {
+        const isPatroclo = m.toLowerCase().includes('patroclo');
+        const opt = new Option(isPatroclo ? `${m} (Recomendado)` : m, m);
+        sel.appendChild(opt);
+      });
+      sel.appendChild(new Option('Otro (ingresar manualmente)...', 'custom'));
+
+      const patrocloMatch = data.models.find(m => m.toLowerCase().includes('patroclo'));
+      if (patrocloMatch) {
+        sel.value = patrocloMatch;
+      }
+      onModelSelectChange();
+      showAlert('alertAI', `Se detectaron ${data.models.length} modelo(s) en ${host}:${port}.`, 'ok');
+    } else {
+      showAlert('alertAI', data.message || 'No se pudieron detectar modelos en el servidor Ollama.', 'warn');
+    }
+  } catch (e) {
+    showAlert('alertAI', `Error consultando servidor Ollama: ${e.message}`, 'error');
+  }
+}
+
+async function connectAI() {
+  showAlert('alertAI', '');
+  setLoading('btnConnectAI', 'spinConnectAI', true);
+
+  const host = (document.getElementById('ai_host')?.value || 'localhost').trim();
+  const port = parseInt(document.getElementById('ai_port')?.value) || 11434;
+  const selVal = document.getElementById('ai_model_select')?.value || '';
+  let model = selVal;
+
+  if (selVal === 'custom') {
+    model = (document.getElementById('ai_model_custom')?.value || '').trim();
+  }
+
+  if (!model) {
+    showAlert('alertAI', 'Debe seleccionar o ingresar el nombre del modelo de IA.', 'warn');
+    setLoading('btnConnectAI', 'spinConnectAI', false);
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/connect-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port, model }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      showAlert('alertAI', data.detail || 'No se pudo conectar al motor de IA.', 'error');
+      return;
+    }
+
+    wiz.ai_host  = host;
+    wiz.ai_port  = port;
+    wiz.ai_model = model;
+
+    showAlert('alertAI', `Conexión exitosa a Ollama con modelo <strong>${model}</strong> (${data.latency_ms} ms).`, 'ok');
+    const btnNext = document.getElementById('btnGoStep2');
+    if (btnNext) btnNext.classList.remove('hidden');
+
+    // Transición suave al paso 2
+    setTimeout(() => {
+      goStep(2);
+      showAlert('alertConnect', `Motor IA configurado en http://${host}:${port} (${model}). Ahora conecte a PostgreSQL.`, 'info');
+    }, 500);
+
+  } catch (e) {
+    showAlert('alertAI', `Error de red al conectar con IA: ${e.message}`, 'error');
+  } finally {
+    setLoading('btnConnectAI', 'spinConnectAI', false);
+  }
+}
+
+// ── PASO 2: Conexión BD ───────────────────────────────────────────────────────
 async function connectDB() {
   showAlert('alertConnect', '');
   setLoading('btnConnect', 'spinConnect', true);
@@ -96,7 +213,7 @@ async function connectDB() {
 
     renderSchemaCards(data.schemas || []);
     showAlert('alertConnect', '');
-    goStep(2);
+    goStep(3);
     showAlert('alertSchema', `Conectado a <strong>${body.dbname}</strong> en ${body.host}:${body.port}. Seleccione un esquema.`, 'ok');
 
   } catch (e) {
@@ -154,7 +271,7 @@ async function inspectSchema() {
 
     renderTableCards(data.tables || []);
     document.getElementById('labelSchema').textContent = wiz.schema;
-    goStep(3);
+    goStep(4);
 
   } catch (e) {
     showAlert('alertSchema', `Error de red: ${e.message}`, 'error');
@@ -163,7 +280,7 @@ async function inspectSchema() {
   }
 }
 
-// ── PASO 3: Tabla ────────────────────────────────────────────────────────────
+// ── PASO 4: Tabla ────────────────────────────────────────────────────────────
 function renderTableCards(tables) {
   const grid = document.getElementById('tableCards');
   grid.innerHTML = '';
@@ -297,13 +414,17 @@ function confirmTable() {
   document.getElementById('summTable').textContent   = wiz.table;
   document.getElementById('summId').textContent      = wiz.id_col;
   document.getElementById('summAddr').textContent    = wiz.addr_col;
+  const elAiModel = document.getElementById('summAiModel');
+  if (elAiModel) elAiModel.textContent = wiz.ai_model || 'Ollama';
+  const elAiHost = document.getElementById('summAiHost');
+  if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
 
-  goStep(4);
-  initStep4();
+  goStep(5);
+  initStep5();
 }
 
-// ── PASO 4: Ejecución e Inspector en Tiempo Real ─────────────────────────────
-async function initStep4() {
+// ── PASO 5: Ejecución e Inspector en Tiempo Real ─────────────────────────────
+async function initStep5() {
   try {
     const res  = await fetch('/api/status');
     const data = await res.json();
@@ -702,3 +823,14 @@ function onError(data) {
   const dot = document.getElementById('termLiveDot');
   if (dot) dot.style.background = '#ef4444';
 }
+
+const initStep4 = initStep5;
+
+// Inicialización al cargar la interfaz
+document.addEventListener('DOMContentLoaded', () => {
+  // Intentar autodetectar modelos descargados en Ollama
+  setTimeout(() => {
+    detectAIModels();
+  }, 300);
+});
+

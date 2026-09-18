@@ -568,24 +568,77 @@
 <!-- WIZARD STEPS BAR -->
 <div class="wizard-bar" id="wizardBar">
   <div class="step-tab active" id="tab1">
-    <span class="num">1</span> Conexión a BD
+    <span class="num">1</span> Conexión IA
   </div>
   <div class="step-tab" id="tab2">
-    <span class="num">2</span> Esquema
+    <span class="num">2</span> Conexión a BD
   </div>
   <div class="step-tab" id="tab3">
-    <span class="num">3</span> Tabla de Direcciones
+    <span class="num">3</span> Esquema
   </div>
   <div class="step-tab" id="tab4">
-    <span class="num">4</span> Ejecución ETL
+    <span class="num">4</span> Tabla de Direcciones
+  </div>
+  <div class="step-tab" id="tab5">
+    <span class="num">5</span> Ejecución ETL
   </div>
 </div>
 
 <!-- MAIN -->
 <main>
 
-  <!-- ════ PASO 1: CONEXIÓN ════ -->
+  <!-- ════ PASO 1: CONEXIÓN IA ════ -->
   <div id="step1">
+    <div class="panel">
+      <div class="panel-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 1 4 4v1h1a3 3 0 0 1 3 3v8a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V10a3 3 0 0 1 3-3h1V6a4 4 0 0 1 4-4z"/><circle cx="9" cy="14" r="1.5"/><circle cx="15" cy="14" r="1.5"/><path d="M10 18h4"/></svg>
+        Conexión al Motor de Inteligencia Artificial (Ollama)
+      </div>
+
+      <div id="alertAI"></div>
+
+      <p style="font-size:13px; color:var(--gray-lt); margin-bottom:16px;">
+        Ingrese los parámetros de red y modelo de Ollama. La configuración es 100% dinámica en tiempo de ejecución sin depender de archivos de entorno.
+      </p>
+
+      <div class="form-grid">
+        <div class="field">
+          <label>Host / IP del Servidor Ollama</label>
+          <input type="text" id="ai_host" value="localhost" placeholder="localhost o 192.168.1.X" />
+        </div>
+        <div class="field">
+          <label>Puerto</label>
+          <input type="number" id="ai_port" value="11434" placeholder="11434" />
+        </div>
+        <div class="field full">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <label style="margin:0;">Modelo de Lenguaje (LLM)</label>
+            <button type="button" class="btn btn-ghost" style="padding:2px 10px; font-size:11px;" onclick="detectAIModels()">
+              🔄 Detectar modelos en servidor
+            </button>
+          </div>
+          <select id="ai_model_select" onchange="onModelSelectChange()">
+            <option value="patroclo-artesano-7b:latest">patroclo-artesano-7b:latest (Recomendado)</option>
+            <option value="custom">Otro (ingresar manualmente)...</option>
+          </select>
+          <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. llama3:latest o qwen2.5:7b" />
+        </div>
+      </div>
+
+      <div style="margin-top:20px; display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-primary" id="btnConnectAI" onclick="connectAI()">
+          Probar y Conectar IA
+        </button>
+        <button class="btn btn-green hidden" id="btnGoStep2" onclick="goStep(2)">
+          Continuar a Conexión BD →
+        </button>
+        <span id="spinConnectAI" class="hidden"><div class="spinner" style="border-color:rgba(29,78,216,.3); border-top-color: var(--blue);"></div></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ PASO 2: CONEXIÓN BD ════ -->
+  <div id="step2" class="hidden">
     <div class="panel">
       <div class="panel-title">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="10" cy="10" r="8"/><path d="M10 6v4l2.5 2.5"/></svg>
@@ -618,6 +671,7 @@
       </div>
 
       <div style="margin-top:20px; display:flex; gap:10px; align-items:center;">
+        <button class="btn btn-ghost" onclick="goStep(1)">Volver a IA</button>
         <button class="btn btn-primary" id="btnConnect" onclick="connectDB()">
           Conectar y continuar
         </button>
@@ -626,8 +680,8 @@
     </div>
   </div>
 
-  <!-- ════ PASO 2: ESQUEMA ════ -->
-  <div id="step2" class="hidden">
+  <!-- ════ PASO 3: ESQUEMA ════ -->
+  <div id="step3" class="hidden">
     <div class="panel">
       <div class="panel-title">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="16" height="12" rx="2"/><path d="M6 5V3h8v2"/></svg>
@@ -642,7 +696,7 @@
       <div class="cards-grid" id="schemaCards"></div>
 
       <div style="margin-top:8px; display:flex; gap:10px;">
-        <button class="btn btn-ghost" onclick="goStep(1)">Volver</button>
+        <button class="btn btn-ghost" onclick="goStep(2)">Volver a BD</button>
         <button class="btn btn-primary" id="btnSchema" onclick="inspectSchema()" disabled>
           Continuar con este esquema
         </button>
@@ -651,8 +705,8 @@
     </div>
   </div>
 
-  <!-- ════ PASO 3: TABLA ════ -->
-  <div id="step3" class="hidden">
+  <!-- ════ PASO 4: TABLA ════ -->
+  <div id="step4" class="hidden">
     <div class="panel">
       <div class="panel-title">
         <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="3" width="16" height="14" rx="2"/><path d="M2 7h16M6 3v14"/></svg>
@@ -702,7 +756,7 @@
       </div>
 
       <div style="margin-top:20px; display:flex; gap:10px;">
-        <button class="btn btn-ghost" onclick="goStep(2)">Volver</button>
+        <button class="btn btn-ghost" onclick="goStep(3)">Volver a Esquemas</button>
         <button class="btn btn-green" id="btnConfirmTable" onclick="confirmTable()" disabled>
           Confirmar tabla y continuar
         </button>
@@ -710,19 +764,30 @@
     </div>
   </div>
 
-  <!-- ════ PASO 4: EJECUCIÓN ════ -->
-  <div id="step4" class="hidden">
+  <!-- ════ PASO 5: EJECUCIÓN ════ -->
+  <div id="step5" class="hidden">
 
     <!-- Resumen de configuración -->
     <div class="panel" style="padding:16px 20px;">
       <div style="display:flex; flex-wrap:wrap; gap:20px; align-items:center; justify-content:space-between;">
-        <div>
-          <span style="font-size:12px; color:var(--gray-lt); font-weight:600;">TABLA OBJETIVO</span>
-          <div style="font-size:15px; font-weight:700; color:var(--gray); margin-top:2px;">
-            <span id="summSchema" style="color:var(--blue)"></span>.<span id="summTable"></span>
+        <div style="display:flex; flex-wrap:wrap; gap:24px; align-items:center;">
+          <div>
+            <span style="font-size:11px; color:var(--gray-lt); font-weight:700; text-transform:uppercase;">TABLA OBJETIVO</span>
+            <div style="font-size:15px; font-weight:700; color:var(--gray); margin-top:2px;">
+              <span id="summSchema" style="color:var(--blue)"></span>.<span id="summTable"></span>
+            </div>
+            <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;">
+              ID: <strong id="summId"></strong> &nbsp;|&nbsp; Dirección: <strong id="summAddr"></strong>
+            </div>
           </div>
-          <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;">
-            ID: <strong id="summId"></strong> &nbsp;|&nbsp; Dirección: <strong id="summAddr"></strong>
+          <div style="border-left:1px solid var(--border); padding-left:24px;">
+            <span style="font-size:11px; color:var(--gray-lt); font-weight:700; text-transform:uppercase;">MOTOR IA ACTIVO</span>
+            <div style="font-size:14px; font-weight:700; color:var(--gray); margin-top:2px;">
+              <span id="summAiModel" style="color:#059669;"></span>
+            </div>
+            <div style="font-size:12px; color:var(--gray-lt); margin-top:2px;">
+              Host: <span id="summAiHost" style="font-family:monospace;"></span>
+            </div>
           </div>
         </div>
         <div id="aiStatusBadge"></div>
@@ -861,10 +926,10 @@
       </div>
     </div>
 
-  </div><!-- /step4 -->
+  </div><!-- /step5 -->
 
 </main>
 
-<script src="/static/app.js?v=inspector_v3"></script>
+<script src="/static/app.js?v=wizard_5steps_v1"></script>
 </body>
 </html>

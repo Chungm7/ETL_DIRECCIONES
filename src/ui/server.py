@@ -15,11 +15,13 @@ from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from src.config.settings import get_settings
+from src.config.settings import DatabaseSettings, OllamaSettings, get_settings
 from src.extractors.db_extractor import DatabaseExtractor
 from src.pipelines.etl_pipeline import ETLPipeline
 from src.services.db_service import DatabaseService
 from src.services.ollama_service import OllamaService
+from src.transformers.ai_parser import AIAddressParser
+from src.transformers.pipeline_transformer import PipelineTransformer
 
 logger = logging.getLogger("etl_mpch.gui")
 
@@ -37,9 +39,11 @@ class ExecutionState:
         self.thread: Optional[threading.Thread] = None
         self.active_schema: str = settings.db.schema
         self.active_table: str = settings.db.table
-        # Conexión dinámica establecida por el wizard (puede ser None antes de conectar)
+        # Conexiones dinámicas establecidas por el wizard (independientes de .env)
         self.dynamic_db_service: Optional[DatabaseService] = None
         self.dynamic_db_settings: Optional[Any] = None
+        self.dynamic_ollama_service: Optional[OllamaService] = None
+        self.dynamic_ollama_settings: Optional[Any] = None
         self.recent_records: List[Dict[str, Any]] = []
         self.max_recent_records: int = 500
         self.log_history: List[str] = []
@@ -218,6 +222,19 @@ if STATIC_DIR.exists():
 
 # ── Modelos para el flujo wizard ───────────────────────────────────────────────
 
+class AIConnectRequest(BaseModel):
+    host: str = Field(default="localhost", description="Host o IP del servidor Ollama")
+    port: int = Field(default=11434, description="Puerto de conexión a Ollama")
+    model: str = Field(default="patroclo-artesano-7b:latest", description="Nombre del modelo seleccionado")
+    timeout: Optional[int] = Field(default=60, description="Timeout en segundos")
+    temperature: Optional[float] = Field(default=0.0, description="Temperatura de inferencia")
+
+
+class DetectModelsRequest(BaseModel):
+    host: str = Field(default="localhost", description="Host o IP del servidor Ollama")
+    port: int = Field(default=11434, description="Puerto de conexión a Ollama")
+
+
 class ConnectRequest(BaseModel):
     host: str = Field(default="localhost", description="Host del servidor PostgreSQL")
     port: int = Field(default=5432, description="Puerto de conexión")
@@ -268,8 +285,8 @@ async def serve_ui():
 async def get_system_status():
     """Retorna el estado del sistema, conexiones, esquemas y métricas actuales."""
     settings = get_settings()
-    db_svc = DatabaseService()
-    ollama_svc = OllamaService()
+    db_svc = state.dynamic_db_service or DatabaseService()
+    ollama_svc = state.dynamic_ollama_service or OllamaService()
 
     db_health = db_svc.check_connection(schema=state.active_schema)
     ai_health = ollama_svc.check_connection()
@@ -338,9 +355,100 @@ async def get_table_counts(
 
 # ── Endpoints del Wizard ────────────────────────────────────────────────────────
 
+@app.post("/api/detect-models")
+async def wizard_detect_models(req: DetectModelsRequest):
+    """Paso 1 del wizard: consulta el servidor Ollama y lista los modelos descargados."""
+    import httpx
+    base_url = f"http://{req.host}:{req.port}".rstrip("/")
+    try:
+        async with httpx.AsyncClient(timeout=4.0) as client:
+            resp = await client.get(f"{base_url}/api/tags")
+        if resp.status_code == 200:
+            data = resp.json()
+            models = [m.get("name") for m in data.get("models", [])]
+            return {
+                "connected": True,
+                "host": req.host,
+                "port": req.port,
+                "models": models,
+                "count": len(models),
+                "message": f"Conexión exitosa. {len(models)} modelo(s) encontrado(s).",
+            }
+        else:
+            return {
+                "connected": False,
+                "host": req.host,
+                "port": req.port,
+                "models": [],
+                "count": 0,
+                "message": f"Servidor Ollama respondió con código HTTP {resp.status_code}",
+            }
+    except Exception as e:
+        return {
+            "connected": False,
+            "host": req.host,
+            "port": req.port,
+            "models": [],
+            "count": 0,
+            "message": f"No se pudo conectar a Ollama en {base_url}: {str(e)}",
+        }
+
+
+@app.post("/api/connect-ai")
+async def wizard_connect_ai(req: AIConnectRequest):
+    """Paso 1 del wizard: prueba y guarda la conexión al modelo de IA con parámetros dinámicos."""
+    import time
+    base_url = f"http://{req.host}:{req.port}".rstrip("/")
+    dyn_settings = OllamaSettings(
+        OLLAMA_BASE_URL=base_url,
+        OLLAMA_MODEL=req.model,
+        OLLAMA_TIMEOUT=req.timeout or 60,
+        OLLAMA_TEMPERATURE=req.temperature or 0.0,
+    )
+    ollama_svc = OllamaService(settings=dyn_settings)
+
+    t0 = time.perf_counter()
+    health = ollama_svc.check_connection()
+    latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    if not health.get("connected"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo conectar al servidor Ollama en {base_url}. Verifique que Ollama esté ejecutándose."
+        )
+
+    available_models = health.get("available_models", [])
+    model_match = health.get("model_available", False)
+
+    if not model_match:
+        model_list_str = ", ".join(available_models) if available_models else "ninguno"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Conexión establecida con Ollama en {base_url}, pero el modelo '{req.model}' "
+                f"no está disponible en el servidor. Modelos detectados: [{model_list_str}]."
+            )
+        )
+
+    # Guardar en estado compartido de la sesión
+    state.dynamic_ollama_service = ollama_svc
+    state.dynamic_ollama_settings = dyn_settings
+
+    return {
+        "success": True,
+        "host": req.host,
+        "port": req.port,
+        "model": req.model,
+        "model_available": True,
+        "available_models": available_models,
+        "latency_ms": latency_ms,
+        "message": f"Conexión exitosa con Ollama ({req.model}) en {base_url} ({latency_ms} ms)",
+    }
+
+
 @app.post("/api/connect")
 async def wizard_connect(req: ConnectRequest):
-    """Paso 1 del wizard: prueba la conexión con parámetros dinámicos y retorna esquemas disponibles."""
+    """Paso 2 del wizard: prueba la conexión con parámetros dinámicos y retorna esquemas disponibles."""
     from src.config.settings import DatabaseSettings
 
     try:
@@ -493,8 +601,8 @@ async def wizard_inspect_table(req: InspectTableRequest):
 
 @app.post("/api/test-ai")
 async def test_ai_connection(sample_address: Optional[str] = None):
-    """Ejecuta una prueba de inferencia en vivo con el modelo local Ollama."""
-    ollama_svc = OllamaService()
+    """Ejecuta una prueba de inferencia en vivo con el modelo Ollama configurado."""
+    ollama_svc = state.dynamic_ollama_service or OllamaService()
     test_addr = sample_address or "CALLE SAN JOSE 456 URB SANTA VICTORIA CHICLAYO"
 
     start_time = time.perf_counter()
@@ -536,14 +644,16 @@ def _run_pipeline_worker(req: StartPipelineRequest):
     state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
     try:
-        # Usar conexión dinámica del wizard si está disponible
+        # Usar conexiones dinámicas del wizard si están disponibles
         db_svc = state.dynamic_db_service or DatabaseService()
+        ollama_svc = state.dynamic_ollama_service or OllamaService()
 
         # Resolver columnas: las del wizard tienen prioridad sobre las del .env
         id_col   = req.id_col      or settings.db.id_col
         dir_col  = req.address_col or settings.db.dir_col
 
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
+        state.add_log(f"Motor IA: [{ollama_svc.base_url}] | Modelo: [{ollama_svc.model_name}]")
 
         # Construir el extractor con las columnas identificadas por el usuario en el wizard
         custom_extractor = DatabaseExtractor(
@@ -554,6 +664,13 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             dir_col=dir_col,
         )
 
+        # Construir el transformador con el servicio de IA dinámico
+        custom_ai_parser = AIAddressParser(ollama_service=ollama_svc)
+        custom_transformer = PipelineTransformer(
+            ai_parser=custom_ai_parser,
+            use_ai=req.require_ai,
+        )
+
         pipeline = ETLPipeline(
             schema=target_schema,
             table=target_table,
@@ -561,6 +678,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             db_service=db_svc,
             require_ai=req.require_ai,
             extractor=custom_extractor,
+            transformer=custom_transformer,
             on_record_processed=state.add_record,
         )
         state.pipeline = pipeline

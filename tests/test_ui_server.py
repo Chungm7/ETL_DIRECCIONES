@@ -191,3 +191,115 @@ def test_run_pipeline_worker_with_limit_and_without_limit():
         )
         _run_pipeline_worker(req_no_limit)
         mock_pipe_inst.run.assert_called_with(max_records=None, limit=None, filter_mode="pending")
+
+
+def test_api_detect_models_success(client):
+    """Verifica que /api/detect-models liste los modelos retornados por Ollama."""
+    with patch("httpx.AsyncClient.get") as mock_get:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {
+            "models": [{"name": "patroclo-artesano-7b:latest"}, {"name": "llama3:latest"}]
+        }
+        mock_get.return_value = mock_resp
+
+        response = client.post("/api/detect-models", json={"host": "localhost", "port": 11434})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["connected"] is True
+        assert data["count"] == 2
+        assert "patroclo-artesano-7b:latest" in data["models"]
+
+
+def test_api_detect_models_offline(client):
+    """Verifica que /api/detect-models maneje errores de red sin caerse."""
+    with patch("httpx.AsyncClient.get", side_effect=Exception("Connection refused")):
+        response = client.post("/api/detect-models", json={"host": "127.0.0.1", "port": 9999})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["connected"] is False
+        assert data["count"] == 0
+        assert "No se pudo conectar" in data["message"]
+
+
+def test_api_connect_ai_success(client):
+    """Verifica que /api/connect-ai valide la conexión y guarde el servicio dinámico."""
+    with patch("src.ui.server.OllamaService") as mock_ollama_cls:
+        mock_instance = mock_ollama_cls.return_value
+        mock_instance.check_connection.return_value = {
+            "connected": True,
+            "model_available": True,
+            "available_models": ["patroclo-artesano-7b:latest"],
+            "message": "Modelo disponible",
+        }
+
+        req_body = {
+            "host": "localhost",
+            "port": 11434,
+            "model": "patroclo-artesano-7b:latest"
+        }
+        response = client.post("/api/connect-ai", json=req_body)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["model"] == "patroclo-artesano-7b:latest"
+        assert state.dynamic_ollama_service is not None
+
+
+def test_api_connect_ai_model_missing(client):
+    """Verifica que /api/connect-ai rechace modelos no descargados con error 400 descriptivo."""
+    with patch("src.ui.server.OllamaService") as mock_ollama_cls:
+        mock_instance = mock_ollama_cls.return_value
+        mock_instance.check_connection.return_value = {
+            "connected": True,
+            "model_available": False,
+            "available_models": ["llama3:latest"],
+            "message": "Modelo no instalado",
+        }
+
+        req_body = {
+            "host": "localhost",
+            "port": 11434,
+            "model": "modelo-inexistente:latest"
+        }
+        response = client.post("/api/connect-ai", json=req_body)
+        assert response.status_code == 400
+        assert "no está disponible" in response.json()["detail"]
+
+
+def test_pipeline_worker_uses_dynamic_services():
+    """Verifica que _run_pipeline_worker inyecte los servicios dinámicos de IA y BD."""
+    from src.ui.server import _run_pipeline_worker, StartPipelineRequest
+
+    mock_db_svc = MagicMock()
+    mock_ollama_svc = MagicMock()
+    mock_ollama_svc.base_url = "http://192.168.1.50:11434"
+    mock_ollama_svc.model_name = "modelo-remoto:latest"
+
+    state.dynamic_db_service = mock_db_svc
+    state.dynamic_ollama_service = mock_ollama_svc
+
+    with patch("src.ui.server.ETLPipeline") as mock_pipeline:
+        mock_pipe_inst = mock_pipeline.return_value
+        mock_pipe_inst.extractor.get_status_counts.return_value = {
+            "total": 5, "pendientes": 5, "validos": 0, "observados": 0
+        }
+        mock_pipe_inst.run.return_value = MagicMock(
+            total_records=5, processed_records=5, valid_processed_records=5,
+            observed_records=0, successful_records=5, failed_records=0,
+            ai_records=5, hybrid_records=0, heuristic_records=0
+        )
+
+        req = StartPipelineRequest(
+            schema_name="public",
+            table_name="direcciones_actual",
+            limit=5,
+            filter_mode="pending",
+        )
+        _run_pipeline_worker(req)
+
+        # Verificar que ETLPipeline recibió el transformer y db_service dinámicos
+        call_kwargs = mock_pipeline.call_args.kwargs
+        assert call_kwargs["db_service"] is mock_db_svc
+        assert call_kwargs["transformer"].ai_parser.ollama is mock_ollama_svc
+
