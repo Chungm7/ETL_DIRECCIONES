@@ -7,9 +7,9 @@
 // ── Estado del wizard ────────────────────────────────────────────────────────
 const wiz = {
   step: 1,
-  ai_host: 'localhost',
-  ai_port: 11434,
-  ai_model: 'patroclo-artesano-7b:latest',
+  ai_host: '',
+  ai_port: null,
+  ai_model: '',
   schema: null,
   table: null,
   id_col: null,
@@ -95,8 +95,14 @@ function onModelSelectChange() {
 
 async function detectAIModels() {
   showAlert('alertAI', '');
-  const host = (document.getElementById('ai_host')?.value || 'localhost').trim();
-  const port = parseInt(document.getElementById('ai_port')?.value) || 11434;
+  const host = (document.getElementById('ai_host')?.value || '').trim();
+  const portStr = (document.getElementById('ai_port')?.value || '').trim();
+  const port = portStr ? parseInt(portStr) : 11434;
+
+  if (!host) {
+    showAlert('alertAI', 'Por favor ingrese el Host o IP del servidor Ollama antes de detectar modelos.', 'warn');
+    return;
+  }
 
   showAlert('alertAI', `Consultando modelos en http://${host}:${port}/api/tags ...`, 'info');
 
@@ -134,10 +140,10 @@ async function detectAIModels() {
 
 async function connectAI() {
   showAlert('alertAI', '');
-  setLoading('btnConnectAI', 'spinConnectAI', true);
 
-  const host = (document.getElementById('ai_host')?.value || 'localhost').trim();
-  const port = parseInt(document.getElementById('ai_port')?.value) || 11434;
+  const host = (document.getElementById('ai_host')?.value || '').trim();
+  const portStr = (document.getElementById('ai_port')?.value || '').trim();
+  const port = portStr ? parseInt(portStr) : 11434;
   const selVal = document.getElementById('ai_model_select')?.value || '';
   let model = selVal;
 
@@ -145,11 +151,16 @@ async function connectAI() {
     model = (document.getElementById('ai_model_custom')?.value || '').trim();
   }
 
-  if (!model) {
-    showAlert('alertAI', 'Debe seleccionar o ingresar el nombre del modelo de IA.', 'warn');
-    setLoading('btnConnectAI', 'spinConnectAI', false);
+  if (!host) {
+    showAlert('alertAI', 'Debe ingresar el Host o IP del servidor Ollama.', 'warn');
     return;
   }
+  if (!model) {
+    showAlert('alertAI', 'Debe seleccionar o ingresar el nombre del modelo de IA (detecte los modelos o use opción manual).', 'warn');
+    return;
+  }
+
+  setLoading('btnConnectAI', 'spinConnectAI', true);
 
   try {
     const res = await fetch('/api/connect-ai', {
@@ -175,7 +186,7 @@ async function connectAI() {
     // Transición suave al paso 2
     setTimeout(() => {
       goStep(2);
-      showAlert('alertConnect', `Motor IA configurado en http://${host}:${port} (${model}). Ahora conecte a PostgreSQL.`, 'info');
+      showAlert('alertConnect', `Motor IA configurado en http://${host}:${port} (${model}). Ingrese ahora los parámetros de PostgreSQL.`, 'info');
     }, 500);
 
   } catch (e) {
@@ -188,15 +199,22 @@ async function connectAI() {
 // ── PASO 2: Conexión BD ───────────────────────────────────────────────────────
 async function connectDB() {
   showAlert('alertConnect', '');
+
+  const host = (document.getElementById('db_host')?.value || '').trim();
+  const portStr = (document.getElementById('db_port')?.value || '').trim();
+  const port = portStr ? parseInt(portStr) : 5432;
+  const dbname = (document.getElementById('db_name')?.value || '').trim();
+  const user = (document.getElementById('db_user')?.value || '').trim();
+  const password = document.getElementById('db_pass')?.value || '';
+
+  if (!host || !dbname || !user) {
+    showAlert('alertConnect', 'Por favor complete el Servidor (Host), Base de Datos y Usuario para conectar.', 'warn');
+    return;
+  }
+
   setLoading('btnConnect', 'spinConnect', true);
 
-  const body = {
-    host:     document.getElementById('db_host').value.trim() || 'localhost',
-    port:     parseInt(document.getElementById('db_port').value) || 5432,
-    dbname:   document.getElementById('db_name').value.trim() || 'bd_mpch',
-    user:     document.getElementById('db_user').value.trim() || 'postgres',
-    password: document.getElementById('db_pass').value,
-  };
+  const body = { host, port, dbname, user, password };
 
   try {
     const res = await fetch('/api/connect', {
@@ -207,14 +225,14 @@ async function connectDB() {
     const data = await res.json();
 
     if (!res.ok) {
-      showAlert('alertConnect', data.detail || 'No se pudo conectar.', 'error');
+      showAlert('alertConnect', data.detail || 'No se pudo conectar a la base de datos.', 'error');
       return;
     }
 
     renderSchemaCards(data.schemas || []);
     showAlert('alertConnect', '');
     goStep(3);
-    showAlert('alertSchema', `Conectado a <strong>${body.dbname}</strong> en ${body.host}:${body.port}. Seleccione un esquema.`, 'ok');
+    showAlert('alertSchema', `Conectado a <strong>${body.dbname}</strong> en ${body.host}:${body.port}. Seleccione el esquema a trabajar:`, 'ok');
 
   } catch (e) {
     showAlert('alertConnect', `Error de red: ${e.message}`, 'error');
@@ -430,8 +448,14 @@ async function initStep5() {
     const data = await res.json();
     const ai   = data.ai || {};
     const badge = document.getElementById('aiStatusBadge');
-    if (ai.connected && ai.installed) {
-      badge.innerHTML = `<span class="ai-badge ai-on"><span class="dot dot-green"></span>IA activa — ${ai.model}</span>`;
+
+    // Comprobar estado de IA:
+    const isModelReady = Boolean(ai.installed || ai.model_available);
+    const isAiActive   = (ai.connected && isModelReady) || Boolean(wiz.ai_model && (ai.connected || wiz.ai_host));
+    const activeModel  = wiz.ai_model || ai.model || 'Ollama';
+
+    if (isAiActive && activeModel) {
+      badge.innerHTML = `<span class="ai-badge ai-on"><span class="dot dot-green"></span>IA activa — ${escapeHtml(activeModel)}</span>`;
     } else {
       badge.innerHTML = `<span class="ai-badge ai-off"><span class="dot dot-red"></span>IA no disponible</span>`;
     }
@@ -828,9 +852,7 @@ const initStep4 = initStep5;
 
 // Inicialización al cargar la interfaz
 document.addEventListener('DOMContentLoaded', () => {
-  // Intentar autodetectar modelos descargados en Ollama
-  setTimeout(() => {
-    detectAIModels();
-  }, 300);
+  // Inicialización limpia en Paso 1
+  goStep(1);
 });
 

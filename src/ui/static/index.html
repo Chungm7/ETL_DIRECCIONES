@@ -604,11 +604,11 @@
       <div class="form-grid">
         <div class="field">
           <label>Host / IP del Servidor Ollama</label>
-          <input type="text" id="ai_host" value="localhost" placeholder="localhost o 192.168.1.X" />
+          <input type="text" id="ai_host" placeholder="Ej. localhost o 192.168.1.50" />
         </div>
         <div class="field">
           <label>Puerto</label>
-          <input type="number" id="ai_port" value="11434" placeholder="11434" />
+          <input type="number" id="ai_port" placeholder="Ej. 11434" />
         </div>
         <div class="field full">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
@@ -618,10 +618,10 @@
             </button>
           </div>
           <select id="ai_model_select" onchange="onModelSelectChange()">
-            <option value="patroclo-artesano-7b:latest">patroclo-artesano-7b:latest (Recomendado)</option>
-            <option value="custom">Otro (ingresar manualmente)...</option>
+            <option value="" disabled selected>-- Ingrese Host y detecte modelos --</option>
+            <option value="custom">Ingresar nombre de modelo manualmente...</option>
           </select>
-          <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. llama3:latest o qwen2.5:7b" />
+          <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. patroclo-artesano-7b:latest o llama3:latest" />
         </div>
       </div>
 
@@ -650,23 +650,23 @@
       <div class="form-grid">
         <div class="field">
           <label>Servidor (Host)</label>
-          <input type="text" id="db_host" value="localhost" placeholder="localhost" />
+          <input type="text" id="db_host" placeholder="Ej. localhost o 192.168.1.10" />
         </div>
         <div class="field">
           <label>Puerto</label>
-          <input type="number" id="db_port" value="5432" placeholder="5432" />
+          <input type="number" id="db_port" placeholder="Ej. 5432" />
         </div>
         <div class="field">
           <label>Base de Datos</label>
-          <input type="text" id="db_name" value="bd_mpch" placeholder="bd_mpch" />
+          <input type="text" id="db_name" placeholder="Ej. bd_mpch" />
         </div>
         <div class="field">
           <label>Usuario</label>
-          <input type="text" id="db_user" value="postgres" placeholder="postgres" />
+          <input type="text" id="db_user" placeholder="Ej. postgres" />
         </div>
         <div class="field full">
           <label>Contraseña</label>
-          <input type="password" id="db_pass" value="postgres" placeholder="••••••••" />
+          <input type="password" id="db_pass" placeholder="Contraseña de PostgreSQL" />
         </div>
       </div>
 
@@ -930,6 +930,6 @@
 
 </main>
 
-<script src="/static/app.js?v=wizard_5steps_v1"></script>
+<script src="/static/app.js?v=clean_inputs_v2"></script>
 </body>
 </html>

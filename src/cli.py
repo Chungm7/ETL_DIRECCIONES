@@ -628,11 +628,13 @@ def main() -> None:
     setup_logging()
 
     parser = argparse.ArgumentParser(
-        description="CLI del Proyecto ETL de Migración de Direcciones - MPCH"
+        description="ETL de Migración de Direcciones - MPCH (Interfaz GUI y procesamiento IA)"
     )
-    subparsers = parser.add_subparsers(dest="command", help="Comando a ejecutar")
+    parser.add_argument("--port", type=int, default=8080, help="Puerto local para el servidor GUI (default: 8080)")
+    parser.add_argument("--no-browser", action="store_true", default=False, help="No abrir ventana de navegador automáticamente")
+    subparsers = parser.add_subparsers(dest="command", help="Comando a ejecutar (por defecto: inicia GUI)")
 
-    subparsers.add_parser("menu", help="Abre el menú interactivo visual")
+    subparsers.add_parser("menu", help="Inicia la interfaz gráfica")
     gui_parser = subparsers.add_parser("gui", help="Abre la interfaz gráfica en ventana de escritorio ejecutable")
     gui_parser.add_argument("--port", type=int, default=8080, help="Puerto local para el servidor GUI (default: 8080)")
     gui_parser.add_argument("--no-browser", action="store_true", default=False, help="No abrir ventana de navegador automáticamente")
@@ -713,8 +715,11 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command is None or args.command == "menu":
-        interactive_menu()
+    if args.command is None or args.command in ("menu", "gui"):
+        # Por defecto, iniciar la interfaz gráfica directamente sin menús interactivos de consola
+        gui_port = getattr(args, "port", 8080)
+        open_brow = not getattr(args, "no_browser", False)
+        cmd_run_gui(port=gui_port, open_browser=open_brow)
     elif args.command == "config":
         show_configuration_panel()
     elif args.command == "check-ollama":

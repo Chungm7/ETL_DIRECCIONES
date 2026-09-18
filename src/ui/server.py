@@ -316,8 +316,10 @@ async def get_system_status():
         },
         "ai": {
             "connected": ai_health.get("connected", False),
-            "model": ai_health.get("model", ollama_svc.model_name),
-            "installed": ai_health.get("model_installed", False),
+            "model": ai_health.get("target_model") or ai_health.get("model") or ollama_svc.model_name,
+            "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
+            "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
+            "base_url": ollama_svc.base_url,
             "message": ai_health.get("message", ""),
         },
         "table_counts": table_counts,

@@ -303,3 +303,13 @@ def test_pipeline_worker_uses_dynamic_services():
         assert call_kwargs["db_service"] is mock_db_svc
         assert call_kwargs["transformer"].ai_parser.ollama is mock_ollama_svc
 
+
+def test_cli_default_launches_gui():
+    """Verifica que invocar la CLI sin argumentos ejecute directamente la GUI de escritorio."""
+    from src.cli import main
+    with patch("sys.argv", ["main.py"]), \
+         patch("src.cli.cmd_run_gui") as mock_run_gui:
+        main()
+        mock_run_gui.assert_called_once_with(port=8080, open_browser=True)
+
+
