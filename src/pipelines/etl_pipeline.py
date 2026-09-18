@@ -2,6 +2,8 @@
 
 import logging
 import sys
+import time
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Optional, Callable, Dict, Any
 
@@ -116,33 +118,20 @@ class ETLPipeline:
         if ollama_svc is None:
             ollama_svc = OllamaService()
 
-        if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan]🤖 Comprobando motor de IA Local/Remoto ({ollama_svc.model_name})...[/bold cyan]")
-        else:
-            print(f"🤖 Comprobando motor de IA Local/Remoto ({ollama_svc.model_name})...")
-
         ai_check = ollama_svc.test_model_inference()
         if ai_check["model_ready"]:
             self.ai_status_message = f"OPERATIVO ({ollama_svc.model_name} en {ai_check['latency_seconds']}s)"
             if RICH_AVAILABLE and console:
-                console.print(f"   • Estado IA: [bold green]ACTIVO Y OPERATIVO[/bold green] | Modelo: [yellow]{ollama_svc.model_name}[/yellow] | Latencia: [cyan]{ai_check['latency_seconds']}s[/cyan] ✅\n")
+                console.print(f"[bold cyan][CONFIG][/bold cyan] IA: [bold green]OPERATIVO[/bold green] ({ollama_svc.model_name}, {ai_check['latency_seconds']}s)")
             else:
-                print(f"   • Estado IA: ACTIVO Y OPERATIVO | Modelo: {ollama_svc.model_name} | Latencia: {ai_check['latency_seconds']}s ✅\n")
+                print(f"[CONFIG] IA: OPERATIVO ({ollama_svc.model_name}, {ai_check['latency_seconds']}s)")
         else:
             self.ai_status_message = f"NO DISPONIBLE ({ai_check['error'] or ai_check['message']})"
-            warn_detail = (
-                f"El modelo IA '{ollama_svc.model_name}' NO está respondiendo en {ollama_svc.base_url}.\n"
-                f"Causa: {ai_check['error'] or ai_check['message']}\n"
-                f"⚠️ ATENCIÓN: El ETL continuará con el motor de contingencia HEURÍSTICO (menor precisión semántica)."
-            )
+            warn_detail = f"[CONFIG] IA: NO DISPONIBLE ({ai_check['error'] or ai_check['message']}) - Usando contingencia Heurística"
             if RICH_AVAILABLE and console:
-                console.print(Panel(
-                    warn_detail,
-                    title="[bold yellow]⚠️ ADVERTENCIA: MOTOR DE IA APAGADO / INACCESIBLE[/bold yellow]",
-                    border_style="yellow",
-                ))
+                console.print(f"[bold yellow]{warn_detail}[/bold yellow]")
             else:
-                print(f"\n⚠️ ADVERTENCIA: MOTOR DE IA APAGADO / INACCESIBLE\n{warn_detail}\n")
+                print(warn_detail)
 
             if self.require_ai:
                 raise RuntimeError(
@@ -150,62 +139,17 @@ class ETLPipeline:
                 )
 
         # Paso 1: Examinar tablas categorizables
-        if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan]🔍 [Paso 1/3] Examinando tablas categorizables en esquema '{self.schema}'...[/bold cyan]")
-        else:
-            print(f"🔍 [Paso 1/3] Examinando tablas categorizables en esquema '{self.schema}'...")
-
-        catalog_status = self.db.ensure_catalogs_exist(schema=self.schema, directions_table=self.table)
-        for cat_name, status in catalog_status.items():
-            t_created = status.get("table_created", False)
-            col_added = status.get("column_added", False)
-            existing = status.get("existing_records", 0)
-            remapped = status.get("remapped_records", 0)
-            added = status.get("added_records", 0)
-            total = status.get("total_records", existing + added)
-            fk_remapped = status.get("fk_remapped_records", 0)
-
-            details = []
-            if t_created:
-                details.append("Tabla creada 🏗️")
-            else:
-                details.append("Tabla ya existía ✅")
-            if col_added:
-                details.append("Columna 'abreviatura' agregada ➕")
-            if remapped > 0:
-                details.append(f"{remapped} registros estandarizados a IDs canónicos 🔄")
-            if fk_remapped > 0:
-                details.append(f"{fk_remapped} relaciones en direcciones reasignadas 🔗")
-            if existing > 0 and remapped == 0:
-                details.append(f"{existing} registros previos estándar 🔒")
-            if added > 0:
-                details.append(f"{added} registros faltantes incorporados 🚀")
-            details.append(f"Total: {total} registros")
-
-            summary_msg = " | ".join(details)
-            if RICH_AVAILABLE and console:
-                console.print(f"   • Catálogo [bold yellow]{cat_name}[/bold yellow]: [green]{summary_msg}[/green]")
-            else:
-                print(f"   • Catálogo {cat_name}: {summary_msg}")
+        self.db.ensure_catalogs_exist(schema=self.schema, directions_table=self.table)
 
         # Paso 2: Sincronizar mapeo dinámico de CatalogMatcher para el esquema
-        if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan]🔗 [Paso 2/3] Sincronizando catálogo dinámico con los IDs de '{self.schema}'...[/bold cyan]")
-        else:
-            print(f"🔗 [Paso 2/3] Sincronizando catálogo dinámico con los IDs de '{self.schema}'...")
         CatalogMatcher.sync_with_db(self.db, self.schema)
 
         # Paso 3: Asegurar columnas in-place en la tabla
-        if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan]⚡ [Paso 3/3] Verificando columnas in-place en '{self.schema}.{self.table}' (conservando IDs)...[/bold cyan]")
-        else:
-            print(f"⚡ [Paso 3/3] Verificando columnas in-place en '{self.schema}.{self.table}' (conservando IDs)...")
-
         cols = self.db.ensure_in_place_columns(schema=self.schema, table=self.table)
         if RICH_AVAILABLE and console:
-            console.print(f"   • Columnas disponibles: [green]{', '.join(cols)}[/green]\n")
+            console.print(f"[bold cyan][CONFIG][/bold cyan] BD: Esquema '{self.schema}', Tabla '{self.table}' lista ({len(cols)} columnas)")
         else:
-            print(f"   • Columnas disponibles: {', '.join(cols)}\n")
+            print(f"[CONFIG] BD: Esquema '{self.schema}', Tabla '{self.table}' lista ({len(cols)} columnas)")
         sys.stdout.flush()
 
     def _log_record_progress(
@@ -216,77 +160,70 @@ class ETLPipeline:
         destino,
         success: bool,
     ) -> None:
-        """Imprime un bloque de seguimiento visual claro sobre la asignación del registro,
-        indicando explícitamente qué motor (IA, Heurístico o Híbrido) realizó la extracción.
-        """
-        via_name = CatalogMatcher.get_via_name(destino.tipo_via)
-        zona_name = CatalogMatcher.get_zona_name(destino.tipo_zona)
+        """Emite una sola línea limpia, rápida y de alta visibilidad para trazabilidad en consola."""
+        time_str = datetime.now().strftime("%H:%M:%S")
+        pad = len(str(total))
+        index_str = f"{index:>{pad}}/{total}"
 
-        via_id_str = f"[{destino.tipo_via}: {via_name}]" if destino.tipo_via else "[SIN TIPO]"
-        zona_id_str = f"[{destino.tipo_zona}: {zona_name}]" if destino.tipo_zona else "[SIN ZONA]"
-
-        via_desc = f"{via_id_str} {destino.nom_via or 'N/D'} N° {destino.num_via or 'S/N'}"
-        if getattr(destino, "id_via", None):
-            via_desc += f" [ID Vía: {destino.id_via}]"
-        zona_desc = f"{zona_id_str} {destino.nom_zona or 'N/D'}"
-        if getattr(destino, "id_zona", None):
-            zona_desc += f" [ID Zona: {destino.id_zona}]"
-        catastro = f"Mz: {destino.manzana or '-'} | Lt: {destino.lote or '-'} | Sublote: {destino.slote or '-'}"
-        status_str = "Cargado en BD ✅" if success else "Error en Carga ❌"
-
-        # Identificación visual del motor utilizado
+        # 1. Identificación del motor
         metodo = getattr(destino, "metodo_normalizacion", "IA")
-        if "IA (" in metodo:
-            motor_badge = f"🤖 {metodo}"
-            motor_style = "bold green"
-        elif "Híbrido" in metodo:
-            motor_badge = f"🧩 {metodo}"
-            motor_style = "bold cyan"
+        if "IA" in metodo:
+            motor_lbl = "IA"
+        elif "Híbrido" in metodo or "Hibrido" in metodo:
+            motor_lbl = "Híbrido"
         else:
-            motor_badge = f"⚠️ {metodo}"
-            motor_style = "bold yellow"
+            motor_lbl = "Heurístico"
+
+        # 2. Resumen de texto de entrada
+        raw_clean = (raw_text or "VACÍO").replace("\n", " ").strip()
+        raw_disp = f'"{raw_clean[:28]}..."' if len(raw_clean) > 30 else f'"{raw_clean}"'
+
+        # 3. Estado, etiqueta y detalle
+        if not success:
+            tag_plain = "[ERROR      ]"
+            tag_rich = "[bold red][ERROR      ][/bold red]"
+            detail = f"Fallo al registrar en BD ({motor_lbl})"
+        elif destino.es_procesado:
+            tag_plain = "[NORMALIZADO]"
+            tag_rich = "[bold green][NORMALIZADO][/bold green]"
+
+            tipo_via = CatalogMatcher.get_via_name(destino.tipo_via) or ""
+            via_part = f"{tipo_via} {destino.nom_via or ''}".strip()
+            if destino.num_via:
+                via_part = f"{via_part} N° {destino.num_via}".strip()
+
+            tipo_zona = CatalogMatcher.get_zona_name(destino.tipo_zona) or ""
+            zona_part = f"{tipo_zona} {destino.nom_zona or ''}".strip()
+
+            cat_part = []
+            if destino.manzana:
+                cat_part.append(f"Mz. {destino.manzana}")
+            if destino.lote:
+                cat_part.append(f"Lt. {destino.lote}")
+            if getattr(destino, "slote", None):
+                cat_part.append(f"Sl. {destino.slote}")
+            cat_str = " ".join(cat_part)
+
+            parts = [p for p in [via_part, zona_part, cat_str] if p]
+            res_str = ", ".join(parts) if parts else (destino.referencia or "NORMALIZADO")
+            if len(res_str) > 55:
+                res_str = res_str[:52] + "..."
+            detail = f"-> {res_str} ({motor_lbl})"
+        else:
+            tag_plain = "[OBSERVADO  ]"
+            tag_rich = "[bold yellow][OBSERVADO  ][/bold yellow]"
+            obs = (destino.observacion or "No validado en catálogos oficiales").replace("\n", " ").strip()
+            if len(obs) > 50:
+                obs = obs[:47] + "..."
+            detail = f"-> [Motivo: {obs}] ({motor_lbl})"
 
         if RICH_AVAILABLE and console:
-            content = Text()
-            content.append(f"📍 Entrada  : ", style="bold")
-            content.append(f"\"{raw_text or 'VACÍO'}\"\n", style="white")
-            content.append(f"⚙️  Motor    : ", style="bold")
-            content.append(f"{motor_badge}\n", style=motor_style)
-            content.append(f"🛣️  Vía      : ", style="bold yellow")
-            content.append(f"{via_desc}\n", style="yellow")
-            content.append(f"🏙️  Zona     : ", style="bold magenta")
-            content.append(f"{zona_desc}\n", style="magenta")
-            content.append(f"📐 Catastro : ", style="bold cyan")
-            content.append(f"{catastro}\n", style="cyan")
-            if destino.referencia:
-                content.append(f"🏛️  Ref      : ", style="bold blue")
-                content.append(f"{destino.referencia}\n", style="blue")
-            proc_badge = "PROCESADO (Válido en Catastro) ✅" if destino.es_procesado else "OBSERVADO (No Procesado) ⚠️"
-            content.append(f"📋 Catastro : ", style="bold")
-            content.append(f"{proc_badge}\n", style="bold green" if destino.es_procesado else "bold yellow")
-            if destino.observacion:
-                content.append(f"⚠️  Motivo   : ", style="bold red")
-                content.append(f"{destino.observacion}\n", style="red")
-            content.append(f"💾 Estado   : ", style="bold")
-            content.append(f"{status_str}", style="bold green" if success else "bold red")
-
-            title = f"Registro {index}/{total} | ID Licencia: {destino.id_licencia}"
-            console.print(Panel(content, title=title, border_style="green" if (success and destino.es_procesado) else "yellow" if success else "red", expand=False))
+            console.print(
+                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] {tag_rich} ID {destino.id_licencia}: {raw_disp} {detail}",
+                soft_wrap=True,
+            )
         else:
-            print(f"\n┌── [Registro {index}/{total} | ID Licencia: {destino.id_licencia}] ───────────────")
-            print(f"│ 📍 Entrada  : \"{raw_text or 'VACÍO'}\"")
-            print(f"│ ⚙️  Motor    : {motor_badge}")
-            print(f"│ 🛣️  Vía      : {via_desc}")
-            print(f"│ 🏙️  Zona     : {zona_desc}")
-            print(f"│ 📐 Catastro : {catastro}")
-            if destino.referencia:
-                print(f"│ 🏛️  Ref      : {destino.referencia}")
-            proc_badge = "PROCESADO ✅" if destino.es_procesado else "OBSERVADO ⚠️"
-            print(f"│ 📋 Catastro : {proc_badge}")
-            if destino.observacion:
-                print(f"│ ⚠️  Motivo   : {destino.observacion}")
-            print(f"└── 💾 Estado : {status_str}")
-
+            print(f"{time_str} [{index_str}] {tag_plain} ID {destino.id_licencia}: {raw_disp} {detail}")
         sys.stdout.flush()
 
     def run(
@@ -339,13 +276,11 @@ class ETLPipeline:
         if target_pool == 0 and not process_all and effective_limit is None:
             if RICH_AVAILABLE and console:
                 console.print(
-                    f"\n[bold green]🎉 Todos los registros ({total_available}) ya se encuentran procesados en {self.schema}.{self.table}[/bold green]\n"
-                    f"├─ ✅ Validados en Catastro: [green]{valid_count}[/green]\n"
-                    f"├─ ⚠️  Observados            : [yellow]{observed_count}[/yellow]\n"
-                    f"└─ ⏳ Pendientes por IA     : [cyan]0[/cyan]\n"
+                    f"\n[bold green][ETL] Todos los registros ({total_available}) ya se encuentran procesados en {self.schema}.{self.table}[/bold green]\n"
+                    f"       Validados: {valid_count} | Observados: {observed_count} | Pendientes: 0\n"
                 )
             else:
-                print(f"\n🎉 Todos los registros ({total_available}) ya han sido procesados. No hay registros pendientes.\n")
+                print(f"\n[ETL] Todos los registros ({total_available}) ya han sido procesados. No hay registros pendientes.\n")
             return summary
 
         records_to_process = target_pool if process_all else (min(target_pool, effective_limit) if effective_limit else target_pool)
@@ -356,22 +291,20 @@ class ETLPipeline:
         pend_pct = (pending_count / total_available * 100) if total_available else 0
 
         if RICH_AVAILABLE and console:
-            console.rule(f"[bold cyan]Pipeline ETL In-Place [{self.schema}.{self.table}] (Reanudación Automática)[/bold cyan]")
             console.print(
-                f"Esquema Activo: [cyan]{self.schema}[/cyan] | Tabla: [yellow]{self.table}[/yellow]\n"
-                f"📊 Estado BD: Total: [bold]{total_available}[/bold] | "
-                f"✅ Válidos: [green]{valid_count} ({valid_pct:.1f}%)[/green] | "
-                f"⚠️ Observados: [yellow]{observed_count} ({obs_pct:.1f}%)[/yellow] | "
-                f"⏳ Pendientes: [cyan]{pending_count} ({pend_pct:.1f}%)[/cyan]\n"
-                f"🚀 A Procesar: [bold green]{records_to_process}[/bold green] (Filtro: [magenta]{filter_mode.upper()}[/magenta]) | "
-                f"Tamaño Lote: [blue]{self.batch_size}[/blue]\n"
+                f"[bold cyan][ETL][/bold cyan] {self.schema}.{self.table} | "
+                f"Objetivo: [bold green]{records_to_process}[/bold green] (Filtro: [magenta]{filter_mode.upper()}[/magenta], Lote: {self.batch_size}) | "
+                f"BD: [dim]{valid_count} válidos, {observed_count} observados, {pending_count} pendientes[/dim]"
             )
         else:
-            print(f"\n=== Pipeline ETL In-Place [{self.schema}.{self.table}] (Reanudación Automática) ===")
-            print(f"Total: {total_available} | Válidos: {valid_count} | Observados: {observed_count} | Pendientes: {pending_count}")
-            print(f"A Procesar: {records_to_process} | Filtro: {filter_mode} | Lote: {self.batch_size}\n")
+            print(
+                f"[ETL] {self.schema}.{self.table} | "
+                f"Objetivo: {records_to_process} (Filtro: {filter_mode.upper()}, Lote: {self.batch_size}) | "
+                f"BD: {valid_count} válidos, {observed_count} observados, {pending_count} pendientes"
+            )
         sys.stdout.flush()
 
+        start_time = time.time()
         processed_in_run = 0
         current_index = 0
 
@@ -398,14 +331,7 @@ class ETLPipeline:
 
                     current_index += 1
                     try:
-                        # Indicador visual inmediato de inicio de análisis
-                        if RICH_AVAILABLE and console:
-                            console.print(
-                                f"[dim]⏳ [{current_index}/{records_to_process}] Analizando ID {rec_raw.id_licencia}: \"{rec_raw.emp_direccion or 'VACÍO'}\"...[/dim]"
-                            )
-                        else:
-                            print(f"⏳ [{current_index}/{records_to_process}] Analizando ID {rec_raw.id_licencia}...")
-                        sys.stdout.flush()
+                        logger.debug("Analizando ID %s: %s", rec_raw.id_licencia, rec_raw.emp_direccion)
 
                         # Transformación (Limpieza + Inferencia IA / Heurística + Catálogos)
                         rec_dest = self.transformer.transform_record(rec_raw)
@@ -448,7 +374,7 @@ class ETLPipeline:
                         catastro = f"Mz: {rec_dest.manzana or '-'} | Lt: {rec_dest.lote or '-'} | Sublote: {rec_dest.slote or '-'}"
                         status_str = "Cargado en BD ✅" if is_success else "Error en Carga ❌"
 
-                        # Mostrar seguimiento visual en vivo al instante en consola
+                        # Mostrar seguimiento visual en vivo al instante en consola (1 sola línea limpia)
                         self._log_record_progress(
                             index=current_index,
                             total=records_to_process,
@@ -501,6 +427,26 @@ class ETLPipeline:
                         logger.error("Error procesando registro %d: %s", rec_raw.id_licencia, rec_err)
                         summary.failed_records += 1
                         summary.processed_records += 1
+
+                        # Log conciso en consola para trazabilidad inmediata de excepciones
+                        time_str = datetime.now().strftime("%H:%M:%S")
+                        pad = len(str(records_to_process))
+                        index_str = f"{current_index:>{pad}}/{records_to_process}"
+                        raw_clean = (rec_raw.emp_direccion or "VACÍO").replace("\n", " ").strip()
+                        raw_disp = f'"{raw_clean[:28]}..."' if len(raw_clean) > 30 else f'"{raw_clean}"'
+                        err_str = str(rec_err).replace("\n", " ").strip()
+                        if len(err_str) > 50:
+                            err_str = err_str[:47] + "..."
+
+                        if RICH_AVAILABLE and console:
+                            console.print(
+                                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] [bold red][ERROR      ][/bold red] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}",
+                                soft_wrap=True,
+                            )
+                        else:
+                            print(f"{time_str} [{index_str}] [ERROR      ] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}")
+                        sys.stdout.flush()
+
                         if self.on_record_processed:
                             try:
                                 self.on_record_processed({
@@ -544,6 +490,27 @@ class ETLPipeline:
                 logger.error("Fallo durante la extracción del lote en offset %d: %s", fetch_offset, e)
                 summary.failed_records += limit
                 processed_in_run += limit
+
+        elapsed = time.time() - start_time
+        if RICH_AVAILABLE and console:
+            console.print(
+                f"\n[bold cyan][ETL][/bold cyan] Finalizado en [bold]{elapsed:.2f}s[/bold]: "
+                f"[bold]{summary.processed_records}[/bold] procesados ("
+                f"[green]{summary.valid_processed_records} normalizados[/green], "
+                f"[yellow]{summary.observed_records} observados[/yellow], "
+                f"[red]{summary.failed_records} errores[/red]) | "
+                f"Motor: {summary.ai_records} IA, {summary.hybrid_records} Híbrido, {summary.heuristic_records} Heurístico\n"
+            )
+        else:
+            print(
+                f"\n[ETL] Finalizado en {elapsed:.2f}s: "
+                f"{summary.processed_records} procesados ("
+                f"{summary.valid_processed_records} normalizados, "
+                f"{summary.observed_records} observados, "
+                f"{summary.failed_records} errores) | "
+                f"Motor: {summary.ai_records} IA, {summary.hybrid_records} Híbrido, {summary.heuristic_records} Heurístico\n"
+            )
+        sys.stdout.flush()
 
         if self.on_progress_update:
             try:

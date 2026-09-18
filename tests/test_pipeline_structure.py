@@ -514,7 +514,83 @@ class TestPipelineStructure(unittest.TestCase):
             pipeline.prepare_environment()
             self.assertIn("NO DISPONIBLE", pipeline.ai_status_message)
 
+    def test_lightweight_record_logging_format(self):
+        """Valida que _log_record_progress emita una sola línea limpia sin paneles pesados."""
+        import io
+        from unittest.mock import patch
+        from src.models.direccion_destino import DireccionDestino
+
+        pipeline = ETLPipeline(
+            schema="public",
+            table="direcciones_actual",
+            batch_size=1,
+        )
+
+        dest_ok = DireccionDestino(
+            id_licencia=101,
+            id_via=1,
+            tipo_via=1,
+            nom_via="BALTA",
+            num_via="500",
+            tipo_zona=1,
+            nom_zona="SANTA VICTORIA",
+            es_procesado=True,
+            metodo_normalizacion="IA (patroclo)",
+        )
+
+        dest_obs = DireccionDestino(
+            id_licencia=102,
+            id_via=None,
+            es_procesado=False,
+            observacion="Vía no encontrada en catálogo oficial",
+            metodo_normalizacion="Heurístico",
+        )
+
+        with patch("sys.stdout", new=io.StringIO()) as fake_out:
+            pipeline._log_record_progress(
+                index=1,
+                total=50,
+                raw_text="AV BALTA 500 SANTA VICTORIA",
+                destino=dest_ok,
+                success=True,
+            )
+            output_ok = fake_out.getvalue().strip()
+            # Debe ser exactamente 1 línea
+            self.assertEqual(len(output_ok.splitlines()), 1)
+            self.assertIn("[NORMALIZADO]", output_ok)
+            self.assertIn("ID 101:", output_ok)
+            self.assertIn("(IA)", output_ok)
+
+        with patch("sys.stdout", new=io.StringIO()) as fake_out:
+            pipeline._log_record_progress(
+                index=2,
+                total=50,
+                raw_text="DIRECCION SIN VIA",
+                destino=dest_obs,
+                success=True,
+            )
+            output_obs = fake_out.getvalue().strip()
+            self.assertEqual(len(output_obs.splitlines()), 1)
+            self.assertIn("[OBSERVADO  ]", output_obs)
+            self.assertIn("ID 102:", output_obs)
+            self.assertIn("Vía no encontrada en catálogo oficial", output_obs)
+            self.assertIn("(Heurístico)", output_obs)
+
+        with patch("sys.stdout", new=io.StringIO()) as fake_out:
+            pipeline._log_record_progress(
+                index=3,
+                total=50,
+                raw_text="DIRECCION ERROR",
+                destino=dest_ok,
+                success=False,
+            )
+            output_err = fake_out.getvalue().strip()
+            self.assertEqual(len(output_err.splitlines()), 1)
+            self.assertIn("[ERROR      ]", output_err)
+            self.assertIn("ID 101:", output_err)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
