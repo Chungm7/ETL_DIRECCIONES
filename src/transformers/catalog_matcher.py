@@ -224,7 +224,17 @@ class CatalogMatcher:
             coverage = len(q_tokens & n_tokens) / len(q_tokens)
             seq_ratio = SequenceMatcher(None, q_norm, n_norm).ratio()
 
-            if coverage >= 1.0:
+            # Boost para variantes ortográficas de una sola palabra (ej. PORCUYA ≈ PORCULLA)
+            # Requiere: prefijo común >= 4 chars para evitar falsos positivos (ej. SALAS ≠ SALINAS)
+            if coverage == 0 and len(q_tokens) == 1 and len(n_tokens) == 1 and seq_ratio >= 0.75:
+                q_word = next(iter(q_tokens))
+                n_word = next(iter(n_tokens))
+                prefix_len = sum(1 for a, b in zip(q_word, n_word) if a == b)
+                if prefix_len >= 4:
+                    score = 0.50 + (seq_ratio * 0.50)
+                else:
+                    score = seq_ratio * 0.55
+            elif coverage >= 1.0:
                 # Penalización leve si el candidato tiene palabras extra y la consulta no mencionó etapa
                 extra_words = len(n_tokens) - len(q_tokens)
                 penalty = 0.05 * extra_words if (extra_words > 0 and "ETAPA" not in q_norm) else 0.0
@@ -278,7 +288,17 @@ class CatalogMatcher:
             coverage = len(q_tokens & n_tokens) / len(q_tokens)
             seq_ratio = SequenceMatcher(None, q_norm, n_norm).ratio()
 
-            if coverage >= 1.0:
+            # Boost para variantes ortográficas de una sola palabra (ej. PORCUYA ≈ PORCULLA)
+            # Requiere: prefijo común >= 4 chars para evitar falsos positivos (ej. SALAS ≠ SALINAS)
+            if coverage == 0 and len(q_tokens) == 1 and len(n_tokens) == 1 and seq_ratio >= 0.75:
+                q_word = next(iter(q_tokens))
+                n_word = next(iter(n_tokens))
+                prefix_len = sum(1 for a, b in zip(q_word, n_word) if a == b)
+                if prefix_len >= 4:
+                    score = 0.50 + (seq_ratio * 0.50)
+                else:
+                    score = seq_ratio * 0.55
+            elif coverage >= 1.0:
                 score = 0.82 + (seq_ratio * 0.18)
             elif coverage >= 0.5:
                 score = (0.5 * coverage) + (0.5 * seq_ratio)

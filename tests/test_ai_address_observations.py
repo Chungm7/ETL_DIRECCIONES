@@ -207,6 +207,28 @@ class TestAIAddressObservations(unittest.TestCase):
         self.assertEqual(dest.id_via, 2862)  # FELIPE SANTIAGO SALAVERRY
         self.assertEqual(dest.num_via, "1731")
 
+    def test_orthographic_variant_porcuya_to_porculla(self):
+        """Verifica que variantes ortográficas como PORCUYA se resuelvan a PORCULLA por similitud."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        rec = DireccionOrigen(id_licencia=1321, emp_direccion="PATAZCA-PORCUYA00330")
+        dest = self.parser.parse(rec)
+        self.assertTrue(dest.es_procesado)
+        self.assertEqual(dest.id_via, 285)   # PORCULLA
+        self.assertEqual(dest.nom_via, "PORCULLA")
+        self.assertEqual(dest.id_zona, 40)   # PATAZCA
+        self.assertEqual(dest.num_via, "330")
+
+    def test_salas_not_matched_as_salinas(self):
+        """Verifica que SALAS no se confunda con SALINAS por falso positivo ortográfico."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        rec = DireccionOrigen(id_licencia=13, emp_direccion="SAN LORENZO-SALAS00140 (NO USAR LA VIA PUBLICA)")
+        dest = self.parser.parse(rec)
+        self.assertFalse(dest.es_procesado)
+        self.assertIn("SALAS", dest.observacion)
+        self.assertIn("Restricción de uso de vía pública", dest.observacion)
+
 
 if __name__ == "__main__":
     unittest.main()
