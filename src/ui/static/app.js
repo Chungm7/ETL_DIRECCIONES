@@ -850,6 +850,80 @@ function onError(data) {
 
 const initStep4 = initStep5;
 
+// ── Control de Apagado y Cierre de la Aplicación ───────────────────────────
+function confirmShutdown() {
+  const isRunning = !document.getElementById('btnStop')?.disabled;
+  const warn = document.getElementById('shutdownWarningText');
+  const title = document.getElementById('shutdownModalTitle');
+  const footer = document.getElementById('shutdownModalFooter');
+
+  if (title) title.textContent = '¿Apagar el servicio?';
+  if (footer) footer.style.display = 'flex';
+
+  if (warn) {
+    if (isRunning) {
+      warn.innerHTML = '<span style="color:#b91c1c; font-weight:700;">⚠️ Hay un proceso ETL ejecutándose actualmente.</span><br><br>Al confirmar, <strong>se detendrá de inmediato el proceso</strong> y <strong>se apagará el servicio de la aplicación (equivalente a presionar Ctrl + C en la consola)</strong>.';
+    } else {
+      warn.innerHTML = '¿Confirmas que deseas apagar el servicio? Se cerrará el servidor local y la aplicación (equivalente a presionar <strong>Ctrl + C</strong> en la consola).';
+    }
+  }
+
+  const overlay = document.getElementById('modalShutdownOverlay');
+  if (overlay) overlay.classList.remove('hidden');
+}
+
+function closeShutdownModal() {
+  const overlay = document.getElementById('modalShutdownOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+async function executeShutdown() {
+  const footer = document.getElementById('shutdownModalFooter');
+  const body = document.getElementById('shutdownModalBody');
+  const title = document.getElementById('shutdownModalTitle');
+  const btnConfirm = document.getElementById('btnConfirmShutdown');
+
+  if (btnConfirm) btnConfirm.disabled = true;
+  if (footer) footer.style.display = 'none';
+  if (title) title.textContent = 'Apagando servicio...';
+
+  if (body) {
+    body.innerHTML = `
+      <div style="text-align:center; padding:18px 0;">
+        <div class="spinner" style="border-color:#cbd5e1; border-top-color:#dc2626; width:30px; height:30px; margin:0 auto 14px auto;"></div>
+        <p style="font-weight:700; color:#1e293b; font-size:14px; margin-bottom:4px;">Apagando servidor local...</p>
+        <p style="font-size:12px; color:#64748b;">Liberando recursos y finalizando procesos.</p>
+      </div>
+    `;
+  }
+
+  try {
+    await fetch('/api/shutdown', { method: 'POST' });
+  } catch (_) {
+    // Si la conexión se corta inmediatamente debido al shutdown, es el comportamiento esperado
+  }
+
+  setTimeout(() => {
+    if (title) title.textContent = '🔴 Servicio Apagado';
+    if (body) {
+      body.innerHTML = `
+        <div style="text-align:center; padding:12px 0;">
+          <div style="font-size:42px; margin-bottom:12px;">🛑</div>
+          <p style="font-size:15px; font-weight:700; color:#1e293b; margin-bottom:6px;">
+            El servidor local se ha apagado correctamente.
+          </p>
+          <p style="font-size:13px; color:#64748b; margin-bottom:18px;">
+            La aplicación ha finalizado su ejecución de forma segura. Ya puedes cerrar esta ventana.
+          </p>
+          <button class="btn btn-ghost" onclick="window.close()" style="border:1px solid #cbd5e1; font-weight:600; padding:8px 18px;">
+            Cerrar Ventana
+          </button>
+        </div>
+      `;
+    }
+  }, 900);
+}
+
 // Inicialización al cargar la interfaz
 document.addEventListener('DOMContentLoaded', () => {
   // Inicialización limpia en Paso 1

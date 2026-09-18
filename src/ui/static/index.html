@@ -548,6 +548,85 @@
       margin-top: 20px;
     }
 
+    /* ── Botón de Apagado y Modal ── */
+    .btn-shutdown-header {
+      background: #dc2626;
+      color: white;
+      border: 1px solid rgba(255,255,255,0.3);
+      padding: 7px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,.15);
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-shutdown-header:hover {
+      background: #b91c1c;
+      transform: translateY(-1px);
+    }
+    .btn-shutdown-header:active {
+      transform: translateY(0);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 99999;
+    }
+    .modal-overlay.hidden { display: none !important; }
+    .modal-dialog {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      width: 100%;
+      max-width: 440px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.25), 0 8px 10px -6px rgba(0,0,0,0.25);
+      animation: modalFadeIn 0.2s ease-out;
+    }
+    @keyframes modalFadeIn {
+      from { opacity: 0; transform: scale(0.95); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .modal-icon {
+      font-size: 22px;
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      background: #fef2f2;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .modal-header h3 {
+      font-size: 16px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+    .modal-body {
+      font-size: 13px;
+      color: #475569;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
     @media (max-width: 640px) {
       .kpi-grid { grid-template-columns: 1fr 1fr; }
       .form-grid { grid-template-columns: 1fr; }
@@ -557,11 +636,18 @@
 <body>
 
 <!-- HEADER -->
-<header>
-  <div class="logo">MP</div>
+<header style="display:flex; justify-content:space-between; align-items:center;">
+  <div style="display:flex; align-items:center; gap:12px;">
+    <div class="logo">MP</div>
+    <div>
+      <h1>Normalización Catastral de Direcciones</h1>
+      <p>Municipalidad Provincial de Chiclayo — ETL In-Place</p>
+    </div>
+  </div>
   <div>
-    <h1>Normalización Catastral de Direcciones</h1>
-    <p>Municipalidad Provincial de Chiclayo — ETL In-Place</p>
+    <button class="btn-shutdown-header" id="btnHeaderExit" onclick="confirmShutdown()" title="Apagar el servicio y cerrar la aplicación (Ctrl+C)">
+      🛑 Apagar
+    </button>
   </div>
 </header>
 
@@ -927,9 +1013,29 @@
     </div>
 
   </div><!-- /step5 -->
-
 </main>
 
-<script src="/static/app.js?v=clean_inputs_v2"></script>
+<!-- MODAL DE CONFIRMACIÓN DE APAGADO -->
+<div id="modalShutdownOverlay" class="modal-overlay hidden">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-icon">🛑</div>
+      <h3 id="shutdownModalTitle">¿Apagar el servicio?</h3>
+    </div>
+    <div class="modal-body" id="shutdownModalBody">
+      <p id="shutdownWarningText">
+        Esta acción detendrá el servidor y cerrará la aplicación (equivalente a presionar Ctrl + C en la consola). ¿Deseas apagar el servicio?
+      </p>
+    </div>
+    <div class="modal-footer" id="shutdownModalFooter">
+      <button class="btn btn-ghost" onclick="closeShutdownModal()">Cancelar</button>
+      <button class="btn btn-red" id="btnConfirmShutdown" onclick="executeShutdown()" style="background:#dc2626; color:white;">
+        Sí, Apagar
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js?v=shutdown_v1"></script>
 </body>
 </html>

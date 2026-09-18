@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+import os
 import queue
+import signal
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -782,6 +784,37 @@ async def stop_pipeline():
     state.pipeline.request_stop()
     state.add_log("⏹️ Solicitud de detención manual recibida. Esperando finalización del registro actual...")
     return {"status": "STOPPING", "message": "Detención solicitada. El proceso finalizará en breve."}
+
+
+@app.post("/api/shutdown")
+async def shutdown_application():
+    """Detiene cualquier pipeline ETL en ejecución y apaga el servicio de la aplicación (equivalente a Ctrl + C con confirmación)."""
+    try:
+        if state.is_running and state.pipeline:
+            state.pipeline.request_stop()
+            state.add_log("🛑 Solicitud de apagado de servicio: deteniendo proceso ETL...")
+            state.finish_run(error="Servicio apagado por el usuario.")
+    except Exception as e:
+        logger.warning("Aviso al detener pipeline durante apagado: %s", e)
+
+    def _trigger_ctrl_c():
+        time.sleep(0.5)  # Breve lapso para despachar la respuesta HTTP 200 al navegador
+        logger.info("🛑 Apagando servicio de aplicación (equivalente a Ctrl + C)...")
+        try:
+            # Enviar SIGINT (equivalente a Ctrl + C) al proceso de la aplicación
+            os.kill(os.getpid(), signal.SIGINT)
+        except Exception:
+            os._exit(0)
+        # Salvaguarda por si el loop de eventos no culminara
+        time.sleep(1.2)
+        os._exit(0)
+
+    threading.Thread(target=_trigger_ctrl_c, daemon=True).start()
+
+    return {
+        "status": "SHUTTING_DOWN",
+        "message": "Servicio apagado correctamente.",
+    }
 
 
 @app.get("/api/stream")

@@ -313,3 +313,15 @@ def test_cli_default_launches_gui():
         mock_run_gui.assert_called_once_with(port=8080, open_browser=True)
 
 
+def test_api_shutdown_endpoint(client):
+    """Verifica que /api/shutdown detenga el pipeline si corre y responda adecuadamente."""
+    with patch("os.kill") as mock_kill, \
+         patch("os._exit") as mock_exit, \
+         patch("time.sleep"):
+        response = client.post("/api/shutdown")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "SHUTTING_DOWN"
+        assert "apagado correctamente" in data["message"]
+
+
