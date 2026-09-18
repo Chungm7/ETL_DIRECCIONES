@@ -308,6 +308,14 @@ class AIAddressParser:
                     nom_zona = "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA"
                     nom_via = inner
                     two_vias_conflict = None
+                    if not num_via:
+                        m_num_in = re.search(rf"\b{inner}\s*(\d+)\b", raw_text, re.IGNORECASE)
+                        if m_num_in:
+                            num_via = m_num_in.group(1).lstrip("0") or m_num_in.group(1)
+                    if referencia and inner in referencia.upper():
+                        referencia = re.sub(rf"\b{inner}\b", "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+                        if not referencia:
+                            referencia = None
                     heuristica_aplicada = True
                     break
 
@@ -386,13 +394,15 @@ class AIAddressParser:
                 nom_via, nom_zona = nom_zona, nom_via
                 heuristica_aplicada = True
 
-        # Limpieza de referencia y prevención de fuga hacia nom_zona o nom_via
+        # Limpieza de referencia y prevención de redundancia (preserva intactos nom_via y nom_zona)
         if referencia:
             referencia = re.sub(r"\s+", " ", referencia).strip(" ,.-").upper()
-            if nom_zona and referencia in nom_zona.upper():
-                nom_zona = re.sub(re.escape(referencia), "", nom_zona, flags=re.IGNORECASE).strip(" ,.-")
-            if nom_via and referencia in nom_via.upper():
-                nom_via = re.sub(re.escape(referencia), "", nom_via, flags=re.IGNORECASE).strip(" ,.-")
+            if nom_zona and nom_zona.upper() in referencia:
+                referencia = re.sub(re.escape(nom_zona), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+            if nom_via and nom_via.upper() in referencia:
+                referencia = re.sub(re.escape(nom_via), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+            if not referencia:
+                referencia = None
 
         # Si no existe una vía identificada, num_via no corresponde
         if not nom_via or not nom_via.strip():
@@ -456,6 +466,18 @@ class AIAddressParser:
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:
             observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
+
+        # Guardrail de Integridad Estricta:
+        # Una dirección solo puede carecer de vía (id_via = None) si es un predio catastral sin calle
+        # (es decir, cuenta con zona oficial confirmada Y manzana o lote, y NO tiene numeración de calle).
+        # Si la dirección tiene numeración municipal o texto residual no identificado, se prohíbe normalizarla sin vía.
+        if not matched_via:
+            tiene_predio_mz_lt = bool(matched_zona and (manzana or lote))
+            if not tiene_predio_mz_lt or num_via:
+                if not via_detectada_en_texto:
+                    observaciones.append(
+                        "Vía pública no identificada en el catálogo maestro de Chiclayo para la numeración municipal o predio registrado."
+                    )
 
         # Integrar notas de la IA o advertencias específicas en el texto
         ai_notes = extraction.observaciones if extraction and extraction.observaciones else None

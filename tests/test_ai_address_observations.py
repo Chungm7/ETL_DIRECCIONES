@@ -223,11 +223,38 @@ class TestAIAddressObservations(unittest.TestCase):
         """Verifica que SALAS no se confunda con SALINAS por falso positivo ortográfico."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
-        rec = DireccionOrigen(id_licencia=13, emp_direccion="SAN LORENZO-SALAS00140 (NO USAR LA VIA PUBLICA)")
+    def test_quinones_iquitos_with_ai_extraction_and_redundant_reference(self):
+        """Verifica que 'JOSE QUIÑONES GONZALES-IQUITOS00191' no destruya nom_via si la IA colocó 'IQUITOS' en referencia."""
+        self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            tipo_via_detectado="AVENIDA",
+            nom_via="JOSE A. QUIÑONES GONZALES",
+            num_via="191",
+            referencia="IQUITOS",
+        )
+
+        rec = DireccionOrigen(id_licencia=1212, emp_direccion="JOSE QUIÑONES GONZALES-IQUITOS00191")
+        dest = self.parser.parse(rec)
+        self.assertTrue(dest.es_procesado)
+        self.assertEqual(dest.id_via, 459)   # IQUITOS
+        self.assertEqual(dest.nom_via, "IQUITOS")
+        self.assertEqual(dest.id_zona, 62)   # CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA
+        self.assertEqual(dest.num_via, "191")
+        self.assertIsNone(dest.referencia)
+
+    def test_strict_guardrail_prevents_fake_sin_via_with_street_number(self):
+        """Verifica que una dirección con numeración municipal y vía no mapeada NUNCA sea normalizada como SIN VIA."""
+        self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            nom_via="CALLE FANTASMA NO CATASTRADA",
+            num_via="450",
+            nom_zona="SANTA VICTORIA",
+        )
+
+        rec = DireccionOrigen(id_licencia=9991, emp_direccion="CALLE FANTASMA NO CATASTRADA 450 SANTA VICTORIA")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIn("SALAS", dest.observacion)
-        self.assertIn("Restricción de uso de vía pública", dest.observacion)
+        self.assertIsNone(dest.id_via)
+        self.assertIsNotNone(dest.observacion)
+        self.assertIn("CALLE FANTASMA NO CATASTRADA", dest.observacion)
 
 
 if __name__ == "__main__":
