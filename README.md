@@ -2,7 +2,7 @@
 
 Arquitectura y motor en Python para el proceso de extracción, enriquecimiento semántico con **IA local (Ollama)** y carga (ETL) de direcciones para la **Municipalidad Provincial de Chiclayo (MPCH)** en PostgreSQL.
 
-Diseñado con soporte para esquemas, tablas y columnas dinámicas vía `.env`, preservación estricta de IDs originales y un método oficial único: **In-Place (Evolución de tabla en producción conservando IDs)**. Integra la verificación y creación automática de las tablas categorizables (`tipos_via` y `tipos_zona`) y de las tablas maestras terciarias de Chiclayo (`vias` con 3,024 calles físicas y `zonas` con 461 habilitaciones urbanas), detección de columnas faltantes como `abreviatura`, vinculación de llaves foráneas (`id_via`, `id_zona`, `tipo_via`, `tipo_zona`) y extracción de campo `referencia`.
+Diseñado con soporte para esquemas, tablas y columnas dinámicas vía `.env`, preservación estricta de IDs originales y un método oficial único: **In-Place (Evolución de tabla en producción conservando IDs)**. Integra la verificación y creación automática de las tablas categorizables (`tipos_via` y `tipos_zona`) y de las tablas maestras terciarias de Chiclayo (`vias` con 2,935 calles físicas y `zonas` con 460 habilitaciones urbanas), detección de columnas faltantes como `abreviatura`, vinculación de llaves foráneas (`id_via`, `id_zona`, `tipo_via`, `tipo_zona`) y extracción de campo `referencia`.
 
 ---
 
@@ -34,8 +34,8 @@ flowchart TD
             SYNC_DB["Sincronización Dinámica con BD\n(Adapta sinónimos a los IDs reales del esquema)"]
             CAT_TIPOS_VIAS["12 Tipos de Vía\n(AVENIDA, CALLE, JIRON...)"]
             CAT_TIPOS_ZONAS["28 Tipos de Zona\n(A.H., URB., CERCADO...)"]
-            CAT_VIAS["3,024 Vías Físicas MPCH\n(CODIFICADOR DE VIAS)"]
-            CAT_ZONAS["461 Zonas Físicas MPCH\n(CODIFICADOR DE H.U.)"]
+            CAT_VIAS["2,935 Vías Físicas MPCH\n(CODIFICADOR DE VIAS)"]
+            CAT_ZONAS["460 Zonas Físicas MPCH\n(CODIFICADOR DE H.U.)"]
             NORM_RECORD["DireccionDestino (3NF Consolidada)\n(id_licencia, emp_direccion, id_via, num_via, id_zona, manzana, lote, slote, referencia, es_procesado, observacion)"]
             
             SYNC_DB --> CAT_TIPOS_VIAS
@@ -55,7 +55,7 @@ flowchart TD
     end
 
     subgraph Persistencia ["3. Acción del Método ETL (In-Place)"]
-        CAT_CHECK{"Examen Dinámico de Catálogos:\n1. Si no existen -> CREATE TABLE\n2. Si falta abreviatura -> ALTER TABLE\n3. Siembra vias (3024) y zonas (461)\n4. Estandariza a IDs canónicos JSON\ny reasigna relaciones en direcciones"}
+        CAT_CHECK{"Examen Dinámico de Catálogos:\n1. Si no existen -> CREATE TABLE\n2. Si falta abreviatura -> ALTER TABLE\n3. Siembra vias (174) y zonas (460)\n4. Estandariza a IDs canónicos JSON\ny reasigna relaciones en direcciones"}
         ALTER_DDL["DDL Dinámico In-Place\nALTER TABLE {DB_SOURCE_TABLE}\nADD COLUMN IF NOT EXISTS (11 columnas con FKs)"]
         CAT_CHECK --> ALTER_DDL
         ALTER_DDL --> UPDATE_INPLACE["DatabaseLoader (In-Place)\nUPDATE {DB_SOURCE_TABLE} SET ...\nWHERE id_licencia = :id"]
@@ -81,8 +81,8 @@ flowchart TD
        - Si existen pero falta la columna `abreviatura`: Ejecuta `ALTER TABLE ... ADD COLUMN IF NOT EXISTS abreviatura VARCHAR(20)`.
        - Si ya contienen registros: Estandariza los registros al orden canónico propuesto en el JSON (`AVENIDA=1, CALLE=2`), reasigna atómicamente las relaciones foráneas en la tabla de direcciones y completa los tipos faltantes.
      - **Tablas Maestras Físicas de Chiclayo (`vias` y `zonas`):**
-       - Crea y siembra la tabla `vias` con las **3,024 calles oficiales** de Chiclayo (`CODIFICADOR DE VIAS`), con su clasificación vial y jurisdicción.
-       - Crea y siembra la tabla `zonas` con las **461 habilitaciones urbanas** oficiales (`CODIFICADOR DE HABILITACIONES URBANAS`), incluyendo sectores catastrales y urbanizaciones como *Colibrí*.
+       - Crea y siembra la tabla `vias` con las **2,935 calles oficiales** de Chiclayo (`CODIFICADOR DE VIAS`), con su clasificación vial y jurisdicción.
+       - Crea y siembra la tabla `zonas` con las **460 habilitaciones urbanas** oficiales (`CODIFICADOR DE HABILITACIONES URBANAS`), incluyendo sectores catastrales y urbanizaciones como *Colibrí*.
    - **Sincronización Dinámica de `CatalogMatcher`:** Sincroniza en memoria los mapeos contra la base de datos real del esquema para garantizar que las llaves foráneas (`tipo_via`, `tipo_zona`, `id_via`, `id_zona`) coincidan con los IDs exactos de ese esquema.
 2. **Preparación In-Place de la Tabla:**
    - Se asegura la existencia de las 11 columnas normalizadas (`id_via`, `tipo_via`, `nom_via`, `num_via`, `id_zona`, `tipo_zona`, `nom_zona`, `manzana`, `lote`, `slote`, `referencia`) en la tabla actual (`direcciones_actual`) mediante `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, creando las claves foráneas correspondientes y conservando intactos todos los registros e IDs originales.
@@ -110,7 +110,7 @@ La base de datos se inicializa con 4 esquemas para evaluar todos los casos posib
 | Esquema | Contenido Inicial | Caso de Prueba Validado |
 | :--- | :--- | :--- |
 | **`public`** | Únicamente `direcciones_actual` (importada de CSV). Sin catálogos. | Caso estándar de producción: creación completa de catálogos, siembra de vías/zonas y migración in-place. |
-| **`schema_solo_tabla`** | Únicamente `direcciones_actual` (8 registros de prueba). Sin catálogos. | Creación desde cero de `tipos_via`, `tipos_zona`, `vias` (3,024) y `zonas` (461) y prueba de casos especiales. |
+| **`schema_solo_tabla`** | Únicamente `direcciones_actual` (8 registros de prueba). Sin catálogos. | Creación desde cero de `tipos_via`, `tipos_zona`, `vias` (2,935) y `zonas` (460) y prueba de casos especiales. |
 | **`schema_cat_vacios`** | `direcciones_actual` + catálogos con 0 registros y **sin columna `abreviatura`**. | Detección de columna faltante (`ALTER TABLE`), agregado de `abreviatura`, siembra completa y resolución de vías. |
 | **`schema_cat_parciales`** | `direcciones_actual` + catálogos con **3 registros desalineados** (CALLE=1, AVENIDA=2, JIRON=3). | Estandarización a IDs canónicos JSON, reasignación atómica de relaciones en direcciones, siembra de vías y zonas. |
 
@@ -124,8 +124,8 @@ La base de datos se inicializa con 4 esquemas para evaluar todos los casos posib
 Conforme a las directivas catastrales de la Municipalidad Provincial de Chiclayo:
 - **12 Tipos de Vía:** `AVENIDA (1)`, `CALLE (2)`, `JIRON (3)`, `PASAJE (4)`, `ALAMEDA (5)`, `CARRETERA (6)`, `PROLONGACION (7)`, `PASEO (8)`, `MALECON (9)`, `CAMINO (10)`, `PLAZA (11)`, `PLAZUELA (12)`.
 - **28 Tipos de Zona:** `ASENTAMIENTO HUMANO (1)`, `AGRUPACION (2)`, `CONJUNTO HABITACIONAL (3)`, `CONJUNTO RESIDENCIAL (4)`, `PUEBLO JOVEN (5)`, `URBANIZACION (6)`, `URBANIZACION POPULAR (7)`, `CERCADO (8)`, ..., hasta 28.
-- **3,024 Vías Físicas de Chiclayo (`vias`):** Digitalizadas del catálogo oficial MPCH con código de vía, tipo de vía, nombre oficial, clasificación vial (Arterial, Colectora, Local) y jurisdicción.
-- **461 Zonas Físicas / Habilitaciones Urbanas (`zonas`):** Digitalizadas del codificador de habilitaciones urbanas MPCH con código de zona, tipo de zona, nombre oficial y sector catastral.
+- **2,935 Vías Físicas de Chiclayo (`vias`):** Digitalizadas del catálogo oficial MPCH con código de vía, tipo de vía, nombre oficial, clasificación vial (Arterial, Colectora, Local) y jurisdicción.
+- **460 Zonas Físicas / Habilitaciones Urbanas (`zonas`):** Digitalizadas del codificador de habilitaciones urbanas MPCH con código de zona, tipo de zona, nombre oficial y sector catastral.
 - **Estructura Normalizada In-Place:** `id_licencia`, `id_via`, `tipo_via`, `nom_via`, `num_via`, `id_zona`, `tipo_zona`, `nom_zona`, `manzana`, `lote`, `slote`, `referencia`.
 
 ---
@@ -146,8 +146,8 @@ ETL_MIGRACION_MPCH/
 │   ├── catalogs/                         # Capa desacoplada de datos maestros y diccionarios
 │   │   ├── tipos_via.json                # 12 Vías oficiales, abreviaturas, sinónimos y regex
 │   │   ├── tipos_zona.json               # 28 Zonas oficiales, abreviaturas, sinónimos y regex
-│   │   ├── vias_chiclayo.json            # 3,024 Vías físicas oficiales de Chiclayo
-│   │   ├── zonas_chiclayo.json           # 461 Habilitaciones urbanas oficiales de Chiclayo
+│   │   ├── vias_chiclayo.json            # 2,935 Vías físicas oficiales de Chiclayo
+│   │   ├── zonas_chiclayo.json           # 460 Habilitaciones urbanas oficiales de Chiclayo
 │   │   └── catalog_manager.py            # Gestor dinámico de carga, agregación y sincronización
 │   ├── services/                         # Conectores externos
 │   │   ├── db_service.py                 # PostgreSQL: DDL dinámico, esquemas, catálogos y vías/zonas
@@ -174,7 +174,7 @@ ETL_MIGRACION_MPCH/
 │   ├── 02_crear_tabla_destino_normalizada.sql # Tabla receptora con FKs
 │   ├── 03_alter_tabla_origen_in_place.sql # Alter dinámico de tabla existente (incluye id_via, id_zona, ref)
 │   ├── 04_crear_schemas_de_prueba.sql    # Inicializador de los esquemas de prueba
-│   ├── 05_crear_tablas_maestras_vias_y_zonas.sql # DDL de tablas vias (3024) y zonas (461)
+│   ├── 05_crear_tablas_maestras_vias_y_zonas.sql # DDL de tablas vias (174) y zonas (460)
 │   ├── scripts_data_actual.sql           # Script legacy
 │   └── scripts_data_etl_new.sql          # Script consolidado
 ├── tests/                                # Suite de pruebas unitarias
@@ -182,7 +182,7 @@ ETL_MIGRACION_MPCH/
 │   └── Direcciones_.csv                  # Archivo de direcciones origen
 ├── docs/                                 # Documentación y codificadores oficiales MPCH
 │   ├── DIAGRAMA_BASE_DE_DATOS.md         # Diagrama ER 3NF, diccionario de datos y SQL
-│   └── cod_vias_y_habilitaciones_urbanas/ # Excels originales con 3,024 vías y 461 H.U.
+│   └── cod_vias_y_habilitaciones_urbanas/ # Excels originales con 174 vías y 460 H.U.
 ├── .env.example                          # Plantilla completa de variables de entorno
 ├── .env                                  # Archivo de variables de entorno activo
 ├── requirements.txt                      # Dependencias del proyecto

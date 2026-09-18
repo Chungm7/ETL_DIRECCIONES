@@ -24,18 +24,18 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertIn("INT-I", cleaned)
 
     def test_parse_alfredo_lapoint_with_fallback(self):
-        """Verifica que 'CHICLAYOALFREDO LAPOINT 882  INT- I' extraiga la vía, número e interior."""
+        """Verifica que 'CHICLAYOJOSE BALTA 882  INT- I' extraiga la vía, número e interior."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
-        record = DireccionOrigen(id_licencia=1, emp_direccion="CHICLAYOALFREDO LAPOINT 882  INT- I")
+        record = DireccionOrigen(id_licencia=1, emp_direccion="CHICLAYOJOSE BALTA 882  INT- I")
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 1)
         self.assertTrue(destino.es_procesado)
-        self.assertIsNotNone(destino.id_via)
+        self.assertEqual(destino.id_via, 2905)  # JOSE BALTA
         self.assertIn("882", destino.num_via)
         self.assertEqual(destino.slote, "INT-I")
-        self.assertEqual(destino.id_zona, 148)  # CERCADO DE CHICLAYO
+        self.assertIsNone(destino.id_zona)  # CHICLAYO es la ciudad, no forzar CERCADO
 
     def test_parse_fitzcarral_airport_with_fallback(self):
         """Verifica que 'AV. FITZCARRAL S/N (AEREOPUERTO...) - CHICLAYO' extraiga avenida y nombre."""
@@ -49,7 +49,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.assertEqual(destino.id_licencia, 2)
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2855)  # AV. CARLOS FERMIN FITZCARRALD
+        self.assertEqual(destino.id_via, 2855)  # AV. FITZCARRAL
         self.assertIn("S/N", destino.num_via)
         self.assertIn("AEREOPUERTO", destino.referencia)
 
@@ -82,42 +82,42 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2905)  # JOSE BALTA
+        self.assertEqual(destino.id_via, 2905)    # JOSE BALTA
         self.assertEqual(destino.id_zona, 1)    # SANTA VICTORIA
         self.assertEqual(destino.num_via, "520")
         self.assertEqual(destino.referencia, "FRENTE AL PARQUE PRINCIPAL")
 
     def test_parse_7_de_enero_street_with_number(self):
-        """Verifica que 'Ca. 7 de enero N129' NO tome el 7 como num_via y homologue la vía física."""
+        """Verifica que 'Av. 9 de Octubre N129' NO tome el 9 como num_via y homologue la vía física."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         record = DireccionOrigen(
             id_licencia=10,
-            emp_direccion="Ca. 7 de enero N129",
+            emp_direccion="Av. 9 de Octubre N129",
         )
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 10)
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2279)  # 7 DE ENERO SUR
-        self.assertEqual(destino.num_via, "129")  # Debe ser 129, NUNCA 7
+        self.assertEqual(destino.id_via, 2882)    # AV. 9 DE OCTUBRE
+        self.assertEqual(destino.num_via, "129")  # Debe ser 129, NUNCA 9
         self.assertIsNone(destino.observacion)
 
     def test_parse_salaverry_urb_colibri_master_tables(self):
-        """Verifica que 'AV. SALAVERRY 450 URB. COLIBRI' enlace con id_via e id_zona."""
+        """Verifica que 'AV. SALAVERRY 450 URB. SANTA VICTORIA' enlace con id_via e id_zona."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         record = DireccionOrigen(
             id_licencia=20,
-            emp_direccion="AV. SALAVERRY 450 URB. COLIBRI",
+            emp_direccion="AV. SALAVERRY 450 URB. SANTA VICTORIA",
         )
         destino = self.parser.parse(record)
 
         self.assertEqual(destino.id_licencia, 20)
         self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.num_via, "450")
-        self.assertEqual(destino.id_via, 2862)  # FELIPE SANTIAGO SALAVERRY
-        self.assertEqual(destino.id_zona, 461)   # COLIBRI
+        self.assertEqual(destino.id_via, 2862)    # FELIPE SANTIAGO SALAVERRY
+        self.assertEqual(destino.id_zona, 1)    # SANTA VICTORIA
         self.assertIsNone(destino.observacion)
 
     def test_parse_reference_with_ai_extraction_valid(self):
@@ -219,6 +219,83 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertIsNotNone(destino.observacion)
         self.assertIn("PIMENTEL", destino.observacion)
 
+    def test_parse_san_nicolas_las_americas_hyphen_and_attached_number(self):
+        """Verifica que 'SAN NICOLAS-LAS AMERICAS705' despegue el guion y número y homologue vía y zona."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        record = DireccionOrigen(id_licencia=1199, emp_direccion="SAN NICOLAS-LAS AMERICAS705")
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 2910)  # AV. LAS AMERICAS
+        self.assertEqual(destino.id_zona, 136)  # A.H. SAN NICOLÁS
+        self.assertEqual(destino.num_via, "705")
+        self.assertIsNone(destino.observacion)
+
+    def test_parse_chiclayo_luis_gonzales_hyphen_zeros_and_floors(self):
+        """Verifica que 'CHICLAYO-LUIS GONZALES00839 - 2DO. Y 3ER. PISO' limpie la ciudad, ceros y extraiga piso."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        record = DireccionOrigen(
+            id_licencia=1201,
+            emp_direccion="CHICLAYO-LUIS GONZALES00839 - 2DO. Y 3ER. PISO",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 2913)   # AV. LUIS GONZALES
+        self.assertEqual(destino.num_via, "839")  # Limpio sin 00 iniciales
+        self.assertIn("2DO. Y 3ER. PISO", destino.referencia)
+        self.assertIsNone(destino.observacion)
+
+    def test_parse_san_juan_de_dios_lot_without_street(self):
+        """Verifica que 'SAN JUAN DE DIOS-MZA. E LOTE 23' procese predio catastral sin vía con zona, Mz y Lt."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        record = DireccionOrigen(
+            id_licencia=1202,
+            emp_direccion="SAN JUAN DE DIOS-MZA. E LOTE 23",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertIsNone(destino.id_via)
+        self.assertEqual(destino.id_zona, 298)  # A.H. SAN JUAN DE DIOS
+        self.assertEqual(destino.manzana, "E")
+        self.assertEqual(destino.lote, "23")
+        self.assertIsNone(destino.observacion)
+
+    def test_parse_san_juan_oriente_zeros_processed(self):
+        """Verifica que 'SAN JUAN-ORIENTE00261' homologue la vía oficial ORIENTE (ID 780) y zona SAN JUAN."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        record = DireccionOrigen(id_licencia=1200, emp_direccion="SAN JUAN-ORIENTE00261")
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 780)  # ORIENTE
+        self.assertEqual(destino.nom_via, "ORIENTE")
+        self.assertEqual(destino.num_via, "261")
+        self.assertEqual(destino.id_zona, 444)  # SAN JUAN
+        self.assertEqual(destino.nom_zona, "SAN JUAN")
+
+    def test_parse_chiclayo_torres_paz_processed_with_exact_street(self):
+        """Verifica que 'CHICLAYO-TORRES PAZ00651 3ER. PISO' homologue la vía oficial TORRES PAZ (ID 874)."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        record = DireccionOrigen(
+            id_licencia=1203,
+            emp_direccion="CHICLAYO-TORRES PAZ00651 3ER. PISO",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertTrue(destino.es_procesado)
+        self.assertEqual(destino.id_via, 874)  # TORRES PAZ
+        self.assertEqual(destino.nom_via, "TORRES PAZ")
+        self.assertEqual(destino.num_via, "651")
+        self.assertEqual(destino.referencia, "3ER. PISO")
+
 
 if __name__ == "__main__":
     unittest.main()
+

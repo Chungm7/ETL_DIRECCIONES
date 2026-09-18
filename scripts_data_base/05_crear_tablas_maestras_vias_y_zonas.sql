@@ -2,8 +2,8 @@
 -- PROYECTO: ETL MIGRACIÓN MPCH (Municipalidad Provincial de Chiclayo)
 -- SCRIPT:   05_crear_tablas_maestras_vias_y_zonas.sql
 -- DESCRIPCIÓN:
---   Creación de las tablas maestras de vías oficiales (3,024 vías)
---   y de zonas/habilitaciones urbanas (461 zonas) de la provincia de Chiclayo.
+--   Creación de las tablas maestras de vías urbanas oficiales (2,935 vías)
+--   y de zonas/habilitaciones urbanas (460 zonas) de la provincia de Chiclayo.
 --   Estructura normalizada en 3NF: ID, FK al Tipo (tipo_via / tipo_zona) y Nombre Oficial.
 -- =============================================================================
 

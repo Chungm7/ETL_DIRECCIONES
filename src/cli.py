@@ -59,8 +59,8 @@ def show_configuration_panel() -> None:
 
         table.add_row("Catálogos Categorizables", "DB_TABLE_TIPO_VIA", settings.db.table_tipo_via)
         table.add_row("Catálogos Categorizables", "DB_TABLE_TIPO_ZONA", settings.db.table_tipo_zona)
-        table.add_row("Tablas Maestras Físicas", "DB_TABLE_VIAS", f"{settings.db.table_vias} (3,024 vías Chiclayo)")
-        table.add_row("Tablas Maestras Físicas", "DB_TABLE_ZONAS", f"{settings.db.table_zonas} (461 zonas Chiclayo)")
+        table.add_row("Tablas Maestras Físicas", "DB_TABLE_VIAS", f"{settings.db.table_vias} (2,935 vías Chiclayo)")
+        table.add_row("Tablas Maestras Físicas", "DB_TABLE_ZONAS", f"{settings.db.table_zonas} (460 zonas Chiclayo)")
 
         cols_str = (
             f"{settings.db.col_id_via}, {settings.db.col_tipo_via}, {settings.db.col_nom_via}, {settings.db.col_num_via}, "

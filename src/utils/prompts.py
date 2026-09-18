@@ -11,11 +11,15 @@ def get_system_prompt_address_parser() -> str:
         zonas_str = CatalogManager.format_zonas_for_prompt()
         num_vias = len(CatalogManager.get_vias_catalog())
         num_zonas = len(CatalogManager.get_zonas_catalog())
+        official_vias_str = CatalogManager.format_physical_vias_for_prompt()
+        official_zonas_str = CatalogManager.format_physical_zonas_sample_for_prompt()
     except Exception:
         num_vias = 12
         vias_str = "AVENIDA (AV.), CALLE (CA.), JIRON (JR.), PASAJE (PJE.), ALAMEDA (AL.), CARRETERA (CTRA.), PROLONGACION (PRLG.), PASEO (PSO.), MALECON (ML.), CAMINO (CM.), PLAZA (PZ.), PLAZUELA (PZLA.)."
         num_zonas = 28
         zonas_str = "ASENTAMIENTO HUMANO (A.H.), AGRUPACION (AGRUP.), CONJUNTO HABITACIONAL (CONJ.HAB.), CONJUNTO RESIDENCIAL (CONJ.RES.), PUEBLO JOVEN (P.J.), URBANIZACION (URB.), URBANIZACION POPULAR (URB.POP.), CERCADO, HACIENDA (HAC.), ASOCIACION (ASOC.), COOPERATIVA (COOP.), LOTIZACION (LOT.), PARCELA (PARC.), VALLE, CASERIO (CAS.), UNIDAD VECINAL (U.V.), COMUNIDAD (COM.), BARRIO (BO.), FUNDO (FDO.), JUNTA DE COMPRADORES (J.COMP.), ASOCIACION DE VIVIENDA (ASOC.VIV.), COOPERATIVA DE VIVIENDA (COOP.VIV.), SOCIEDAD (SOC.), ASOCIACION PRO VIVIENDA (ASOC.PVIV.), ZONA, CENTRO POBLADO (C.P.), ANEXO, COMUNIDAD INDIGENA."
+        official_vias_str = "AUGUSTO BERNARDINO LEGUIA, CHICLAYO - FERREÑAFE, FITZCARRAL, GALO MUÑOZ PALACIOS, JORGE CHAVEZ, LAMBAYEQUE, PANAMERICANA NORTE, VICTOR RAUL HAYA DE LA TORRE, FELIPE SANTIAGO SALAVERRY, MIGUEL GRAU, FRANCISCO BOLOGNESI, JOSE BALTA, LAS AMERICAS, LUIS GONZALES, PEDRO RUIZ, SAENZ PEÑA, SAN JOSE"
+        official_zonas_str = "SANTA VICTORIA, SAN NICOLAS, SAN JUAN, SAN JUAN DE DIOS, SAN EDUARDO, FEDERICO VILLARREAL, DIEGO FERRE, LAS BRISAS, EL PARAÍSO, SAN MARTÍN DE PORRES, CAMPODONICO"
 
     return f"""Eres un asistente experto en ingeniería de datos y catastro urbano de la Municipalidad Provincial de Chiclayo (Perú).
 Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas desestructuradas y descomponerlas en sus componentes normalizados en formato JSON estricto.
@@ -25,25 +29,33 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
 
 ### Catálogo de Tipos de Zona válidos ({num_zonas} tipos):
 {zonas_str}
+
+### Catálogo Oficial de Vías Metropolitanas Habilitadas de Chiclayo:
+{official_vias_str}
+
+### Catálogo Oficial de Principales Habilitaciones Urbanas y Zonas de Chiclayo:
+{official_zonas_str}
 """ + """
 ### Reglas críticas de normalización:
-1. **Nombres de Ciudad al inicio o final:** Si la dirección contiene "CHICLAYO", "LAMBAYEQUE" o "LA VICTORIA" pegado o al inicio (ej. "CHICLAYO ALFREDO LAPOINT 882"), NO devuelvas null: extrae la calle ("ALFREDO LAPOINT"), el número ("882"), infiere el tipo de vía como "CALLE", y asigna "CHICLAYO" o "CERCADO" como zona si aplica.
-2. **Interiores / Departamentos:** Si la dirección tiene "INT- I", "INT- 1", "DPTO 2", agrégalo al campo `num_via` (ej. "882 INT-I", "1673 - DPTO 2") y asígnalo también al campo `slote` (ej. "INT-I").
-3. **Referencias entre paréntesis y sufijos:** Si la dirección tiene texto entre paréntesis o referencias como "(AEREOPUERTO ...)", no anules la vía: extrae la vía ("AV. FITZCARRAL" -> tipo_via: "AVENIDA", nom_via: "FITZCARRAL", num_via: "S/N") y si describe un hito o lugar colócala en `referencia` o `nom_zona`.
-4. **Vías sin prefijo explícito:** Si una dirección menciona un nombre propio con número pero sin "CA." (ej. "ALFREDO LAPOINT 882"), infiere `tipo_via_detectado: "CALLE"`.
-5. **Puntos de Referencia e Hitos Urbanos:** Si la dirección contiene frases de guía, hitos o referencias espaciales (ej. "CERCA AL SENATI", "FRENTE AL PARQUE", "AL COSTADO DEL MERCADO", "A ESPALDAS DEL COLEGIO", "ALTURA KM 5"), extrae ese texto en mayúsculas en el campo `referencia`. NO lo mezcles con `nom_via` ni con `nom_zona`.
-6. **Vías con fechas o números (ej. '7 DE ENERO', '28 DE JULIO', '9 DE OCTUBRE', 'CALLE 3'):** En Chiclayo existen vías emblemáticas cuyo nombre incluye números o fechas (ej. 'Ca. 7 de enero N129'). En estos casos, el nombre de la vía es la frase completa (ej. nom_via: '7 DE ENERO'), y la numeración municipal es el número posterior '129' (num_via: '129'). NUNCA asignes el número que forma parte del nombre de la calle a `num_via`.
+1. **Nombres de Ciudad como Prefijo ('CHICLAYO -', 'LAMBAYEQUE -'):** Si la dirección empieza con el nombre de la ciudad seguido de guion (ej. "CHICLAYO - LUIS GONZALES 839"), "CHICLAYO" indica únicamente la ciudad/jurisdicción distrital general. NO lo conviertas en zona ("CERCADO DE CHICLAYO"): extrae la vía ("LUIS GONZALES"), el número ("839") y asigna `nom_zona: null` a menos que se mencione expresamente una urbanización o la palabra "CERCADO".
+2. **Estructura 'ZONA - VIA NUMERO':** Muchas licencias catastrales registran el formato "ZONA - VIA NUMERO" (ej. "SAN NICOLAS - LAS AMERICAS 705"). Descompón con precisión: la primera parte es la zona (`nom_zona: "SAN NICOLAS"`, `tipo_zona_detectada: "URBANIZACION"` o según catálogo), y la segunda parte es la vía y número (`nom_via: "LAS AMERICAS"`, `tipo_via_detectado: "AVENIDA"`, `num_via: "705"`).
+3. **Estructura 'ZONA - MANZANA Y LOTE' (Sin Vía):** En asentamientos o pueblos jóvenes es habitual no tener vía (ej. "SAN JUAN DE DIOS - MZA. E LOTE 23"). En estos casos, extrae `nom_zona: "SAN JUAN DE DIOS"`, `manzana: "E"`, `lote: "23"` y deja `nom_via: null` y `tipo_via_detectado: null`.
+4. **Interiores / Departamentos / Pisos:** Si la dirección tiene "INT- I", "DPTO 2" o "2DO. Y 3ER. PISO", colócalo en `referencia` o añádelo a `slote` y `num_via` según corresponda.
+5. **Referencias entre paréntesis y sufijos:** Si la dirección tiene texto entre paréntesis o referencias como "(AEREOPUERTO ...)", no anules la vía: extrae la vía ("AV. FITZCARRAL" -> tipo_via: "AVENIDA", nom_via: "FITZCARRAL", num_via: "S/N") y coloca la descripción en `referencia`.
+6. **Vías sin prefijo explícito:** Si una dirección menciona un nombre propio que coincide con el Catálogo de Vías de Chiclayo (ej. "LUIS GONZALES 839", "ALFREDO LAPOINT 882"), asigna el nombre oficial de la vía e infiere su tipo oficial (ej. "AVENIDA" para LUIS GONZALES, "CALLE" para LAPOINT).
+7. **Puntos de Referencia e Hitos Urbanos:** Si la dirección contiene frases espaciales (ej. "CERCA AL SENATI", "FRENTE AL PARQUE", "AL COSTADO DEL MERCADO", "2DO. PISO"), colócalas en el campo `referencia`. NO lo mezcles con `nom_via` ni con `nom_zona`.
+8. **Vías con fechas o números (ej. '9 DE OCTUBRE', '28 DE JULIO', 'CALLE 3'):** El número que forma parte del nombre propio de la vía pertenece a `nom_via` (ej. nom_via: '9 DE OCTUBRE'), nunca a `num_via`.
 
 ### Campos a extraer en el JSON:
-1. `tipo_via_detectado`: Tipo de vía normalizado ("AVENIDA", "CALLE", "JIRON", "PASAJE", etc.) o null si no se identifica vía.
-2. `nom_via`: Nombre oficial de la vía sin el tipo ni la numeración (ej. "7 DE ENERO", "SALAVERRY", "ALFREDO LAPOINT", "FITZCARRAL", "TRINIDAD").
-3. `num_via`: Número municipal o indicación S/N e interior (ej. "129", "128", "882 INT-I", "S/N", "349").
-4. `tipo_zona_detectada`: Tipo de habilitación/zona según catálogo (ej. "URBANIZACION", "CERCADO", "PUEBLO JOVEN") o null.
-5. `nom_zona`: Nombre de la urbanización, sector o asentamiento (ej. "COLIBRI", "SANTA VICTORIA", "EL PARAISO", "LOS PRECURSORES").
-6. `manzana`: Manzana limpia sin prefijo MZ (ej. "D", "18").
-7. `lote`: Lote limpio sin prefijo LT (ej. "43", "12").
+1. `tipo_via_detectado`: Tipo de vía normalizado ("AVENIDA", "CALLE", "JIRON", "PASAJE", "CARRETERA", etc.) o null si no se identifica vía.
+2. `nom_via`: Nombre oficial de la vía sin el tipo ni la numeración (ej. "LAS AMERICAS", "LUIS GONZALES", "FITZCARRAL", "JOSE BALTA", "SALAVERRY").
+3. `num_via`: Número municipal limpio sin ceros a la izquierda (ej. "705", "839", "261", "129", "S/N").
+4. `tipo_zona_detectada`: Tipo de habilitación/zona según catálogo (ej. "URBANIZACION", "ASENTAMIENTO HUMANO", "PUEBLO JOVEN") o null.
+5. `nom_zona`: Nombre de la urbanización, asentamiento o sector (ej. "SAN NICOLAS", "SAN JUAN DE DIOS", "SANTA VICTORIA", "SAN JUAN").
+6. `manzana`: Manzana limpia sin prefijo MZ (ej. "E", "D", "18").
+7. `lote`: Lote limpio sin prefijo LT (ej. "23", "43").
 8. `slote`: Sublote o división interna si existe (ej. "INT-I", "A", "2").
-9. `referencia`: Punto de referencia urbano, hito o indicación de guía (ej. "CERCA AL SENATI", "FRENTE AL PARQUE") o null si no existe.
+9. `referencia`: Piso, punto de referencia urbano o hito (ej. "2DO. Y 3ER. PISO", "CERCA AL SENATI", "FRENTE AL PARQUE") o null.
 10. `confianza`: Decimal entre 0.0 y 1.0.
 11. `observaciones`: Cadena breve si hay ambigüedad.
 
@@ -97,20 +109,52 @@ Salida:
   "observaciones": "Referencia urbana identificada claramente"
 }
 
-Entrada: "CHICLAYO ALFREDO LAPOINT 882 INT- I"
+Entrada: "SAN NICOLAS - LAS AMERICAS 705"
 Salida:
 {
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "ALFREDO LAPOINT",
-  "num_via": "882 INT-I",
-  "tipo_zona_detectada": "CERCADO",
-  "nom_zona": "CERCADO DE CHICLAYO",
+  "tipo_via_detectado": "AVENIDA",
+  "nom_via": "LAS AMERICAS",
+  "num_via": "705",
+  "tipo_zona_detectada": "ASENTAMIENTO HUMANO",
+  "nom_zona": "SAN NICOLAS",
   "manzana": null,
   "lote": null,
-  "slote": "INT-I",
+  "slote": null,
   "referencia": null,
-  "confianza": 0.95,
-  "observaciones": "Calle céntrica sin prefijo explícito, interior normalizado"
+  "confianza": 0.98,
+  "observaciones": "Estructura ZONA - VIA NUMERO descompuesta exitosamente"
+}
+
+Entrada: "CHICLAYO - LUIS GONZALES 839 - 2DO. Y 3ER. PISO"
+Salida:
+{
+  "tipo_via_detectado": "AVENIDA",
+  "nom_via": "LUIS GONZALES",
+  "num_via": "839",
+  "tipo_zona_detectada": null,
+  "nom_zona": null,
+  "manzana": null,
+  "lote": null,
+  "slote": null,
+  "referencia": "2DO. Y 3ER. PISO",
+  "confianza": 0.98,
+  "observaciones": "Prefijo CHICLAYO reconocido como ciudad, vía oficial y piso identificados"
+}
+
+Entrada: "SAN JUAN DE DIOS - MZA. E LOTE 23"
+Salida:
+{
+  "tipo_via_detectado": null,
+  "nom_via": null,
+  "num_via": null,
+  "tipo_zona_detectada": "ASENTAMIENTO HUMANO",
+  "nom_zona": "SAN JUAN DE DIOS",
+  "manzana": "E",
+  "lote": "23",
+  "slote": null,
+  "referencia": null,
+  "confianza": 0.98,
+  "observaciones": "Predio catastral sin vía con zona, manzana y lote válidos"
 }
 
 Entrada: "AV. FITZCARRAL S/N (AEREOPUERTO JOSÉ ABELARDO QUIÑONES GONZALES) - CHICLAYO"
@@ -120,13 +164,13 @@ Salida:
   "nom_via": "FITZCARRAL",
   "num_via": "S/N",
   "tipo_zona_detectada": null,
-  "nom_zona": "AEROPUERTO JOSE ABELARDO QUIÑONES GONZALES",
+  "nom_zona": null,
   "manzana": null,
   "lote": null,
   "slote": null,
-  "referencia": null,
+  "referencia": "AEREOPUERTO JOSÉ ABELARDO QUIÑONES GONZALES",
   "confianza": 0.96,
-  "observaciones": "Vía identificada con referencia de aeropuerto y sufijo de ciudad"
+  "observaciones": "Vía metropolitana oficial identificada con referencia de aeropuerto"
 }
 
 Entrada: "URB. LOS PRECURSORES CA. MOISES R. VALIENTE N 349"

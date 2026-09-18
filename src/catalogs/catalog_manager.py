@@ -297,6 +297,39 @@ class CatalogManager:
             abrev = f" ({z['abreviatura']})" if z.get("abreviatura") else ""
             items.append(f"{z['nombre']}{abrev}")
         return ", ".join(items)
+    @classmethod
+    def format_physical_vias_for_prompt(cls, limit: int = 150) -> str:
+        """Formatea las vías metropolitanas y céntricas más representativas de Chiclayo para el LLM."""
+        catalog = cls.get_vias_chiclayo_catalog()
+        # 1. Vías con jerarquía vial relevante (arterial, colectora, expresa, etc.)
+        prominent = set(
+            v["nom_via"]
+            for v in catalog
+            if v.get("clasificacion") and v.get("clasificacion") != "LOCAL" and v.get("nom_via")
+        )
+        # 2. Vías céntricas y de alto tránsito de Chiclayo
+        central_keys = (
+            "BALTA", "LAPOINT", "GONZALES", "TORRES PAZ", "7 DE ENERO", "PEDRO RUIZ",
+            "SAN JOSE", "ELIAS AGUIRRE", "IZAGA", "COLON", "TACNA", "ARICA",
+            "LEONCIO PRADO", "MANCO CAPAC", "VICENTE DE LA VEGA", "ORIENTE",
+            "AMERICAS", "SANTA VICTORIA", "BOLOGNESI", "GRAU", "SALAVERRY",
+            "LEGUIA", "FITZCARRAL", "JORGE CHAVEZ", "LOS INCAS", "UNION",
+            "LORA Y LORA", "FRANCISCO CABRERA", "QUIÑONES", "CHICLAYO", "PIMENTEL"
+        )
+        for v in catalog:
+            nom = v.get("nom_via", "")
+            if any(k in nom for k in central_keys):
+                prominent.add(nom)
+
+        unique_vias = sorted(list(prominent))[:limit]
+        return ", ".join(unique_vias)
+
+    @classmethod
+    def format_physical_zonas_sample_for_prompt(cls, limit: int = 80) -> str:
+        """Formatea las zonas y habilitaciones urbanas más representativas de Chiclayo para el LLM."""
+        catalog = cls.get_zonas_chiclayo_catalog()
+        unique_zonas = sorted(list(set(z["nom_zona"] for z in catalog if z.get("nom_zona") and not z["nom_zona"].startswith("SIN DENOMINACION"))))
+        return ", ".join(unique_zonas[:limit])
 
     @classmethod
     def get_via_prefix_regex_str(cls) -> str:
@@ -318,6 +351,8 @@ class CatalogManager:
         """Genera la expresión regular para prefijos comunes de zonas reconocidos."""
         prefixes = set()
         for z in cls.get_zonas_catalog():
+            if z["nombre"] == "CERCADO":
+                continue
             prefixes.add(re.escape(z["nombre"]))
             if z.get("abreviatura"):
                 prefixes.add(re.escape(z["abreviatura"]))

@@ -102,18 +102,39 @@ class AIAddressParser:
                 nom_via = match_via.group(1).strip(" ,.-")
                 heuristica_aplicada = True
 
-            # Caso 2: Nombre de calle precedido por la ciudad (ej. "CHICLAYO ALFREDO LAPOINT 882")
+            # Caso 2: Nombre de calle precedido por la ciudad (ej. "CHICLAYO ALFREDO LAPOINT 882" o "CHICLAYO - LUIS GONZALES 839")
             match_city = re.search(
-                r"^(?:CHICLAYO|LAMBAYEQUE|FERRENAFE)\s+([A-ZÁÉÍÓÚÑ\s]+?)\s+(\d+|S/N)",
+                r"^(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\s*(?:-\s*)?([A-ZÁÉÍÓÚÑ\s\.\-]+?)\s+(\d+|S/N)\b",
                 raw_text,
+                re.IGNORECASE,
             )
             if match_city:
-                nom_via = match_city.group(1).strip()
+                nom_via = match_city.group(1).strip(" ,.-")
                 if not num_via:
                     num_via = match_city.group(2).strip()
                 if not tipo_via_detectado:
                     tipo_via_detectado = "CALLE"
                 heuristica_aplicada = True
+
+            # Caso 3: Formato ZONA - VIA NUMERO (ej. "SAN NICOLAS - LAS AMERICAS 705")
+            match_zona_via = re.search(
+                r"^([A-ZÁÉÍÓÚÑ\s\.]+?)\s+-\s+([A-ZÁÉÍÓÚÑ\s\.]+?)\s+(\d+|S/N)\b",
+                raw_text,
+            )
+            if match_zona_via:
+                posible_zona = match_zona_via.group(1).strip()
+                posible_via = match_zona_via.group(2).strip()
+                posible_num = match_zona_via.group(3).strip()
+                if posible_zona not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
+                    if not nom_zona:
+                        nom_zona = posible_zona
+                    # Si la segunda parte es una manzana o lote, no debe asignarse como vía
+                    if not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_via, re.IGNORECASE):
+                        if not nom_via:
+                            nom_via = posible_via
+                        if not num_via:
+                            num_via = posible_num
+                    heuristica_aplicada = True
 
         # 5. Respaldo Heurístico para numeración de vía (SOLO si existe una vía)
         if not nom_via:
@@ -147,7 +168,7 @@ class AIAddressParser:
 
         # 6b. Respaldo Heurístico para Manzana y Lote
         if not manzana:
-            match_mz = re.search(r"\b(?:MZ\.?|MANZANA)\s*[:\-]?\s*([A-Z0-9]+)\b", raw_text, re.IGNORECASE)
+            match_mz = re.search(r"\b(?:MANZANA|MZA\.?|MZ\.?)\s*[:\-]?\s*([A-Z0-9]+)\b", raw_text, re.IGNORECASE)
             if match_mz:
                 manzana = match_mz.group(1).upper()
                 heuristica_aplicada = True
@@ -179,9 +200,9 @@ class AIAddressParser:
                     heuristica_aplicada = True
                     break
 
-        # 7c. Si no se detectó zona específica, evaluar CERCADO o CHICLAYO al inicio
+        # 7c. Si no se detectó zona específica, evaluar CERCADO solo si está explícito
         if not tipo_zona_detectada:
-            if "CERCADO" in raw_text or raw_text.startswith("CHICLAYO "):
+            if re.search(r"\bCERCADO\b", raw_text, re.IGNORECASE):
                 tipo_zona_detectada = "CERCADO"
                 if not nom_zona:
                     nom_zona = "CERCADO DE CHICLAYO"
@@ -189,20 +210,34 @@ class AIAddressParser:
 
         # 7d. Respaldo Heurístico para nom_zona cuando no fue detectado
         if not nom_zona:
-            zona_prefixes = CatalogManager.get_zona_prefix_regex_str()
-            match_zona = re.search(
-                rf"{zona_prefixes}\s+([^,;()\-]+?)(?:\s+(?:MZ|LT|LOTE|MANZANA|REF|\(|$)|,|-|$)",
+            # Caso 1: ZONA - MZA/LT (ej. "SAN JUAN DE DIOS - MZA. E LOTE 23")
+            match_zona_mz = re.search(
+                r"^([A-ZÁÉÍÓÚÑ\s\.]+?)\s+-\s*(?:MZ|MZA|MANZANA)\b",
                 raw_text,
                 re.IGNORECASE,
             )
-            if match_zona:
-                cand_zona = match_zona.group(1).strip()
-                cand_zona = re.sub(r"\s+(?:CHICLAYO|LAMBAYEQUE|FERRENAFE)$", "", cand_zona, flags=re.IGNORECASE).strip(" ,.-")
-                if cand_zona:
+            if match_zona_mz:
+                cand_zona = match_zona_mz.group(1).strip(" ,.-")
+                if cand_zona not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
                     nom_zona = cand_zona
                     heuristica_aplicada = True
 
-        # 7e. Respaldo Heurístico Dinámico para Referencias (hitos urbanos, guías de ubicación)
+            # Caso 2: Prefijos dinámicos de zona (URB, PJ, etc.)
+            if not nom_zona:
+                zona_prefixes = CatalogManager.get_zona_prefix_regex_str()
+                match_zona = re.search(
+                    rf"{zona_prefixes}\s+([^,;()\-]+?)(?:\s+(?:MZ|LT|LOTE|MANZANA|REF|\(|$)|,|-|$)",
+                    raw_text,
+                    re.IGNORECASE,
+                )
+                if match_zona:
+                    cand_zona = match_zona.group(1).strip()
+                    cand_zona = re.sub(r"\s+(?:CHICLAYO|LAMBAYEQUE|FERRENAFE)$", "", cand_zona, flags=re.IGNORECASE).strip(" ,.-")
+                    if cand_zona:
+                        nom_zona = cand_zona
+                        heuristica_aplicada = True
+
+        # 7e. Respaldo Heurístico Dinámico para Referencias (hitos urbanos, pisos, guías de ubicación)
         if not referencia:
             # Caso 1: Prefijo explícito REF o REFERENCIA
             match_ref_expl = re.search(
@@ -223,6 +258,21 @@ class AIAddressParser:
                 if match_ref_loc:
                     referencia = match_ref_loc.group(1).strip().upper()
                     heuristica_aplicada = True
+
+        # Caso 3: Pisos o niveles (ej. '2DO. Y 3ER. PISO', '3ER. PISO')
+        match_piso = re.search(
+            r"\b((?:\d+(?:DO|ER|TO|VO|MO)?\.?\s*(?:Y\s*\d+(?:DO|ER|TO|VO|MO)?\.?\s*)?PISO)|(?:PISO\s*\d+))\b",
+            raw_text,
+            re.IGNORECASE,
+        )
+        if match_piso:
+            piso_val = match_piso.group(1).strip().upper()
+            if not referencia:
+                referencia = piso_val
+                heuristica_aplicada = True
+            elif piso_val not in referencia:
+                referencia = f"{referencia} - {piso_val}".strip()
+                heuristica_aplicada = True
 
         # Limpieza de referencia y prevención de fuga hacia nom_zona o nom_via
         if referencia:

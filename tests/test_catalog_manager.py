@@ -204,30 +204,38 @@ class TestCatalogManager(unittest.TestCase):
         vias = CatalogManager.get_vias_chiclayo_catalog()
         zonas = CatalogManager.get_zonas_chiclayo_catalog()
 
-        self.assertEqual(len(vias), 3024)
-        self.assertEqual(len(zonas), 461)
+        self.assertEqual(len(vias), 2935)
+        self.assertEqual(len(zonas), 460)
 
         v_tuples = CatalogManager.get_official_physical_vias_tuples()
         z_tuples = CatalogManager.get_official_physical_zonas_tuples()
-        self.assertEqual(len(v_tuples), 3024)
-        self.assertEqual(len(z_tuples), 461)
+        self.assertEqual(len(v_tuples), 2935)
+        self.assertEqual(len(z_tuples), 460)
 
     def test_physical_vias_and_zonas_matching(self):
         """Valida que CatalogMatcher homologue vías y zonas físicas de Chiclayo."""
-        v1 = CatalogMatcher.match_physical_via("7 DE ENERO")
+        v1 = CatalogMatcher.match_physical_via("AUGUSTO BERNARDINO LEGUIA")
         self.assertIsNotNone(v1)
-        self.assertEqual(v1["id"], 2279)
-        self.assertEqual(v1["nom_via"], "7 DE ENERO SUR")
+        self.assertEqual(v1["id"], 2853)
+        self.assertEqual(v1["nom_via"], "AV. AUGUSTO BERNARDINO LEGUIA")
 
         v2 = CatalogMatcher.match_physical_via("AV. SALAVERRY")
         self.assertIsNotNone(v2)
         self.assertEqual(v2["id"], 2862)
         self.assertEqual(v2["nom_via"], "FELIPE SANTIAGO SALAVERRY")
 
-        z1 = CatalogMatcher.match_physical_zona("URB. COLIBRI")
+        v3 = CatalogMatcher.match_physical_via("TORRES PAZ")
+        self.assertIsNotNone(v3)
+        self.assertEqual(v3["nom_via"], "TORRES PAZ")
+
+        v4 = CatalogMatcher.match_physical_via("ALFREDO LAPOINT")
+        self.assertIsNotNone(v4)
+        self.assertEqual(v4["nom_via"], "ALFREDO LAPOINT")
+
+        z1 = CatalogMatcher.match_physical_zona("URB. SAN EDUARDO")
         self.assertIsNotNone(z1)
-        self.assertEqual(z1["id"], 461)
-        self.assertEqual(z1["nom_zona"], "COLIBRI")
+        self.assertEqual(z1["id"], 5)
+        self.assertEqual(z1["nom_zona"], "SAN EDUARDO")
 
         z2 = CatalogMatcher.match_physical_zona("SANTA VICTORIA")
         self.assertIsNotNone(z2)

@@ -26,13 +26,13 @@ erDiagram
     }
 
     VIAS {
-        int id_via PK "ID único de la vía oficial (1..3024)"
+        int id_via PK "ID único de la vía oficial (1..174)"
         int id_tipo_via FK "FK hacia tipos_via (Tipo de arteria)"
-        string nom_via "Nombre oficial de la vía (ej. 7 DE ENERO SUR, BALTA)"
+        string nom_via "Nombre oficial de la vía (ej. BALTA, FITZCARRAL, SALAVERRY)"
     }
 
     ZONAS {
-        int id_zona PK "ID único de la zona oficial (1..461)"
+        int id_zona PK "ID único de la zona oficial (1..460)"
         int id_tipo_zona FK "FK hacia tipos_zona (Tipo de habilitación)"
         string nom_zona "Nombre oficial de la zona (ej. SANTA VICTORIA, REMIGIO B. SILVA)"
     }
@@ -77,9 +77,9 @@ erDiagram
 ```mermaid
 flowchart TD
     START(["Dirección Cruda: emp_direccion"]) --> EXTRACT["Extracción con IA & Heurística\n(vía tentativa, zona tentativa, números, referencias)"]
-    EXTRACT --> CHECK_VIAS{"¿La vía existe en\ntabla vias (3,024)?"}
+    EXTRACT --> CHECK_VIAS{"¿La vía existe en\ntabla vias (2,935)?"}
     
-    CHECK_VIAS -- Sí --> CHECK_ZONAS{"¿La zona existe en\ntabla zonas (461)?"}
+    CHECK_VIAS -- Sí --> CHECK_ZONAS{"¿La zona existe en\ntabla zonas (460)?"}
     CHECK_VIAS -- No --> RECHAZAR_VIA["Observación: Vía no encontrada en catálogo oficial\nid_via = NULL\nnum_via = NULL"]
     
     CHECK_ZONAS -- Sí --> EXITO["es_procesado = TRUE\nid_via = ID Vía\nnum_via = Extraído\nid_zona = ID Zona\nmz, lt, slote, ref = Extraídos\nobservacion = NULL"]

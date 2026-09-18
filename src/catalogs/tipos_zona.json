@@ -52,8 +52,8 @@
     "id": 8,
     "nombre": "CERCADO",
     "abreviatura": "CERCADO",
-    "sinonimos": ["CERCADO", "CERCADO DE CHICLAYO", "CHICLAYO"],
-    "patron_regex": "\\b(?:CERCADO(?:\\s+DE\\s+CHICLAYO)?|CHICLAYO)\\b"
+    "sinonimos": ["CERCADO", "CERCADO DE CHICLAYO"],
+    "patron_regex": "\\b(?:CERCADO(?:\\s+DE\\s+CHICLAYO)?)\\b"
   },
   {
     "id": 9,
