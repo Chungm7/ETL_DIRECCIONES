@@ -396,5 +396,126 @@ def test_api_export_excel_endpoint(client):
     assert len(response.content) > 1000  # Archivo binario Excel generado válidamente
 
 
+def test_api_export_csv_endpoint(client):
+    """Verifica que /api/export-csv genere un archivo CSV descargable con BOM UTF-8."""
+    records_payload = [
+        {
+            "id_licencia": 502,
+            "raw_text": "AV BALTA 200",
+            "nom_via": "BALTA",
+            "tipo_via_name": "AVENIDA",
+            "num_via": "200",
+            "id_via": 12,
+            "nom_zona": "SAN JOSE",
+            "tipo_zona_name": "URB.",
+            "id_zona": 6,
+            "es_procesado": True,
+            "metodo": "IA (patroclo)",
+            "observacion": "",
+            "time": "11:55:00"
+        }
+    ]
+
+    response = client.post("/api/export-csv", json={"records": records_payload})
+    assert response.status_code == 200
+    assert "text/csv" in response.headers["content-type"]
+    assert "reporte_catastral_mpch_" in response.headers.get("content-disposition", "")
+    content = response.content.decode("utf-8-sig")
+    assert "ID,Direccion_Original,Tipo_Via" in content
+    assert "502" in content
+    assert "AVENIDA" in content
+
+
+def test_api_export_db_excel_endpoint(client):
+    """Verifica que /api/export-db genere un archivo Excel consultando la base de datos."""
+    mock_records = [
+        {
+            "id_licencia": 101,
+            "raw_text": "AV BALTA 100",
+            "id_via": 1,
+            "nom_via": "BALTA",
+            "tipo_via": 1,
+            "tipo_via_name": "AVENIDA",
+            "num_via": "100",
+            "id_zona": 2,
+            "nom_zona": "CHICLAYO",
+            "tipo_zona": 1,
+            "tipo_zona_name": "URB.",
+            "manzana": "A",
+            "lote": "5",
+            "slote": "",
+            "referencia": "",
+            "es_procesado": True,
+            "observacion": "",
+            "estado": "NORMALIZADO",
+            "metodo": "Catastro Oficial",
+            "success": True,
+            "time": "-",
+        }
+    ]
+
+    with patch("src.ui.server.fetch_db_records_for_export", return_value=mock_records) as mock_fetch:
+        response = client.post("/api/export-db", json={
+            "schema_name": "public",
+            "table_name": "direcciones",
+            "scope": "processed",
+            "format": "excel"
+        })
+        assert response.status_code == 200
+        assert "application/vnd.openxmlformats-officedocument" in response.headers["content-type"]
+        assert "reporte_direcciones_processed_" in response.headers.get("content-disposition", "")
+        assert len(response.content) > 1000
+        mock_fetch.assert_called_once()
+
+
+def test_api_export_db_csv_observed_endpoint(client):
+    """Verifica que /api/export-db con scope=observed y format=csv filtre y descargue CSV."""
+    mock_records = [
+        {
+            "id_licencia": 102,
+            "raw_text": "CALLE DESCONOCIDA S/N",
+            "id_via": None,
+            "nom_via": "",
+            "tipo_via": None,
+            "tipo_via_name": "",
+            "num_via": "",
+            "id_zona": None,
+            "nom_zona": "",
+            "tipo_zona": None,
+            "tipo_zona_name": "",
+            "manzana": "",
+            "lote": "",
+            "slote": "",
+            "referencia": "",
+            "es_procesado": False,
+            "observacion": "Vía no encontrada en catálogo oficial",
+            "estado": "OBSERVADO",
+            "metodo": "Evaluado (Observado)",
+            "success": True,
+            "time": "-",
+        }
+    ]
+
+    with patch("src.ui.server.fetch_db_records_for_export", return_value=mock_records) as mock_fetch:
+        response = client.get("/api/export-db?schema=public&table=direcciones&scope=observed&format=csv")
+        assert response.status_code == 200
+        assert "text/csv" in response.headers["content-type"]
+        assert "reporte_direcciones_observed_" in response.headers.get("content-disposition", "")
+        content = response.content.decode("utf-8-sig")
+        assert "102" in content
+        assert "OBSERVADO" in content
+        assert "Vía no encontrada en catálogo oficial" in content
+        mock_fetch.assert_called_once()
+
+
+def test_api_export_db_empty_raises_404(client):
+    """Verifica que /api/export-db lance 404 cuando no hay registros para el filtro."""
+    with patch("src.ui.server.fetch_db_records_for_export", return_value=[]):
+        response = client.get("/api/export-db?schema=public&table=direcciones&scope=observed")
+        assert response.status_code == 404
+        assert "No se encontraron registros" in response.json()["detail"]
+
+
+
 
 

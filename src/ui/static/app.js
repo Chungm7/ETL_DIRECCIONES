@@ -525,6 +525,7 @@ async function previewTable() {
 
     wiz.id_col   = data.id_col;
     wiz.addr_col = data.address_col;
+    wiz.tableCounts = data.counts || {};
 
     const countDiv = document.getElementById('tableCountInfo');
     const c = data.counts || {};
@@ -534,6 +535,15 @@ async function previewTable() {
       <span class="badge badge-valid"><strong>${(c.validos||0).toLocaleString()}</strong> Normalizados</span>
       <span class="badge badge-observed"><strong>${(c.observados||0).toLocaleString()}</strong> Observados</span>
     `;
+
+    const btnStep4 = document.getElementById('btnStep4ExportDirect');
+    if (btnStep4) {
+      if ((c.validos || 0) > 0 || (c.observados || 0) > 0) {
+        btnStep4.classList.remove('hidden');
+      } else {
+        btnStep4.classList.add('hidden');
+      }
+    }
 
     const tbody = document.getElementById('previewBody');
     tbody.innerHTML = '';
@@ -935,130 +945,241 @@ function copySingleRecord(idLicencia) {
   navigator.clipboard.writeText(text);
 }
 
-async function exportRecordsExcel() {
-  if (!wiz.allRecords || !wiz.allRecords.length) {
-    alert('No hay registros disponibles en el Inspector para exportar.');
-    return;
+let currentExportDataSource = 'db'; // 'db' o 'view'
+let cachedDbCounts = { total: 0, pendientes: 0, validos: 0, observados: 0 };
+
+async function openExportModal() {
+  const overlay = document.getElementById('modalExportOverlay');
+  if (!overlay) return;
+
+  const tableLabel = document.getElementById('exportModalTable');
+  const schema = wiz.schema || 'public';
+  const table = wiz.table || 'direcciones';
+  if (tableLabel) tableLabel.textContent = `${schema}.${table}`;
+
+  // Actualizar contador en vivo de registros en pantalla
+  const viewCount = document.getElementById('exportViewCount');
+  if (viewCount) viewCount.textContent = (wiz.allRecords ? wiz.allRecords.length : 0).toLocaleString();
+
+  overlay.classList.remove('hidden');
+
+  // Si ya tenemos conteos cacheados de la tabla, pintarlos de inmediato
+  if (wiz.tableCounts) {
+    cachedDbCounts = { ...wiz.tableCounts };
+    renderExportModalCounts();
   }
 
-  const btn = document.getElementById('btnExportExcel');
-  const originalHtml = btn ? btn.innerHTML : '';
+  // Refrescar conteos frescos desde PostgreSQL en segundo plano
+  try {
+    const res = await fetch('/api/inspect-table', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        schema_name: schema,
+        table_name: table,
+        id_col: wiz.id_col || null,
+        address_col: wiz.addr_col || null,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.counts) {
+        cachedDbCounts = data.counts;
+        wiz.tableCounts = data.counts;
+        renderExportModalCounts();
+      }
+    }
+  } catch (err) {
+    console.debug('Aviso al refrescar conteos para exportar:', err);
+  }
+}
+
+function closeExportModal() {
+  const overlay = document.getElementById('modalExportOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+function setExportDataSource(source) {
+  currentExportDataSource = source;
+  const btnDb = document.getElementById('btnSourceDb');
+  const btnView = document.getElementById('btnSourceView');
+
+  if (source === 'db') {
+    if (btnDb) btnDb.classList.add('active');
+    if (btnView) btnView.classList.remove('active');
+  } else {
+    if (btnDb) btnDb.classList.remove('active');
+    if (btnView) btnView.classList.add('active');
+  }
+
+  renderExportModalCounts();
+}
+
+function renderExportModalCounts() {
+  const isDb = (currentExportDataSource === 'db');
+
+  let valid = 0;
+  let obs = 0;
+  let total = 0;
+
+  if (isDb) {
+    valid = cachedDbCounts.validos || 0;
+    obs = cachedDbCounts.observados || 0;
+    total = cachedDbCounts.total || 0;
+  } else {
+    const records = wiz.allRecords || [];
+    valid = records.filter(r => r.es_procesado).length;
+    obs = records.filter(r => !r.es_procesado && r.metodo !== 'ERROR').length;
+    total = records.length;
+  }
+
+  const processed = valid + obs;
+
+  const bValid = document.getElementById('badgeExportValid');
+  const bObs = document.getElementById('badgeExportObs');
+  const bTotal = document.getElementById('badgeExportTotal');
+  const cntProc = document.getElementById('cntExportProcessed');
+  const cntObs = document.getElementById('cntExportObserved');
+  const cntVal = document.getElementById('cntExportValid');
+
+  if (bValid) bValid.textContent = `${valid.toLocaleString()} Válidos`;
+  if (bObs) bObs.textContent = `${obs.toLocaleString()} Observados`;
+  if (bTotal) bTotal.textContent = `${total.toLocaleString()} Total`;
+
+  if (cntProc) cntProc.textContent = processed.toLocaleString();
+  if (cntObs) cntObs.textContent = obs.toLocaleString();
+  if (cntVal) cntVal.textContent = valid.toLocaleString();
+}
+
+async function executeExport(scope, format) {
+  const isDb = (currentExportDataSource === 'db');
+  const schema = wiz.schema || 'public';
+  const table = wiz.table || 'direcciones';
+
+  // Identificar botón clickeado para feedback visual (spinner)
+  let btnId = '';
+  if (scope === 'processed' && format === 'excel') btnId = 'btnDlExcelProcessed';
+  else if (scope === 'processed' && format === 'csv') btnId = 'btnDlCsvProcessed';
+  else if (scope === 'observed' && format === 'excel') btnId = 'btnDlExcelObserved';
+  else if (scope === 'observed' && format === 'csv') btnId = 'btnDlCsvObserved';
+  else if (scope === 'valid' && format === 'excel') btnId = 'btnDlExcelValid';
+  else if (scope === 'valid' && format === 'csv') btnId = 'btnDlCsvValid';
+
+  const btn = document.getElementById(btnId);
+  const origHtml = btn ? btn.innerHTML : '';
   if (btn) {
     btn.disabled = true;
-    btn.innerHTML = `
-      <div class="spinner" style="width:12px; height:12px; border-width:1.8px; margin-right:4px;"></div>
-      <span>Generando Excel...</span>
-    `;
+    btn.innerHTML = `<div class="spinner" style="width:11px; height:11px; border-width:1.5px; margin-right:3px;"></div><span>Descargando...</span>`;
   }
 
   try {
-    const res = await fetch('/api/export-excel', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ records: wiz.allRecords }),
-    });
+    if (isDb) {
+      // Descarga masiva directa desde PostgreSQL
+      const res = await fetch('/api/export-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schema_name: schema,
+          table_name: table,
+          scope: scope,
+          format: format,
+          id_col: wiz.id_col || null,
+          dir_col: wiz.addr_col || null,
+        }),
+      });
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      alert('Error al generar Excel: ' + (err.detail || 'Error desconocido'));
-      return;
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Error en exportación desde BD: ' + (err.detail || 'No se pudo generar el archivo.'));
+        return;
+      }
+
+      const blob = await res.blob();
+      const contentDisp = res.headers.get('Content-Disposition') || '';
+      let filename = '';
+      const match = contentDisp.match(/filename="?([^";]+)"?/);
+      if (match && match[1]) {
+        filename = match[1];
+      } else {
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+        const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+        const ext = format === 'csv' ? 'csv' : 'xlsx';
+        filename = `reporte_${table}_${scope}_${dateStr}_${timeStr}.${ext}`;
+      }
+
+      triggerBrowserDownload(blob, filename);
+
+    } else {
+      // Descarga desde la vista activa en memoria
+      const all = wiz.allRecords || [];
+      let filtered = [];
+
+      if (scope === 'observed') {
+        filtered = all.filter(r => !r.es_procesado && r.metodo !== 'ERROR');
+      } else if (scope === 'valid') {
+        filtered = all.filter(r => r.es_procesado);
+      } else if (scope === 'processed') {
+        filtered = all.filter(r => r.metodo !== 'ERROR');
+      } else {
+        filtered = all;
+      }
+
+      if (!filtered.length) {
+        alert('No hay registros en la vista activa que coincidan con el filtro seleccionado.');
+        return;
+      }
+
+      const endpoint = format === 'csv' ? '/api/export-csv' : '/api/export-excel';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ records: filtered }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Error al generar archivo: ' + (err.detail || 'Error desconocido'));
+        return;
+      }
+
+      const blob = await res.blob();
+      const now = new Date();
+      const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+      const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+      const ext = format === 'csv' ? 'csv' : 'xlsx';
+      const filename = `reporte_vista_${scope}_${dateStr}_${timeStr}.${ext}`;
+
+      triggerBrowserDownload(blob, filename);
     }
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-    const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-    a.href = url;
-    a.download = `reporte_catastral_mpch_${dateStr}_${timeStr}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   } catch (e) {
-    alert('Error descargando Excel: ' + e.message);
+    alert('Error al descargar archivo: ' + e.message);
   } finally {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = originalHtml;
+      btn.innerHTML = origHtml;
     }
   }
 }
 
-function exportRecordsCSV() {
-  if (!wiz.allRecords || !wiz.allRecords.length) {
-    alert('No hay registros disponibles en el Inspector para exportar.');
-    return;
-  }
-
-  const headers = [
-    'ID',
-    'Direccion_Original',
-    'Tipo_Via',
-    'Nombre_Via',
-    'Numero_Via',
-    'ID_Via',
-    'Tipo_Zona',
-    'Nombre_Zona',
-    'ID_Zona',
-    'Manzana',
-    'Lote',
-    'Sublote',
-    'Referencia',
-    'Metodo_Normalizacion',
-    'Estado',
-    'Diagnostico_Observacion',
-    'Hora_Proceso'
-  ];
-
-  function escapeCsv(val) {
-    const s = String(val === undefined || val === null ? '' : val);
-    if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes(';')) {
-      return `"${s.replace(/"/g, '""')}"`;
-    }
-    return s;
-  }
-
-  const rows = wiz.allRecords.map(r => {
-    const estado = (!r.success || r.metodo === 'ERROR')
-      ? 'ERROR'
-      : (r.es_procesado ? 'NORMALIZADO' : 'OBSERVADO');
-
-    return [
-      escapeCsv(r.id_licencia),
-      escapeCsv(r.raw_text),
-      escapeCsv(r.tipo_via_name),
-      escapeCsv(r.nom_via),
-      escapeCsv(r.num_via),
-      escapeCsv(r.id_via),
-      escapeCsv(r.tipo_zona_name),
-      escapeCsv(r.nom_zona),
-      escapeCsv(r.id_zona),
-      escapeCsv(r.manzana),
-      escapeCsv(r.lote),
-      escapeCsv(r.slote),
-      escapeCsv(r.referencia),
-      escapeCsv(r.metodo),
-      escapeCsv(estado),
-      escapeCsv(r.observacion),
-      escapeCsv(r.time)
-    ].join(',');
-  });
-
-  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+function triggerBrowserDownload(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
-  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
   a.href = url;
-  a.download = `reporte_catastral_mpch_${dateStr}_${timeStr}.csv`;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Compatibilidad directa
+function exportRecordsExcel() {
+  executeExport('processed', 'excel');
+}
+
+function exportRecordsCSV() {
+  executeExport('processed', 'csv');
 }
 
 async function clearRecords() {

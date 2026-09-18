@@ -814,6 +814,107 @@
       gap: 10px;
     }
 
+    /* ── Modal de Exportación Catastral ── */
+    .modal-dialog-export {
+      max-width: 600px;
+    }
+    .modal-icon-badge-export {
+      background: var(--blue-bg);
+      border-color: var(--blue-border);
+      color: var(--mpch-navy);
+    }
+    .export-card {
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 10px;
+      background: #ffffff;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .export-card:hover {
+      border-color: var(--mpch-gold);
+      box-shadow: var(--shadow-sm);
+    }
+    .export-card-info {
+      flex: 1;
+    }
+    .export-card-title {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: var(--mpch-navy);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .export-card-desc {
+      font-size: 12px;
+      color: var(--slate-500);
+      margin-top: 2px;
+    }
+    .export-card-actions {
+      display: flex;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+    .export-btn-dl {
+      padding: 6px 11px;
+      font-size: 12px;
+      font-weight: 600;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.12s ease;
+    }
+    .export-btn-excel {
+      background: var(--green-bg);
+      border: 1px solid var(--green-border);
+      color: var(--green);
+    }
+    .export-btn-excel:hover:not(:disabled) {
+      background: #d1fae5;
+      border-color: #10b981;
+    }
+    .export-btn-csv {
+      background: var(--slate-100);
+      border: 1px solid var(--slate-300);
+      color: var(--slate-700);
+    }
+    .export-btn-csv:hover:not(:disabled) {
+      background: var(--slate-200);
+    }
+    .export-btn-dl:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    .source-tab-btn {
+      flex: 1;
+      padding: 7px 10px;
+      font-size: 12px;
+      font-weight: 500;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: transparent;
+      color: var(--slate-600);
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .source-tab-btn.active {
+      background: #ffffff;
+      color: var(--mpch-navy);
+      font-weight: 700;
+      box-shadow: var(--shadow-sm);
+    }
+
     /* ── Spinners y Utilidades ── */
     .spinner {
       width: 16px;
@@ -1091,7 +1192,13 @@
         <div style="font-size:12px; font-weight:700; color:var(--slate-600); text-transform:uppercase; margin-bottom:8px;">
           Muestra de Datos Reales (Primeras Filas)
         </div>
-        <div id="tableCountInfo" style="display:flex; gap:16px; margin-bottom:10px; flex-wrap:wrap; font-size:12.5px;"></div>
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+          <div id="tableCountInfo" style="display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px;"></div>
+          <button class="btn btn-ghost hidden" id="btnStep4ExportDirect" onclick="openExportModal()" style="padding:4px 10px; font-size:11.5px; border-color:var(--slate-300);" title="Descargar registros procesados de esta tabla directamente sin ejecutar ETL">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Exportar Existentes</span>
+          </button>
+        </div>
         <div class="preview-wrap">
           <table class="data-table" id="previewTable">
             <thead><tr><th style="width:120px;">ID</th><th>Dirección Registrada</th></tr></thead>
@@ -1239,13 +1346,9 @@
             <input type="checkbox" id="chkAutoScroll" checked onchange="toggleAutoScroll(this.checked)" />
             Seguir en vivo (auto-scroll)
           </label>
-          <button class="btn btn-ghost" id="btnExportExcel" style="padding:5px 10px; font-size:11.5px;" onclick="exportRecordsExcel()" title="Descargar reporte completo en libro de Excel (.xlsx)">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-            <span>Exportar Excel (.xlsx)</span>
-          </button>
-          <button class="btn btn-ghost" style="padding:5px 10px; font-size:11.5px;" onclick="exportRecordsCSV()" title="Descargar reporte acumulado de direcciones en formato CSV para Excel">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>Exportar CSV</span>
+          <button class="btn btn-action" id="btnOpenExportModal" style="padding:5px 12px; font-size:12px; font-weight:600;" onclick="openExportModal()" title="Exportar registros en Excel o CSV desde la Base de Datos o la Vista Actual">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>Exportar Registros</span>
           </button>
           <button class="btn btn-ghost" style="padding:5px 10px; font-size:11.5px;" onclick="clearRecords()" title="Reiniciar y limpiar los registros de la vista activa">
             <span>Limpiar Vista</span>
@@ -1291,6 +1394,126 @@
 
   </section>
 </main>
+
+<!-- MODAL INSTITUCIONAL DE EXPORTACIÓN CATASTRAL (EXCEL Y CSV) -->
+<div id="modalExportOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-dialog modal-dialog-export">
+    <div class="modal-header">
+      <div class="modal-icon-badge modal-icon-badge-export">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+      </div>
+      <div>
+        <h3 style="margin:0; font-size:16px; color:var(--mpch-navy);">Centro de Descargas y Exportación Catastral</h3>
+        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Exporte registros procesados en Excel (.xlsx) institucional o CSV delimitado</p>
+      </div>
+    </div>
+
+    <div class="modal-body" style="margin-bottom:14px;">
+      <!-- Selector de Origen de Datos -->
+      <div style="display:flex; background:var(--slate-100); padding:3px; border-radius:var(--radius); margin-bottom:12px;">
+        <button type="button" class="source-tab-btn active" id="btnSourceDb" onclick="setExportDataSource('db')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+          <span>Base de Datos (PostgreSQL Completo)</span>
+        </button>
+        <button type="button" class="source-tab-btn" id="btnSourceView" onclick="setExportDataSource('view')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>Vista Activa en Pantalla (<span id="exportViewCount">0</span>)</span>
+        </button>
+      </div>
+
+      <!-- Resumen de Tabla Activa y Métricas -->
+      <div style="background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius); padding:9px 12px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <div>
+          <span style="font-size:11px; font-weight:700; color:var(--slate-500); text-transform:uppercase;">Tabla Objetivo:</span>
+          <span style="font-size:13px; font-weight:700; color:var(--mpch-navy); margin-left:4px;" id="exportModalTable">public.direcciones</span>
+        </div>
+        <div style="display:flex; gap:6px; font-size:11px; font-weight:600;">
+          <span style="background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); padding:2px 7px; border-radius:4px;" id="badgeExportValid">0 Válidos</span>
+          <span style="background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-border); padding:2px 7px; border-radius:4px;" id="badgeExportObs">0 Observados</span>
+          <span style="background:var(--slate-100); color:var(--slate-600); border:1px solid var(--slate-300); padding:2px 7px; border-radius:4px;" id="badgeExportTotal">0 Total</span>
+        </div>
+      </div>
+
+      <!-- Tarjeta 1: Todos los Procesados -->
+      <div class="export-card">
+        <div class="export-card-info">
+          <div class="export-card-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--mpch-navy);"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            <span>Todos los Procesados</span>
+            <span style="font-size:11px; background:var(--blue-bg); color:var(--mpch-navy); border:1px solid var(--blue-border); padding:1px 6px; border-radius:4px; font-weight:600;" id="badgeCardProcessed">Válidos + Observados</span>
+          </div>
+          <div class="export-card-desc">
+            Exporta el 100% de direcciones que ya fueron evaluadas por el sistema (<strong id="cntExportProcessed">0</strong> registros).
+          </div>
+        </div>
+        <div class="export-card-actions">
+          <button class="export-btn-dl export-btn-excel" id="btnDlExcelProcessed" onclick="executeExport('processed', 'excel')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            <span>Excel</span>
+          </button>
+          <button class="export-btn-dl export-btn-csv" id="btnDlCsvProcessed" onclick="executeExport('processed', 'csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjeta 2: Solo Observados -->
+      <div class="export-card">
+        <div class="export-card-info">
+          <div class="export-card-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--amber);"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <span>Solo Observados</span>
+            <span style="font-size:11px; background:var(--amber-bg); color:var(--amber); border:1px solid var(--amber-border); padding:1px 6px; border-radius:4px; font-weight:600;">Incidencias Catastrales</span>
+          </div>
+          <div class="export-card-desc">
+            Registros no normalizados con diagnóstico y motivo de descarte para revisión manual (<strong id="cntExportObserved">0</strong> registros).
+          </div>
+        </div>
+        <div class="export-card-actions">
+          <button class="export-btn-dl export-btn-excel" id="btnDlExcelObserved" onclick="executeExport('observed', 'excel')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            <span>Excel</span>
+          </button>
+          <button class="export-btn-dl export-btn-csv" id="btnDlCsvObserved" onclick="executeExport('observed', 'csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Tarjeta 3: Solo Normalizados -->
+      <div class="export-card">
+        <div class="export-card-info">
+          <div class="export-card-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--green);"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Solo Normalizados</span>
+            <span style="font-size:11px; background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); padding:1px 6px; border-radius:4px; font-weight:600;">Conformes en Catastro</span>
+          </div>
+          <div class="export-card-desc">
+            Padrón estandarizado con IDs de vías y zonas oficiales de Chiclayo (<strong id="cntExportValid">0</strong> registros).
+          </div>
+        </div>
+        <div class="export-card-actions">
+          <button class="export-btn-dl export-btn-excel" id="btnDlExcelValid" onclick="executeExport('valid', 'excel')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/></svg>
+            <span>Excel</span>
+          </button>
+          <button class="export-btn-dl export-btn-csv" id="btnDlCsvValid" onclick="executeExport('valid', 'csv')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            <span>CSV</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer" style="border-top:1px solid var(--slate-200); padding-top:12px; margin-top:0;">
+      <button class="btn btn-ghost" onclick="closeExportModal()">Cerrar</button>
+    </div>
+  </div>
+</div>
 
 <!-- MODAL INSTITUCIONAL DE APAGADO DE SERVICIO -->
 <div id="modalShutdownOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">

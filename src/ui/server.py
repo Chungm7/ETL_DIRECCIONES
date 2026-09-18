@@ -936,9 +936,211 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     return buf
 
 
+def generate_csv_report(records: List[Dict[str, Any]]) -> Any:
+    """Genera un archivo CSV con codificación UTF-8 con BOM para compatibilidad directa con Excel en español."""
+    import csv
+    import io
+
+    output = io.StringIO()
+    output.write("\ufeff")  # UTF-8 BOM
+
+    headers = [
+        "ID",
+        "Direccion_Original",
+        "Tipo_Via",
+        "Nombre_Via",
+        "Numero_Via",
+        "ID_Via",
+        "Tipo_Zona",
+        "Nombre_Zona",
+        "ID_Zona",
+        "Manzana",
+        "Lote",
+        "Sublote",
+        "Referencia",
+        "Metodo_Normalizacion",
+        "Estado",
+        "Diagnostico_Observacion",
+        "Hora_Proceso",
+    ]
+
+    writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(headers)
+
+    for r in records:
+        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
+        is_obs = not r.get("es_procesado", False) and not is_err
+        estado = "ERROR" if is_err else ("OBSERVADO" if is_obs else "NORMALIZADO")
+
+        writer.writerow([
+            r.get("id_licencia", ""),
+            r.get("raw_text", ""),
+            r.get("tipo_via_name", ""),
+            r.get("nom_via", ""),
+            r.get("num_via", ""),
+            r.get("id_via", "") or "",
+            r.get("tipo_zona_name", ""),
+            r.get("nom_zona", ""),
+            r.get("id_zona", "") or "",
+            r.get("manzana", ""),
+            r.get("lote", ""),
+            r.get("slote", ""),
+            r.get("referencia", ""),
+            r.get("metodo", ""),
+            estado,
+            r.get("observacion", ""),
+            r.get("time", ""),
+        ])
+
+    buf = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+    buf.seek(0)
+    return buf
+
+
+def fetch_db_records_for_export(
+    db_svc: DatabaseService,
+    schema: str,
+    table: str,
+    scope: str = "processed",  # 'processed', 'observed', 'valid', 'all'
+    id_col: Optional[str] = None,
+    dir_col: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Consulta la tabla en PostgreSQL y mapea descripciones catastrales completas para exportación."""
+    from sqlalchemy import text as sa_text
+    from src.transformers.catalog_matcher import CatalogMatcher
+    from src.config.settings import get_settings
+
+    settings = get_settings()
+    id_col = id_col or settings.db.id_col
+    dir_col = dir_col or settings.db.dir_col
+
+    try:
+        CatalogMatcher.sync_with_db(db_svc, schema)
+    except Exception as e:
+        logger.debug("Aviso al sincronizar catálogos para exportación en '%s': %s", schema, e)
+
+    scope_lower = str(scope).lower().strip()
+    if scope_lower in ("observed", "observados"):
+        where_clause = 'd."es_procesado" IS FALSE'
+    elif scope_lower in ("valid", "validos", "normalizados"):
+        where_clause = 'd."es_procesado" IS TRUE'
+    elif scope_lower in ("processed", "procesados"):
+        where_clause = 'd."es_procesado" IS NOT NULL'
+    else:
+        where_clause = 'TRUE'
+
+    vias_table = settings.db.table_vias
+    zonas_table = settings.db.table_zonas
+
+    query_str = f"""
+        SELECT 
+            d."{id_col}" AS id_licencia,
+            d."{dir_col}" AS raw_text,
+            d."id_via",
+            v."nom_via",
+            v."tipo_via",
+            d."num_via",
+            d."id_zona",
+            z."nom_zona",
+            z."tipo_zona",
+            d."manzana",
+            d."lote",
+            d."slote",
+            d."referencia",
+            d."es_procesado",
+            d."observacion"
+        FROM "{schema}"."{table}" d
+        LEFT JOIN "{schema}"."{vias_table}" v ON d."id_via" = v."id_via"
+        LEFT JOIN "{schema}"."{zonas_table}" z ON d."id_zona" = z."id_zona"
+        WHERE {where_clause}
+        ORDER BY d."{id_col}" ASC;
+    """
+
+    records = []
+    with db_svc.get_session() as session:
+        try:
+            rows = session.execute(sa_text(query_str)).fetchall()
+        except Exception as q_err:
+            logger.warning("Query con JOIN falló para %s.%s (%s), ejecutando fallback simple", schema, table, q_err)
+            fallback_query = f"""
+                SELECT 
+                    d."{id_col}" AS id_licencia,
+                    d."{dir_col}" AS raw_text,
+                    d."id_via",
+                    NULL AS nom_via,
+                    NULL AS tipo_via,
+                    d."num_via",
+                    d."id_zona",
+                    NULL AS nom_zona,
+                    NULL AS tipo_zona,
+                    d."manzana",
+                    d."lote",
+                    d."slote",
+                    d."referencia",
+                    d."es_procesado",
+                    d."observacion"
+                FROM "{schema}"."{table}" d
+                WHERE {where_clause}
+                ORDER BY d."{id_col}" ASC;
+            """
+            rows = session.execute(sa_text(fallback_query)).fetchall()
+
+        for r in rows:
+            t_via_val = r[4]
+            t_zona_val = r[8]
+            tipo_via_name = CatalogMatcher.get_via_name(t_via_val) if t_via_val else ""
+            tipo_zona_name = CatalogMatcher.get_zona_name(t_zona_val) if t_zona_val else ""
+
+            es_proc = r[13]
+            if es_proc is True:
+                estado = "NORMALIZADO"
+                metodo = "Catastro Oficial"
+            elif es_proc is False:
+                estado = "OBSERVADO"
+                metodo = "Evaluado (Observado)"
+            else:
+                estado = "PENDIENTE"
+                metodo = "Sin Procesar"
+
+            records.append({
+                "id_licencia": r[0],
+                "raw_text": r[1] or "",
+                "id_via": r[2],
+                "nom_via": r[3] or "",
+                "tipo_via": t_via_val,
+                "tipo_via_name": tipo_via_name,
+                "num_via": r[5] or "",
+                "id_zona": r[6],
+                "nom_zona": r[7] or "",
+                "tipo_zona": t_zona_val,
+                "tipo_zona_name": tipo_zona_name,
+                "manzana": r[9] or "",
+                "lote": r[10] or "",
+                "slote": r[11] or "",
+                "referencia": r[12] or "",
+                "es_procesado": bool(es_proc),
+                "observacion": r[14] or "",
+                "estado": estado,
+                "metodo": metodo,
+                "success": True,
+                "time": "-",
+            })
+
+    return records
+
+
+class ExportDbRequest(BaseModel):
+    schema_name: Optional[str] = None
+    table_name: Optional[str] = None
+    scope: str = "processed"  # 'processed', 'observed', 'valid', 'all'
+    format: str = "excel"     # 'excel', 'csv'
+    id_col: Optional[str] = None
+    dir_col: Optional[str] = None
+
+
 @app.post("/api/export-excel")
 async def export_excel_endpoint(payload: Optional[Dict[str, Any]] = None):
-    """Genera y descarga un libro de Excel (.xlsx) con formato institucional MPCH."""
+    """Genera y descarga un libro de Excel (.xlsx) con formato institucional MPCH desde registros en memoria."""
     from datetime import datetime
 
     records = []
@@ -957,6 +1159,95 @@ async def export_excel_endpoint(payload: Optional[Dict[str, Any]] = None):
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@app.post("/api/export-csv")
+async def export_csv_endpoint(payload: Optional[Dict[str, Any]] = None):
+    """Genera y descarga un archivo CSV con formato UTF-8 BOM desde registros en memoria."""
+    from datetime import datetime
+
+    records = []
+    if payload and isinstance(payload, dict):
+        records = payload.get("records", [])
+    if not records:
+        records = state.recent_records
+
+    if not records:
+        raise HTTPException(status_code=400, detail="No hay registros disponibles para exportar.")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    buf = generate_csv_report(records)
+    filename = f"reporte_catastral_mpch_{timestamp}.csv"
+
+    return StreamingResponse(
+        buf,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
+@app.api_route("/api/export-db", methods=["GET", "POST"])
+async def export_db_endpoint(
+    req: Optional[ExportDbRequest] = None,
+    schema: Optional[str] = Query(None),
+    table: Optional[str] = Query(None),
+    scope: str = Query("processed"),
+    format: str = Query("excel"),
+    id_col: Optional[str] = Query(None),
+    dir_col: Optional[str] = Query(None),
+):
+    """Genera y descarga exportación masiva directamente desde PostgreSQL en Excel o CSV."""
+    from datetime import datetime
+
+    db_svc = state.dynamic_db_service or DatabaseService()
+    settings = get_settings()
+
+    target_schema = (req.schema_name if req and req.schema_name else None) or schema or state.active_schema or settings.db.schema
+    target_table = (req.table_name if req and req.table_name else None) or table or state.active_table or settings.db.table
+    target_scope = (req.scope if req and req.scope else None) or scope or "processed"
+    target_format = (req.format if req and req.format else None) or format or "excel"
+    target_id_col = (req.id_col if req and req.id_col else None) or id_col or settings.db.id_col
+    target_dir_col = (req.dir_col if req and req.dir_col else None) or dir_col or settings.db.dir_col
+
+    try:
+        records = fetch_db_records_for_export(
+            db_svc=db_svc,
+            schema=target_schema,
+            table=target_table,
+            scope=target_scope,
+            id_col=target_id_col,
+            dir_col=target_dir_col,
+        )
+    except Exception as e:
+        logger.error("Error extrayendo registros para exportar de %s.%s: %s", target_schema, target_table, e)
+        raise HTTPException(status_code=400, detail=f"Error consultando registros en base de datos: {str(e)}")
+
+    if not records:
+        raise HTTPException(status_code=404, detail=f"No se encontraron registros con filtro '{target_scope}' en {target_schema}.{target_table}.")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    scope_slug = target_scope.lower()
+
+    if target_format.lower() in ("csv", "text/csv"):
+        buf = generate_csv_report(records)
+        filename = f"reporte_{target_table}_{scope_slug}_{timestamp}.csv"
+        media_type = "text/csv; charset=utf-8"
+    else:
+        buf = generate_excel_report(records)
+        filename = f"reporte_{target_table}_{scope_slug}_{timestamp}.xlsx"
+        media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    return StreamingResponse(
+        buf,
+        media_type=media_type,
         headers={
             "Content-Disposition": f"attachment; filename={filename}",
             "Access-Control-Expose-Headers": "Content-Disposition",
