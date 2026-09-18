@@ -49,6 +49,7 @@ class AIAddressParser:
 
         ia_exitosa = extraction is not None
         heuristica_aplicada = False
+        two_vias_conflict = None
 
         if not ia_exitosa:
             heuristica_aplicada = True
@@ -116,24 +117,48 @@ class AIAddressParser:
                     tipo_via_detectado = "CALLE"
                 heuristica_aplicada = True
 
-            # Caso 3: Formato ZONA - VIA NUMERO (ej. "SAN NICOLAS - LAS AMERICAS 705")
+            # Caso 3: Formato ZONA - VIA NUMERO (ej. "SAN NICOLAS - LAS AMERICAS 705" o "3 DE OCTUBRE - SALAVERRY 1731")
             match_zona_via = re.search(
-                r"^([A-ZÁÉÍÓÚÑ\s\.]+?)\s+-\s+([A-ZÁÉÍÓÚÑ\s\.]+?)\s+(\d+|S/N)\b",
+                r"^([A-ZÁÉÍÓÚÑ0-9\s\.]+?)\s+-\s+([A-ZÁÉÍÓÚÑ0-9\s\.]+?)(?:,\s*(\d+|S/N)\b|\s+(\d+|S/N)\b|\s+(?:BLOCK|MZ|LT)\b|\s*-\s*|$)",
                 raw_text,
+                re.IGNORECASE,
             )
             if match_zona_via:
-                posible_zona = match_zona_via.group(1).strip()
-                posible_via = match_zona_via.group(2).strip()
-                posible_num = match_zona_via.group(3).strip()
-                if posible_zona not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
-                    if not nom_zona:
-                        nom_zona = posible_zona
-                    # Si la segunda parte es una manzana o lote, no debe asignarse como vía
-                    if not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_via, re.IGNORECASE):
-                        if not nom_via:
-                            nom_via = posible_via
-                        if not num_via:
+                posible_1 = match_zona_via.group(1).strip()
+                posible_2 = match_zona_via.group(2).strip()
+                posible_num = match_zona_via.group(3) or match_zona_via.group(4)
+                if posible_1 not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
+                    m_v1 = CatalogMatcher.match_physical_via(posible_1)
+                    m_z1 = CatalogMatcher.match_physical_zona(posible_1)
+                    m_v2 = CatalogMatcher.match_physical_via(posible_2)
+                    m_z2 = CatalogMatcher.match_physical_zona(posible_2)
+
+                    # Prioridad 1: Zona - Vía (patrón dominante en Chiclayo)
+                    if m_z1 and m_v2:
+                        nom_zona = posible_1
+                        nom_via = posible_2
+                        if posible_num:
                             num_via = posible_num
+                    # Prioridad 2: Vía - Zona (invertido)
+                    elif m_v1 and m_z2:
+                        nom_via = posible_1
+                        nom_zona = posible_2
+                        if posible_num:
+                            num_via = posible_num
+                    # Prioridad 3: Ambos exclusivamente vías -> conflicto
+                    elif m_v1 and m_v2:
+                        two_vias_conflict = (posible_1, posible_2)
+                        nom_via = posible_1
+                        if posible_num:
+                            num_via = posible_num
+                    else:
+                        if not nom_zona:
+                            nom_zona = posible_1
+                        if not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_2, re.IGNORECASE):
+                            if not nom_via:
+                                nom_via = posible_2
+                            if posible_num and not num_via:
+                                num_via = posible_num
                     heuristica_aplicada = True
 
         # 5. Respaldo Heurístico para numeración de vía (SOLO si existe una vía)
@@ -274,6 +299,93 @@ class AIAddressParser:
                 referencia = f"{referencia} - {piso_val}".strip()
                 heuristica_aplicada = True
 
+        # 7f. Resolución de Doble Vía, Desambiguación e Inversión Via/Zona
+
+        # Caso Urb. Quiñones con calles interiores (Iquitos, Rio Chira, Bagua, etc.)
+        if raw_text and ("QUIÑONES" in raw_text.upper() or "QUINONES" in raw_text.upper()):
+            for inner in ("IQUITOS", "RIO CHIRA", "BAGUA", "AMAZONAS", "MARAÑON", "MARANON"):
+                if inner in raw_text.upper():
+                    nom_zona = "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA"
+                    nom_via = inner
+                    two_vias_conflict = None
+                    heuristica_aplicada = True
+                    break
+
+        # Respaldo Heurístico para Blocks / Pabellones / Torres
+        match_block = re.search(r"\b(BLOCK\s+[A-Z0-9\s\-]+|TORRE\s+[A-Z0-9\s\-]+)\b", raw_text, re.IGNORECASE)
+        if match_block:
+            block_val = match_block.group(1).strip()
+            if not referencia:
+                referencia = block_val
+            elif block_val not in referencia:
+                referencia = f"{referencia} - {block_val}".strip()
+            heuristica_aplicada = True
+
+        # Si nom_via contiene dos vías separadas por guión, 'Y', 'CON', 'ESQ'
+        if nom_via and any(sep in nom_via for sep in (" - ", " Y ", " CON ", " ESQ ", " CRUCE ")):
+            parts = re.split(r"\s+(?:-|Y|CON|ESQ\.?|CRUCE)\s+", nom_via, flags=re.IGNORECASE)
+            if len(parts) >= 2:
+                p1 = parts[0].strip()
+                p2 = parts[1].strip()
+                m_v1 = CatalogMatcher.match_physical_via(p1)
+                m_z1 = CatalogMatcher.match_physical_zona(p1)
+                m_v2 = CatalogMatcher.match_physical_via(p2)
+                m_z2 = CatalogMatcher.match_physical_zona(p2)
+
+                if m_z1 and m_v2 and not m_v1:
+                    nom_zona = p1
+                    nom_via = p2
+                    heuristica_aplicada = True
+                elif m_z2 and m_v1 and not m_v2:
+                    nom_zona = p2
+                    nom_via = p1
+                    heuristica_aplicada = True
+                elif m_v1 and m_v2:
+                    two_vias_conflict = (p1, p2)
+                    nom_via = p1
+
+        # Limpieza de prefijos de centros comerciales, galerías o edificios en nom_via
+        if nom_via:
+            m_gal = re.match(r"^(?:GALERIAS?|GALERIA|EDIFICIO|CONDOMINIO|RESIDENCIAL)\s+(.+)", nom_via, re.IGNORECASE)
+            if m_gal:
+                raw_core = m_gal.group(1).strip()
+                core_candidate = re.sub(
+                    r"\s+(?:STAND|TIENDA|TDA\.?|LOCAL|DEP\.?|DPTO\.?|OFICINA|OF\.?|BLOCK|PISO)\b.*$",
+                    "",
+                    raw_core,
+                    flags=re.IGNORECASE,
+                ).strip()
+                if CatalogMatcher.match_physical_via(core_candidate):
+                    if not referencia:
+                        referencia = raw_text
+                    nom_via = core_candidate
+                    num_via = None
+                    heuristica_aplicada = True
+
+        # Limpieza de establecimientos comerciales asignados erróneamente como zona
+        if nom_zona:
+            if not CatalogMatcher.match_physical_zona(nom_zona) and re.match(r"^(?:GALERIAS?|EDIFICIO|STAND|C\.?C\.?|CENTRO\s+COMERCIAL|MERCADO|COMPLEJO)\b", nom_zona, re.IGNORECASE):
+                if not referencia:
+                    referencia = nom_zona
+                elif nom_zona not in referencia:
+                    referencia = f"{nom_zona} - {referencia}".strip(" -")
+                nom_zona = None
+                heuristica_aplicada = True
+
+        # Inversión Via/Zona Checker (ej. nom_via='CESAR VALLEJO' y nom_zona='AGRICULTURA')
+        if nom_via and nom_zona:
+            v_as_via = CatalogMatcher.match_physical_via(nom_via)
+            v_as_zona = CatalogMatcher.match_physical_zona(nom_via)
+            z_as_via = CatalogMatcher.match_physical_via(nom_zona)
+            z_as_zona = CatalogMatcher.match_physical_zona(nom_zona)
+
+            if not v_as_via and v_as_zona and z_as_via and not z_as_zona:
+                nom_via, nom_zona = nom_zona, nom_via
+                heuristica_aplicada = True
+            elif not v_as_via and v_as_zona and z_as_via:
+                nom_via, nom_zona = nom_zona, nom_via
+                heuristica_aplicada = True
+
         # Limpieza de referencia y prevención de fuga hacia nom_zona o nom_via
         if referencia:
             referencia = re.sub(r"\s+", " ", referencia).strip(" ,.-").upper()
@@ -324,14 +436,35 @@ class AIAddressParser:
 
         observaciones = []
 
+        if two_vias_conflict:
+            observaciones.append(
+                f"Conflicto de vías: Se detectaron dos vías oficiales juntas ('{two_vias_conflict[0]}' y '{two_vias_conflict[1]}'). "
+                "Verifique si corresponde a una intersección o confirme cuál es la vía principal."
+            )
+
         if via_detectada_en_texto and not matched_via:
-            observaciones.append(f"Vía '{nom_via}' no existe en el catálogo maestro de vías de Chiclayo")
+            det_via = f"Vía '{nom_via}' no figura en el catálogo maestro de vías de Chiclayo."
+            if matched_zona:
+                det_via += f" (Zona oficial confirmada: '{matched_zona['nom_zona']}' - ID {matched_zona['id']})"
+            observaciones.append(det_via)
 
         if zona_detectada_en_texto and not matched_zona:
-            observaciones.append(f"Zona/Habilitación '{nom_zona}' no existe en el catálogo maestro de zonas de Chiclayo")
+            det_zona = f"Zona/Habilitación '{nom_zona}' no figura en el catálogo maestro de zonas de Chiclayo."
+            if matched_via:
+                det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})"
+            observaciones.append(det_zona)
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:
-            observaciones.append("DIRECCIÓN NO RECONOCIDA: No se detectó vía ni habilitación urbana válida en el texto")
+            observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
+
+        # Integrar notas de la IA o advertencias específicas en el texto
+        ai_notes = extraction.observaciones if extraction and extraction.observaciones else None
+        if ai_notes and ai_notes not in observaciones and not two_vias_conflict:
+            if len(ai_notes.strip()) > 5:
+                observaciones.append(f"Nota IA: {ai_notes.strip()}")
+
+        if "NO USAR LA VIA PUBLICA" in raw_text.upper():
+            observaciones.append("Advertencia registrada: Restricción de uso de vía pública en la licencia.")
 
         if observaciones:
             # Caso observado: Se nullifican todas las columnas derivadas para evitar datos sin sentido

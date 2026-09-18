@@ -187,7 +187,7 @@ class CatalogMatcher:
     def _extract_sig_tokens(cls, text: str, is_via: bool = False) -> Set[str]:
         stopwords = cls.VIA_STOPWORDS if is_via else cls.ZONA_STOPWORDS
         words = re.findall(r"[A-Z0-9]+", text.upper())
-        return {w for w in words if len(w) > 1 and w not in stopwords}
+        return {w for w in words if (len(w) > 1 or w.isdigit()) and w not in stopwords}
 
     @classmethod
     def find_zona_candidates(
@@ -213,6 +213,12 @@ class CatalogMatcher:
             n_norm = cls.normalize_variants_text(nom)
             n_tokens = cls._extract_sig_tokens(n_norm, is_via=False)
             if not n_tokens:
+                continue
+
+            # Si ambos tienen números identificadores y no coinciden (ej. etapa 1 vs 2, o sector 3 vs 4)
+            q_digits = {t for t in q_tokens if t.isdigit()}
+            n_digits = {t for t in n_tokens if t.isdigit()}
+            if q_digits and n_digits and not (q_digits & n_digits):
                 continue
 
             coverage = len(q_tokens & n_tokens) / len(q_tokens)
@@ -261,6 +267,12 @@ class CatalogMatcher:
             n_norm = cls.normalize_variants_text(nom)
             n_tokens = cls._extract_sig_tokens(n_norm, is_via=True)
             if not n_tokens:
+                continue
+
+            # Si ambos tienen números identificadores y difieren (ej. 3 de Octubre vs 31 u 8 de Octubre)
+            q_digits = {t for t in q_tokens if t.isdigit()}
+            n_digits = {t for t in n_tokens if t.isdigit()}
+            if q_digits and n_digits and not (q_digits & n_digits):
                 continue
 
             coverage = len(q_tokens & n_tokens) / len(q_tokens)

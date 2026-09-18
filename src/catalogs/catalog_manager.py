@@ -117,6 +117,53 @@ class CatalogManager:
             for item in catalog
         ]
 
+    EXTRA_VIAS_SYNONYMS: Dict[str, str] = {
+        "NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
+        "GALERIAS NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
+        "GALERIAS CUGLIEVAN": "JUAN CUGLIEVAN",
+        "NICOLAS DE CUGLIEVAN": "JUAN CUGLIEVAN",
+        "PEDRO CIEZA DE LEON": "PEDRO CIEZA DE LEON",
+        "PEDRO CIEZA": "PEDRO CIEZA DE LEON",
+        "ANGEL CORNEJO": "ANGEL GUSTAVO CORNEJO",
+        "BOLOGNESI": "AV. FRANCISCO BOLOGNESI",
+        "SALAVERRY": "FELIPE SANTIAGO SALAVERRY",
+        "ULISES ULLOA TELLO": "ULISES ULLOA TELLO",
+        "MANUEL ARTEAGA": "MANUEL ARTEAGA",
+        "ALFONSO UGARTE": "ALFONSO UGARTE",
+        "RIO CHIRA": "RIO CHIRA",
+        "BAGUA": "BAGUA",
+        "IQUITOS": "IQUITOS",
+        "LOS GORRIONES": "LOS GORRIONES",
+    }
+
+    EXTRA_ZONAS_SYNONYMS: Dict[str, str] = {
+        "JOSE QUIÑONES GONZALES": "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
+        "JOSE QUIÑONES": "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
+        "JOSÉ QUIÑONES": "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
+        "URB. QUIÑONES": "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
+        "QUIÑONES": "CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA",
+        "JOSE OBRERO": "PROGRESIVA SAN JOSÉ OBRERO",
+        "JOSÉ OBRERO": "PROGRESIVA SAN JOSÉ OBRERO",
+        "SAN JOSE OBRERO": "PROGRESIVA SAN JOSÉ OBRERO",
+        "SAN JOSÉ OBRERO": "PROGRESIVA SAN JOSÉ OBRERO",
+        "MAGISTERIAL": "RESIDENCIAL DERRAMA MAGISTERIAL",
+        "DERRAMA MAGISTERIAL": "RESIDENCIAL DERRAMA MAGISTERIAL",
+        "CONDOMINIO LA PRIMAVERA": "LA PRIMAVERA",
+        "LA PRIMAVERA III ETAPA": "LA PRIMAVERA III",
+        "LA PRIMAVERA III-ETAPA": "LA PRIMAVERA III",
+        "LA PRIMAVERA 3 ETAPA": "LA PRIMAVERA III",
+        "LA PRIMAVERA 3RA ETAPA": "LA PRIMAVERA III",
+        "3 DE OCTUBRE": "3 DE OCTUBRE - PAMPA Y MOLINO DE VIENTO",
+        "SAN LORENZO": "SAN LORENZO",
+        "SANTA VICTORIA": "SANTA VICTORIA",
+        "LAS BRISAS": "LAS BRISAS",
+        "JOSE OLAYA": "JOSÉ OLAYA",
+        "JOSÉ OLAYA": "JOSÉ OLAYA",
+        "CESAR VALLEJO": "CÉSAR VALLEJO",
+        "CÉSAR VALLEJO": "CÉSAR VALLEJO",
+        "LAS TORRES DE CHICLAYO": "CERCADO DE CHICLAYO",
+    }
+
     @classmethod
     def get_physical_vias_lookup(cls) -> Dict[str, Dict[str, Any]]:
         """Retorna un índice rápido {nombre_o_sinonimo_limpio: via_dict} para vías físicas."""
@@ -133,6 +180,15 @@ class CatalogManager:
                     s_noacc = _remove_accents(s_clean)
                     lookup[s_clean] = item
                     lookup[s_noacc] = item
+
+            # Enriquecer con sinónimos canónicos frecuentes de Chiclayo
+            for alias, target in cls.EXTRA_VIAS_SYNONYMS.items():
+                target_clean = target.strip().upper()
+                target_obj = lookup.get(target_clean) or lookup.get(_remove_accents(target_clean))
+                if target_obj:
+                    lookup[alias] = target_obj
+                    lookup[_remove_accents(alias)] = target_obj
+
             cls._physical_vias_lookup_cache = lookup
         return cls._physical_vias_lookup_cache
 
@@ -152,6 +208,15 @@ class CatalogManager:
                     s_noacc = _remove_accents(s_clean)
                     lookup[s_clean] = item
                     lookup[s_noacc] = item
+
+            # Enriquecer con sinónimos canónicos frecuentes de zonas
+            for alias, target in cls.EXTRA_ZONAS_SYNONYMS.items():
+                target_clean = target.strip().upper()
+                target_obj = lookup.get(target_clean) or lookup.get(_remove_accents(target_clean))
+                if target_obj:
+                    lookup[alias] = target_obj
+                    lookup[_remove_accents(alias)] = target_obj
+
             cls._physical_zonas_lookup_cache = lookup
         return cls._physical_zonas_lookup_cache
 
