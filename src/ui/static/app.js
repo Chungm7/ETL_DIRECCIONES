@@ -703,22 +703,45 @@ function addRecord(r, shouldScroll = true) {
     slote:        r.slote || '',
     referencia:   r.referencia || '',
     time:         new Date().toLocaleTimeString('es-PE', { hour12: false }),
+    reprocesado:  false,
   };
 
-  wiz.counts.all++;
-  if (!normRec.success || normRec.metodo === 'ERROR') {
-    wiz.counts.error++;
-  } else if (normRec.es_procesado) {
-    wiz.counts.valid++;
+  const isErr = !normRec.success || normRec.metodo === 'ERROR';
+  const isObs = !normRec.es_procesado && !isErr;
+  const newStatus = isErr ? 'error' : (isObs ? 'observed' : 'valid');
+
+  // Buscar si ya existía este registro en la sesión activa
+  const existingIndex = wiz.allRecords.findIndex(
+    x => String(x.id_licencia) === String(normRec.id_licencia)
+  );
+
+  if (existingIndex !== -1) {
+    // Ya existía en una corrida anterior: actualizar estado y contadores
+    const prev = wiz.allRecords[existingIndex];
+    const prevErr = !prev.success || prev.metodo === 'ERROR';
+    const prevObs = !prev.es_procesado && !prevErr;
+    const prevStatus = prevErr ? 'error' : (prevObs ? 'observed' : 'valid');
+
+    // Descontar estado previo
+    wiz.counts[prevStatus] = Math.max(0, (wiz.counts[prevStatus] || 0) - 1);
+    // Sumar nuevo estado
+    wiz.counts[newStatus] = (wiz.counts[newStatus] || 0) + 1;
+
+    normRec.reprocesado = true;
+
+    // Reemplazar y posicionar al principio de la vista
+    wiz.allRecords.splice(existingIndex, 1);
+    wiz.allRecords.unshift(normRec);
   } else {
-    wiz.counts.observed++;
+    // Registro nuevo en la sesión
+    wiz.counts.all++;
+    wiz.counts[newStatus] = (wiz.counts[newStatus] || 0) + 1;
+
+    wiz.allRecords.unshift(normRec);
+    if (wiz.allRecords.length > 2000) wiz.allRecords.pop();
   }
 
   updateCounterBadges();
-
-  wiz.allRecords.unshift(normRec);
-  if (wiz.allRecords.length > 500) wiz.allRecords.pop();
-
   filterInspectorRecords(shouldScroll);
 }
 
@@ -847,6 +870,11 @@ function createConciseRecordCard(r) {
     ? `<div class="breakdown-item"><span class="breakdown-lbl">Referencia</span> <span class="breakdown-val" style="color:var(--mpch-navy);">${escapeHtml(r.referencia)}</span></div>`
     : '';
 
+  // Badge de Reintento / Actualización si aplica
+  const reproBadge = r.reprocesado
+    ? `<span class="badge" style="background:var(--slate-100); color:var(--mpch-navy); border:1px solid var(--slate-300); font-size:10px;">REPROCESADO</span>`
+    : '';
+
   return `
     <div class="record-card ${cardClass}">
       <div class="record-header">
@@ -855,6 +883,7 @@ function createConciseRecordCard(r) {
           <span class="record-index">#${r.index} de ${r.total || '?'}</span>
           ${statusBadge}
           ${motorBadge}
+          ${reproBadge}
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="font-size:11px; color:var(--slate-500);">${r.time || ''}</span>
@@ -911,11 +940,98 @@ function copyInspectorData() {
   });
 }
 
-function clearRecords() {
+function exportRecordsCSV() {
+  if (!wiz.allRecords || !wiz.allRecords.length) {
+    alert('No hay registros disponibles en el Inspector para exportar.');
+    return;
+  }
+
+  const headers = [
+    'ID',
+    'Direccion_Original',
+    'Tipo_Via',
+    'Nombre_Via',
+    'Numero_Via',
+    'ID_Via',
+    'Tipo_Zona',
+    'Nombre_Zona',
+    'ID_Zona',
+    'Manzana',
+    'Lote',
+    'Sublote',
+    'Referencia',
+    'Metodo_Normalizacion',
+    'Estado',
+    'Diagnostico_Observacion',
+    'Hora_Proceso'
+  ];
+
+  function escapeCsv(val) {
+    const s = String(val === undefined || val === null ? '' : val);
+    if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes(';')) {
+      return `"${s.replace(/"/g, '""')}"`;
+    }
+    return s;
+  }
+
+  const rows = wiz.allRecords.map(r => {
+    const estado = (!r.success || r.metodo === 'ERROR')
+      ? 'ERROR'
+      : (r.es_procesado ? 'NORMALIZADO' : 'OBSERVADO');
+
+    return [
+      escapeCsv(r.id_licencia),
+      escapeCsv(r.raw_text),
+      escapeCsv(r.tipo_via_name),
+      escapeCsv(r.nom_via),
+      escapeCsv(r.num_via),
+      escapeCsv(r.id_via),
+      escapeCsv(r.tipo_zona_name),
+      escapeCsv(r.nom_zona),
+      escapeCsv(r.id_zona),
+      escapeCsv(r.manzana),
+      escapeCsv(r.lote),
+      escapeCsv(r.slote),
+      escapeCsv(r.referencia),
+      escapeCsv(r.metodo),
+      escapeCsv(estado),
+      escapeCsv(r.observacion),
+      escapeCsv(r.time)
+    ].join(',');
+  });
+
+  const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
+  const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
+  a.href = url;
+  a.download = `reporte_catastral_mpch_${dateStr}_${timeStr}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+async function clearRecords() {
   wiz.allRecords = [];
   wiz.counts = { all: 0, valid: 0, observed: 0, error: 0 };
   updateCounterBadges();
   filterInspectorRecords();
+
+  kpi('kpiProcessed', 0);
+  kpi('kpiValid', 0);
+  kpi('kpiObserved', 0);
+  kpi('kpiFailed', 0);
+
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressLabel').textContent = '0 de 0 registros';
+
+  try {
+    await fetch('/api/clear-session', { method: 'POST' });
+  } catch (_) {}
 }
 
 // ── Iniciar / Detener Proceso ETL ────────────────────────────────────────────
@@ -925,19 +1041,10 @@ async function startETL() {
   const filter     = document.getElementById('inp_filter').value || 'pending';
   const require_ai = document.getElementById('inp_require_ai')?.checked ?? true;
 
-  wiz.allRecords = [];
-  wiz.counts = { all: 0, valid: 0, observed: 0, error: 0 };
-  updateCounterBadges();
+  // NO vaciar wiz.allRecords ni wiz.counts para preservar el historial acumulativo de la sesión
 
-  const iList = document.getElementById('inspectorCardsList');
-  if (iList) {
-    iList.innerHTML = '<p style="text-align:center; color:var(--slate-500); padding:40px; font-size:13px;">Iniciando proceso de normalización en tiempo real...</p>';
-  }
-
-  kpi('kpiProcessed', 0); kpi('kpiValid', 0);
-  kpi('kpiObserved', 0);  kpi('kpiFailed', 0);
   document.getElementById('progressFill').style.width = '0%';
-  document.getElementById('progressLabel').textContent = '0 de 0 registros';
+  document.getElementById('progressLabel').textContent = 'Preparando ejecución...';
 
   document.getElementById('btnStart').disabled = true;
   document.getElementById('btnStop').disabled  = false;

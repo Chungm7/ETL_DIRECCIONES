@@ -315,13 +315,56 @@ def test_cli_default_launches_gui():
 
 def test_api_shutdown_endpoint(client):
     """Verifica que /api/shutdown detenga el pipeline si corre y responda adecuadamente."""
-    with patch("os.kill") as mock_kill, \
-         patch("os._exit") as mock_exit, \
-         patch("time.sleep"):
+    with patch("threading.Thread") as mock_thread:
         response = client.post("/api/shutdown")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "SHUTTING_DOWN"
         assert "apagado correctamente" in data["message"]
+        mock_thread.assert_called_once()
+
+
+def test_api_clear_session_endpoint(client):
+    """Verifica que /api/clear-session limpie los registros y estadísticas acumuladas."""
+    state.recent_records.append({"id_licencia": 999, "raw_text": "CALLE TEST"})
+    state.log_history.append("Log de prueba")
+    
+    response = client.post("/api/clear-session")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "CLEARED"
+    assert len(state.recent_records) == 0
+    assert len(state.log_history) == 0
+
+
+def test_ui_state_cumulative_and_in_place_update():
+    """Verifica que reset_for_run conserve recent_records y que add_record actualice registros por ID."""
+    state.clear_session()
+    
+    # Registro 1
+    state.add_record({
+        "id_licencia": 101,
+        "raw_text": "AV BALTA 100",
+        "es_procesado": False,
+        "observacion": "SIN VIA VALIDA",
+    })
+    assert len(state.recent_records) == 1
+    assert state.recent_records[0]["es_procesado"] is False
+
+    # Nueva corrida: reset_for_run NO debe borrar los registros previos
+    state.reset_for_run(total=1, schema="public", table="direcciones")
+    assert len(state.recent_records) == 1
+
+    # Reintento del mismo ID 101 que ahora sí se procesa
+    state.add_record({
+        "id_licencia": 101,
+        "raw_text": "AV BALTA 100",
+        "es_procesado": True,
+        "observacion": "",
+    })
+    # Debe seguir teniendo longitud 1 (actualizado in-place, sin duplicar)
+    assert len(state.recent_records) == 1
+    assert state.recent_records[0]["es_procesado"] is True
+
 
 

@@ -73,7 +73,7 @@ class ExecutionState:
             self.is_running = True
             self.active_schema = schema
             self.active_table = table
-            self.recent_records.clear()
+            # No vaciar self.recent_records para preservar el historial acumulado de la sesión
             self.stats = {
                 "status": "RUNNING",
                 "total_to_process": total,
@@ -86,6 +86,25 @@ class ExecutionState:
                 "heuristic_records": 0,
                 "progress_pct": 0.0,
                 "start_time": time.time(),
+                "elapsed_seconds": 0,
+            }
+
+    def clear_session(self):
+        with self._lock:
+            self.recent_records.clear()
+            self.log_history.clear()
+            self.stats = {
+                "status": "IDLE",
+                "total_to_process": 0,
+                "processed": 0,
+                "valid": 0,
+                "observed": 0,
+                "failed": 0,
+                "ai_records": 0,
+                "hybrid_records": 0,
+                "heuristic_records": 0,
+                "progress_pct": 0.0,
+                "start_time": None,
                 "elapsed_seconds": 0,
             }
 
@@ -119,9 +138,18 @@ class ExecutionState:
             log_line += f" | Motivo: {obs}"
 
         with self._lock:
-            self.recent_records.append(record_data)
-            if len(self.recent_records) > self.max_recent_records:
-                self.recent_records.pop(0)
+            # Actualizar in-place si el registro ya existía en la sesión
+            updated_existing = False
+            for i, existing in enumerate(self.recent_records):
+                if existing.get("id_licencia") == pk:
+                    self.recent_records[i] = record_data
+                    updated_existing = True
+                    break
+
+            if not updated_existing:
+                self.recent_records.append(record_data)
+                if len(self.recent_records) > self.max_recent_records:
+                    self.recent_records.pop(0)
 
             self.log_history.append(log_line)
             if len(self.log_history) > self.max_log_history:
@@ -784,6 +812,13 @@ async def stop_pipeline():
     state.pipeline.request_stop()
     state.add_log("[INFO] Solicitud de detención manual recibida. Esperando finalización del registro actual...")
     return {"status": "STOPPING", "message": "Detención solicitada. El proceso finalizará en breve."}
+
+
+@app.post("/api/clear-session")
+async def clear_session_endpoint():
+    """Limpia los registros acumulados y logs de la sesión activa en el servidor."""
+    state.clear_session()
+    return {"status": "CLEARED", "message": "Historial de registros de la sesión reiniciado correctamente."}
 
 
 @app.post("/api/shutdown")
