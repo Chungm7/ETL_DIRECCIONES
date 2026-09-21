@@ -304,6 +304,86 @@ class TestAIAddressObservations(unittest.TestCase):
         self.assertEqual(dest3.id_zona, 136)
         self.assertEqual(dest3.num_via, "705")
 
+    def test_remigio_silva_tomas_gutierrez_id_1253(self):
+        """Verifica que 'REMIGIO SILVA-TOMAS GUTIERREZ00370' resuelva Thomas Gutiérrez (ID 648) y Remigio Silva (ID 92)."""
+        # Subcaso A: Ollama extrae zona como nom_via y calle en referencia con número pegado
+        self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            nom_via="REMIGIO SILVA",
+            referencia="TOMAS GUTIERREZ00370",
+            num_via=None,
+        )
+        rec_a = DireccionOrigen(id_licencia=1253, emp_direccion="REMIGIO SILVA-TOMAS GUTIERREZ00370")
+        dest_a = self.parser.parse(rec_a)
+        self.assertTrue(dest_a.es_procesado)
+        self.assertEqual(dest_a.id_via, 648)
+        self.assertEqual(dest_a.nom_via, "THOMAS GUTIERREZ")
+        self.assertEqual(dest_a.id_zona, 92)
+        self.assertEqual(dest_a.nom_zona, "REMIGIO B. SILVA")
+        self.assertEqual(dest_a.num_via, "370")
+        self.assertIsNone(dest_a.observacion)
+
+        # Subcaso B: Heurística pura (Ollama desconectado)
+        self.mock_ollama.parse_address_with_ai.return_value = None
+        rec_b = DireccionOrigen(id_licencia=1253, emp_direccion="REMIGIO SILVA-TOMAS GUTIERREZ00370")
+        dest_b = self.parser.parse(rec_b)
+        self.assertTrue(dest_b.es_procesado)
+        self.assertEqual(dest_b.id_via, 648)
+        self.assertEqual(dest_b.nom_via, "THOMAS GUTIERREZ")
+        self.assertEqual(dest_b.id_zona, 92)
+        self.assertEqual(dest_b.nom_zona, "REMIGIO B. SILVA")
+        self.assertEqual(dest_b.num_via, "370")
+        self.assertIsNone(dest_b.observacion)
+
+    def test_permutative_structures_via_first_and_zone_first(self):
+        """Verifica que tanto VIA - ZONA como ZONA - VIA resuelvan idénticamente."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        # Orden 1: Vía con número primero, luego Zona
+        rec1 = DireccionOrigen(id_licencia=201, emp_direccion="LAS AMERICAS 705 - SAN NICOLAS")
+        dest1 = self.parser.parse(rec1)
+        self.assertTrue(dest1.es_procesado)
+        self.assertIn(dest1.id_via, (869, 2910))
+        self.assertEqual(dest1.id_zona, 136)
+        self.assertEqual(dest1.num_via, "705")
+
+        # Orden 2: Zona primero, luego Vía con número
+        rec2 = DireccionOrigen(id_licencia=202, emp_direccion="SAN NICOLAS - LAS AMERICAS 705")
+        dest2 = self.parser.parse(rec2)
+        self.assertTrue(dest2.es_procesado)
+        self.assertIn(dest2.id_via, (869, 2910))
+        self.assertEqual(dest2.id_zona, 136)
+        self.assertEqual(dest2.num_via, "705")
+
+    def test_mixed_manzana_lote_and_via_number(self):
+        """Verifica que direcciones con Mz/Lt y número de vía simultáneos conserven ambos."""
+        self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            tipo_via_detectado="CALLE",
+            nom_via="TOMAS GUTIERREZ",
+            num_via="370",
+            tipo_zona_detectada="URBANIZACION",
+            nom_zona="REMIGIO SILVA",
+            manzana="B",
+            lote="14",
+        )
+        rec = DireccionOrigen(id_licencia=301, emp_direccion="URB. REMIGIO SILVA MZ. B LT. 14 CA. TOMAS GUTIERREZ 370")
+        dest = self.parser.parse(rec)
+        self.assertTrue(dest.es_procesado)
+        self.assertEqual(dest.id_via, 648)
+        self.assertEqual(dest.id_zona, 92)
+        self.assertEqual(dest.num_via, "370")
+        self.assertEqual(dest.manzana, "B")
+        self.assertEqual(dest.lote, "14")
+
+    def test_patazca_porcuya_synonym_resolution(self):
+        """Verifica que 'PATAZCA-PORCUYA00330' normalice a Porculla (ID 285) y Patazca (ID 40)."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+        rec = DireccionOrigen(id_licencia=1321, emp_direccion="PATAZCA-PORCUYA00330")
+        dest = self.parser.parse(rec)
+        self.assertTrue(dest.es_procesado)
+        self.assertEqual(dest.id_via, 285)
+        self.assertEqual(dest.id_zona, 40)
+        self.assertEqual(dest.num_via, "330")
+
 
 if __name__ == "__main__":
     unittest.main()

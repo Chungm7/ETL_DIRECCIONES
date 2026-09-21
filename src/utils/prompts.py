@@ -49,6 +49,7 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
 10. **Galerías Comerciales, Edificios y Condominios:** En direcciones comerciales como "GALERIAS NICOLAS CUGLIEVAN STAND 3 B-I" u "OFICINA 11 EDIFICIO LAS TORRES - BOLOGNESI 342", la vía es la calle o avenida ("CUGLIEVAN" o "BOLOGNESI"), y la denominación inmobiliaria/stand va en `referencia`.
 11. **Conflictos de Vías e Intersecciones:** Si se detectan dos vías oficiales juntas (ej. "JOSE OLAYA - MANUEL ARTEAGA 260"), asigna la vía con numeración a `nom_via` y describe explícitamente en `observaciones` la posible intersección o conflicto vial.
 12. **Zonas con Nombres de Fechas/Santos y Calles Interiores (ej. 'NUEVE DE OCTUBRE - LAS MARGARITAS 455'):** Si la dirección contiene una zona con nombre de fecha o santo (ej. "9 DE OCTUBRE", "SAN ANTONIO", "QUIÑONES") seguida de una calle interior (ej. "LAS MARGARITAS", "LOS PINOS"), asigna el nombre de la zona a `nom_zona: "9 DE OCTUBRE"`, la calle a `nom_via: "LAS MARGARITAS"`, `num_via: "455"`, y `referencia: null`. NUNCA descartes la calle interior.
+13. **Estructuras Permutativas y Zonas Antepuestas (ej. 'REMIGIO SILVA - TOMAS GUTIERREZ 00370' o 'ZONA - VIA NUM' o 'VIA NUM - ZONA'):** Las direcciones no siempre tienen el orden Vía -> Zona. Si encuentras primero una zona o urbanización (ej. "REMIGIO SILVA", "PATAZCA", "SANTA VICTORIA", "9 DE OCTUBRE") y a continuación una vía con numeración (ej. "TOMAS GUTIERREZ 00370", "PORCUYA 330"), DEBES asignar la urbanización a `nom_zona` ("REMIGIO SILVA") y la calle o avenida a `nom_via` ("TOMAS GUTIERREZ" o "THOMAS GUTIERREZ") con su respectivo `num_via` ("370"). NUNCA confundas la zona antepuesta con el nombre de la vía ni envíes la vía real al campo `referencia`. Si coexisten Mz/Lt y número municipal, preserva ambos en sus respectivos campos.
 
 ### Campos a extraer en el JSON:
 1. `tipo_via_detectado`: Tipo de vía normalizado ("AVENIDA", "CALLE", "JIRON", "PASAJE", "CARRETERA", etc.) o null si no se identifica vía.
@@ -207,6 +208,22 @@ Salida:
   "referencia": "FRENTE AL PARQUE PRINCIPAL",
   "confianza": 0.98,
   "observaciones": null
+}
+
+Entrada: "REMIGIO SILVA-TOMAS GUTIERREZ00370"
+Salida:
+{
+  "tipo_via_detectado": "CALLE",
+  "nom_via": "TOMAS GUTIERREZ",
+  "num_via": "370",
+  "tipo_zona_detectada": "URBANIZACION",
+  "nom_zona": "REMIGIO SILVA",
+  "manzana": null,
+  "lote": null,
+  "slote": null,
+  "referencia": null,
+  "confianza": 0.98,
+  "observaciones": "Estructura ZONA - VIA con variante ortográfica identificada"
 }
 
 REGLA OBLIGATORIA: Responde ÚNICAMENTE con el objeto JSON válido. Sin markdown ni texto adicional.

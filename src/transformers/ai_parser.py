@@ -106,62 +106,92 @@ class AIAddressParser:
                 heuristica_aplicada = True
 
             # Caso 2: Nombre de calle precedido por la ciudad (ej. "CHICLAYO ALFREDO LAPOINT 882" o "CHICLAYO - LUIS GONZALES 839")
-            match_city = re.search(
-                r"^(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\s*(?:-\s*)?([A-ZÁÉÍÓÚÑ\s\.\-]+?)\s+(\d+|S/N)\b",
-                raw_text,
-                re.IGNORECASE,
-            )
-            if match_city:
-                nom_via = match_city.group(1).strip(" ,.-")
-                if not num_via:
-                    num_via = match_city.group(2).strip()
-                if not tipo_via_detectado:
-                    tipo_via_detectado = "CALLE"
-                heuristica_aplicada = True
-
-            # Caso 3: Formato ZONA - VIA NUMERO (ej. "SAN NICOLAS - LAS AMERICAS 705" o "3 DE OCTUBRE - SALAVERRY 1731")
-            match_zona_via = re.search(
-                r"^([A-ZÁÉÍÓÚÑ0-9\s\.]+?)\s+-\s+([A-ZÁÉÍÓÚÑ0-9\s\.]+?)(?:,\s*(\d+|S/N)\b|\s+(\d+|S/N)\b|\s+(?:BLOCK|MZ|LT)\b|\s*-\s*|$)",
-                raw_text,
-                re.IGNORECASE,
-            )
-            if match_zona_via:
-                posible_1 = match_zona_via.group(1).strip()
-                posible_2 = match_zona_via.group(2).strip()
-                posible_num = match_zona_via.group(3) or match_zona_via.group(4)
-                if posible_1 not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
-                    m_v1 = CatalogMatcher.match_physical_via(posible_1)
-                    m_z1 = CatalogMatcher.match_physical_zona(posible_1)
-                    m_v2 = CatalogMatcher.match_physical_via(posible_2)
-                    m_z2 = CatalogMatcher.match_physical_zona(posible_2)
-
-                    # Prioridad 1: Zona - Vía (patrón dominante en Chiclayo)
-                    if m_z1 and m_v2:
-                        nom_zona = posible_1
-                        nom_via = posible_2
-                        if posible_num:
-                            num_via = posible_num
-                    # Prioridad 2: Vía - Zona (invertido)
-                    elif m_v1 and m_z2:
-                        nom_via = posible_1
-                        nom_zona = posible_2
-                        if posible_num:
-                            num_via = posible_num
-                    # Prioridad 3: Ambos exclusivamente vías -> conflicto
-                    elif m_v1 and m_v2:
-                        two_vias_conflict = (posible_1, posible_2)
-                        nom_via = posible_1
-                        if posible_num:
-                            num_via = posible_num
-                    else:
-                        if not nom_zona:
-                            nom_zona = posible_1
-                        if not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_2, re.IGNORECASE):
-                            if not nom_via:
-                                nom_via = posible_2
-                            if posible_num and not num_via:
-                                num_via = posible_num
+            if not nom_via:
+                match_city = re.search(
+                    r"^(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\s*(?:-\s*)?([A-ZÁÉÍÓÚÑ\s\.\-]+?)\s+(\d+|S/N)\b",
+                    raw_text,
+                    re.IGNORECASE,
+                )
+                if match_city:
+                    nom_via = match_city.group(1).strip(" ,.-")
+                    if not num_via:
+                        num_via = match_city.group(2).strip()
+                    if not tipo_via_detectado:
+                        tipo_via_detectado = "CALLE"
                     heuristica_aplicada = True
+
+            # Caso 3: Formato ZONA - VIA NUMERO (ej. "SAN NICOLAS - LAS AMERICAS 705", "REMIGIO SILVA-TOMAS GUTIERREZ00370" o "LAS AMERICAS 705 - SAN NICOLAS")
+            if not nom_via:
+                match_zona_via = re.search(
+                    r"^([A-ZÁÉÍÓÚÑ0-9\s\.]+?)\s*(?<!INT)(?<!DPTO)(?<!DEP)-\s*([A-ZÁÉÍÓÚÑ0-9\s\.]+?)(?:,\s*(\d+|S/N)\b|\s+(\d+|S/N)\b|\s+(?:BLOCK|MZ|LT)\b|\s*-\s*|$)",
+                    raw_text,
+                    re.IGNORECASE,
+                )
+                if match_zona_via:
+                    posible_1 = match_zona_via.group(1).strip()
+                    posible_2 = match_zona_via.group(2).strip()
+                    posible_num = match_zona_via.group(3) or match_zona_via.group(4)
+                    if posible_1 not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
+                        # Detectar y separar número pegado al final si existe
+                        m_p2_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', posible_2, re.IGNORECASE)
+                        cand_p2_num = None
+                        if m_p2_num and not CatalogMatcher.match_physical_via(posible_2):
+                            cand_p2 = posible_2[:m_p2_num.start()].strip(" ,.-")
+                            if cand_p2:
+                                cand_p2_num = m_p2_num.group(1).lstrip("0") or "S/N"
+                                posible_2 = cand_p2
+
+                        m_p1_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', posible_1, re.IGNORECASE)
+                        cand_p1_num = None
+                        if m_p1_num and not CatalogMatcher.match_physical_zona(posible_1):
+                            cand_p1 = posible_1[:m_p1_num.start()].strip(" ,.-")
+                            if cand_p1:
+                                cand_p1_num = m_p1_num.group(1).lstrip("0") or "S/N"
+                                posible_1 = cand_p1
+
+                        extracted_num = cand_p1_num or cand_p2_num or posible_num
+
+                        m_v1 = CatalogMatcher.match_physical_via(posible_1)
+                        m_z1 = CatalogMatcher.match_physical_zona(posible_1)
+                        m_v2 = CatalogMatcher.match_physical_via(posible_2)
+                        m_z2 = CatalogMatcher.match_physical_zona(posible_2)
+
+                        # Desambiguación por anclaje del número municipal a la vía
+                        if cand_p1_num and m_v1:
+                            nom_via = posible_1
+                            nom_zona = posible_2
+                            num_via = extracted_num
+                        elif (cand_p2_num or posible_num) and m_v2:
+                            nom_via = posible_2
+                            nom_zona = posible_1
+                            num_via = extracted_num
+                        # Prioridad 1: Zona - Vía (patrón dominante en Chiclayo)
+                        elif m_z1 and m_v2:
+                            nom_zona = posible_1
+                            nom_via = posible_2
+                            if extracted_num:
+                                num_via = extracted_num
+                        # Prioridad 2: Vía - Zona (invertido)
+                        elif m_v1 and m_z2:
+                            nom_via = posible_1
+                            nom_zona = posible_2
+                            if extracted_num:
+                                num_via = extracted_num
+                        # Prioridad 3: Ambos exclusivamente vías -> conflicto
+                        elif m_v1 and m_v2:
+                            two_vias_conflict = (posible_1, posible_2)
+                            nom_via = posible_1
+                            if extracted_num:
+                                num_via = extracted_num
+                        else:
+                            if not nom_zona:
+                                nom_zona = posible_1
+                            if not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_2, re.IGNORECASE):
+                                if not nom_via:
+                                    nom_via = posible_2
+                                if extracted_num and not num_via:
+                                    num_via = extracted_num
+                        heuristica_aplicada = True
 
         # 5. Respaldo Heurístico para numeración de vía (SOLO si existe una vía)
         if not nom_via:
@@ -382,7 +412,28 @@ class AIAddressParser:
                 nom_zona = None
                 heuristica_aplicada = True
 
-        # Inversión Via/Zona Checker (ej. nom_via='CESAR VALLEJO' y nom_zona='AGRICULTURA')
+        # Desacoplar numeración residual en nom_via o nom_zona si no fueron reconocidos directamente
+        if nom_via:
+            m_vnum = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', nom_via, re.IGNORECASE)
+            if m_vnum and not CatalogMatcher.match_physical_via(nom_via):
+                cand_clean_v = nom_via[:m_vnum.start()].strip(" ,.-")
+                if cand_clean_v and (CatalogMatcher.match_physical_via(cand_clean_v) or CatalogMatcher.match_physical_zona(cand_clean_v)):
+                    if not num_via:
+                        num_via = m_vnum.group(1).lstrip("0") or "S/N"
+                    nom_via = cand_clean_v
+                    heuristica_aplicada = True
+
+        if nom_zona:
+            m_znum = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', nom_zona, re.IGNORECASE)
+            if m_znum and not CatalogMatcher.match_physical_zona(nom_zona):
+                cand_clean_z = nom_zona[:m_znum.start()].strip(" ,.-")
+                if cand_clean_z and (CatalogMatcher.match_physical_zona(cand_clean_z) or CatalogMatcher.match_physical_via(cand_clean_z)):
+                    if not num_via:
+                        num_via = m_znum.group(1).lstrip("0") or "S/N"
+                    nom_zona = cand_clean_z
+                    heuristica_aplicada = True
+
+        # Inversión Via/Zona Checker y Reasignación Semántica Cruzada
         if nom_via and nom_zona:
             v_as_via = CatalogMatcher.match_physical_via(nom_via)
             v_as_zona = CatalogMatcher.match_physical_zona(nom_via)
@@ -394,6 +445,72 @@ class AIAddressParser:
                 heuristica_aplicada = True
             elif not v_as_via and v_as_zona and z_as_via:
                 nom_via, nom_zona = nom_zona, nom_via
+                heuristica_aplicada = True
+            elif not v_as_via and v_as_zona and not z_as_zona:
+                # nom_via es definitivamente una zona oficial y nom_zona no lo es -> invertir roles
+                nom_via, nom_zona = nom_zona, nom_via
+                heuristica_aplicada = True
+
+        # Reasignación Cruzada cuando uno de los roles está vacío o quedó en referencia
+        if nom_via and not nom_zona:
+            v_as_via = CatalogMatcher.match_physical_via(nom_via)
+            v_as_zona = CatalogMatcher.match_physical_zona(nom_via)
+
+            if not v_as_via and v_as_zona:
+                # nom_via es indiscutiblemente una ZONA oficial (ej. "REMIGIO SILVA", "SAN NICOLAS")
+                candidata_via = None
+
+                # 1. Buscar si la vía quedó en referencia
+                if referencia:
+                    m_ref_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', referencia, re.IGNORECASE)
+                    if m_ref_num and not CatalogMatcher.match_physical_via(referencia):
+                        ref_cand = referencia[:m_ref_num.start()].strip(" ,.-")
+                        if ref_cand:
+                            if not num_via:
+                                num_via = m_ref_num.group(1).lstrip("0") or "S/N"
+                            candidata_via = ref_cand
+                    else:
+                        ref_clean = re.sub(r"\b(?:N°?|NUM°?|NRO\.?|N|\d+)\b.*$", "", referencia).strip(" ,.-")
+                        if ref_clean:
+                            candidata_via = ref_clean
+
+                # 2. Si no hay en referencia, buscar en segmentos de raw_text
+                if not candidata_via and ("-" in raw_text or "," in raw_text):
+                    parts = [p.strip() for p in re.split(r"\s*[-–—,]\s*", raw_text) if p.strip()]
+                    for p in parts:
+                        m_p_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', p, re.IGNORECASE)
+                        if m_p_num and not CatalogMatcher.match_physical_via(p):
+                            p_clean = p[:m_p_num.start()].strip(" ,.-")
+                            p_cand_num = m_p_num.group(1).lstrip("0") or "S/N"
+                        else:
+                            p_clean = re.sub(r"\b(?:N°?|NUM°?|NRO\.?|N|\d+)\b.*$", "", p).strip(" ,.-")
+                            p_cand_num = None
+                        if p_clean and p_clean.upper() != nom_via.upper():
+                            candidata_via = p_clean
+                            if not num_via and p_cand_num:
+                                num_via = p_cand_num
+                            break
+
+                if candidata_via:
+                    m_cand_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', candidata_via, re.IGNORECASE)
+                    if m_cand_num and not CatalogMatcher.match_physical_via(candidata_via):
+                        if not num_via:
+                            num_via = m_cand_num.group(1).lstrip("0") or "S/N"
+                        candidata_via = candidata_via[:m_cand_num.start()].strip(" ,.-")
+
+                    nom_zona = nom_via
+                    nom_via = candidata_via
+                    if referencia and candidata_via.upper() in referencia.upper():
+                        referencia = None
+                    heuristica_aplicada = True
+
+        elif nom_zona and not nom_via:
+            z_as_via = CatalogMatcher.match_physical_via(nom_zona)
+            z_as_zona = CatalogMatcher.match_physical_zona(nom_zona)
+
+            if z_as_via and not z_as_zona:
+                nom_via = nom_zona
+                nom_zona = None
                 heuristica_aplicada = True
 
         # Limpieza de referencia y prevención de redundancia (preserva intactos nom_via y nom_zona)
