@@ -396,7 +396,7 @@ async def get_schemas():
 @app.get("/api/counts")
 async def get_table_counts(
     schema: str = Query("public"),
-    table: str = Query("direcciones_locales")
+    table: str = Query("direcciones_actual")
 ):
     """Devuelve los conteos catastrales de la tabla especificada."""
     try:
@@ -1055,9 +1055,10 @@ def fetch_db_records_for_export(
             candidates = [
                 state.active_table,
                 settings.db.table,
+                "direcciones_licencias",
+                "direcciones_actual",
                 f"{table}_actual",
                 table.replace("_actual", ""),
-                "direcciones_actual",
                 "direcciones",
             ]
             found = False
