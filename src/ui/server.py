@@ -210,6 +210,26 @@ class ExecutionState:
             except Exception:
                 pass
 
+    def shutdown(self):
+        """Detiene pipelines activos y despierta/cierra todas las colas de clientes SSE."""
+        with self._lock:
+            if self.is_running and self.pipeline:
+                try:
+                    self.pipeline.request_stop()
+                except Exception:
+                    pass
+            targets = list(self.clients)
+            self.clients.clear()
+
+        for q in targets:
+            try:
+                if self.loop and self.loop.is_running():
+                    self.loop.call_soon_threadsafe(q.put_nowait, None)
+                else:
+                    q.put_nowait(None)
+            except Exception:
+                pass
+
 
 state = ExecutionState()
 
@@ -218,7 +238,10 @@ state = ExecutionState()
 async def lifespan(app_instance: FastAPI):
     """Ciclo de vida de FastAPI: registra el event loop activo en el estado."""
     state.loop = asyncio.get_running_loop()
-    yield
+    try:
+        yield
+    finally:
+        state.shutdown()
 
 
 app = FastAPI(
@@ -1403,6 +1426,8 @@ async def shutdown_application():
     except Exception as e:
         logger.warning("Aviso al detener pipeline durante apagado: %s", e)
 
+    state.shutdown()
+
     def _trigger_ctrl_c():
         time.sleep(0.5)  # Breve lapso para despachar la respuesta HTTP 200 al navegador
         logger.info("[APAGADO] Apagando servicio de aplicación (equivalente a Ctrl + C)...")
@@ -1437,12 +1462,15 @@ async def sse_event_stream():
                 try:
                     # Esperar evento con timeout para enviar ping periódico
                     event = await asyncio.wait_for(client_queue.get(), timeout=15.0)
+                    if event is None:
+                        # Centinela de cierre: finalizar stream ordenadamente
+                        break
                     import json
                     json_data = json.dumps(event, default=str)
                     yield f"data: {json_data}\n\n"
                 except asyncio.TimeoutError:
                     yield ": ping\n\n"
-        except asyncio.CancelledError:
+        except (asyncio.CancelledError, GeneratorExit):
             pass
         finally:
             state.unregister_client(client_queue)

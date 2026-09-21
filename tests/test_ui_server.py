@@ -561,6 +561,20 @@ def test_api_export_db_end_to_end_real_db(client):
     assert len(res_excel.content) > 1000
 
 
+def test_clean_shutdown_interception():
+    """Verifica que state.shutdown() drene y cierre de forma limpia las colas SSE sin errores."""
+    import asyncio
+    q = asyncio.Queue()
+    state.register_client(q)
+    assert q in state.clients
+
+    state.shutdown()
+    assert len(state.clients) == 0
+    # Debe haber recibido el centinela None para cerrar el generador
+    assert q.get_nowait() is None
+
+
+
 
 
 

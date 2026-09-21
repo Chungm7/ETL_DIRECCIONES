@@ -485,9 +485,13 @@ def cmd_run_etl(
         batch_size=batch_size,
         require_ai=strict_ai,
     )
-    summary = pipeline.run(max_records=limit, filter_mode=filter_mode, process_all=process_all)
-
-    total_proc = max(1, summary.processed_records)
+    try:
+        summary = pipeline.run(max_records=limit, filter_mode=filter_mode, process_all=process_all)
+    except KeyboardInterrupt:
+        print("\n\n  ⚠️  Proceso ETL detenido por el usuario (Ctrl + C).")
+        print("  ✅ Los registros procesados hasta el momento fueron guardados exitosamente en la base de datos.")
+        print("  ✅ Sistema cerrado correctamente.\n")
+        return
     pct_ai = (summary.ai_records / total_proc) * 100
     pct_hybrid = (summary.hybrid_records / total_proc) * 100
     pct_heur = (summary.heuristic_records / total_proc) * 100
@@ -531,7 +535,10 @@ def cmd_run_etl(
 def cmd_run_gui(port: int = 8080, open_browser: bool = True) -> None:
     """Inicia el servidor backend y abre la interfaz gráfica de escritorio."""
     from src.ui.launcher import start_gui_server
-    start_gui_server(port=port, open_browser=open_browser)
+    try:
+        start_gui_server(port=port, open_browser=open_browser)
+    except (KeyboardInterrupt, SystemExit):
+        pass
 
 
 def interactive_menu() -> None:
@@ -556,10 +563,14 @@ def interactive_menu() -> None:
         print("0. 🚪 Salir")
         print("-" * 65)
 
-        if RICH_AVAILABLE and console:
-            choice = Prompt.ask("Selecciona una opción", choices=["0", "1", "2", "3", "4", "5", "6", "7"], default="3")
-        else:
-            choice = input("Selecciona una opción [3]: ").strip() or "3"
+        try:
+            if RICH_AVAILABLE and console:
+                choice = Prompt.ask("Selecciona una opción", choices=["0", "1", "2", "3", "4", "5", "6", "7"], default="3")
+            else:
+                choice = input("Selecciona una opción [3]: ").strip() or "3"
+        except (KeyboardInterrupt, EOFError):
+            print("\n\n  ¡Hasta pronto! Sistema cerrado correctamente.\n")
+            break
 
         if choice == "1":
             show_configuration_panel()
@@ -715,47 +726,52 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command is None or args.command in ("menu", "gui"):
-        # Por defecto, iniciar la interfaz gráfica directamente sin menús interactivos de consola
-        gui_port = getattr(args, "port", 8080)
-        open_brow = not getattr(args, "no_browser", False)
-        cmd_run_gui(port=gui_port, open_browser=open_brow)
-    elif args.command == "config":
-        show_configuration_panel()
-    elif args.command == "check-ollama":
-        cmd_check_ollama()
-    elif args.command == "check-db":
-        cmd_check_db(schema=args.schema)
-    elif args.command == "init-db":
-        cmd_init_ddl()
-    elif args.command == "test-ai":
-        cmd_test_ai(address=args.address)
-    elif args.command == "catalog":
-        if getattr(args, "catalog_action", None) == "list" or not getattr(args, "catalog_action", None):
-            cmd_catalog_list()
-        elif args.catalog_action == "add-via":
-            cmd_catalog_add_via(args.nombre, args.abreviatura, args.sinonimos)
-        elif args.catalog_action == "add-zona":
-            cmd_catalog_add_zona(args.nombre, args.abreviatura, args.sinonimos)
-    elif args.command == "run":
-        req_ai = None
-        if args.allow_fallback:
-            req_ai = False
-        elif args.require_ai:
-            req_ai = True
+    try:
+        if args.command is None or args.command in ("menu", "gui"):
+            # Por defecto, iniciar la interfaz gráfica directamente sin menús interactivos de consola
+            gui_port = getattr(args, "port", 8080)
+            open_brow = not getattr(args, "no_browser", False)
+            cmd_run_gui(port=gui_port, open_browser=open_brow)
+        elif args.command == "config":
+            show_configuration_panel()
+        elif args.command == "check-ollama":
+            cmd_check_ollama()
+        elif args.command == "check-db":
+            cmd_check_db(schema=args.schema)
+        elif args.command == "init-db":
+            cmd_init_ddl()
+        elif args.command == "test-ai":
+            cmd_test_ai(address=args.address)
+        elif args.command == "catalog":
+            if getattr(args, "catalog_action", None) == "list" or not getattr(args, "catalog_action", None):
+                cmd_catalog_list()
+            elif args.catalog_action == "add-via":
+                cmd_catalog_add_via(args.nombre, args.abreviatura, args.sinonimos)
+            elif args.catalog_action == "add-zona":
+                cmd_catalog_add_zona(args.nombre, args.abreviatura, args.sinonimos)
+        elif args.command == "run":
+            req_ai = None
+            if args.allow_fallback:
+                req_ai = False
+            elif args.require_ai:
+                req_ai = True
 
-        cmd_run_etl(
-            schema=args.schema,
-            limit=args.limit,
-            batch_size=args.batch_size,
-            mode=args.mode,
-            require_ai=req_ai,
-            process_all=args.all,
-            reprocess_observed=args.reprocess_observed,
-            force=args.force,
-        )
-    elif args.command == "gui":
-        cmd_run_gui(port=args.port, open_browser=not args.no_browser)
+            cmd_run_etl(
+                schema=args.schema,
+                limit=args.limit,
+                batch_size=args.batch_size,
+                mode=args.mode,
+                require_ai=req_ai,
+                process_all=args.all,
+                reprocess_observed=args.reprocess_observed,
+                force=args.force,
+            )
+        elif args.command == "gui":
+            cmd_run_gui(port=args.port, open_browser=not args.no_browser)
+    except (KeyboardInterrupt, SystemExit) as e:
+        if isinstance(e, SystemExit) and e.code:
+            sys.exit(e.code)
+        sys.exit(0)
 
 
 

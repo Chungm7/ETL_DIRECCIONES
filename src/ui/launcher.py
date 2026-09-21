@@ -1,5 +1,6 @@
 """Lanzador de escritorio para la interfaz gráfica del ETL MPCH en ventana autónoma."""
 
+import asyncio
 import logging
 import os
 import shutil
@@ -100,9 +101,30 @@ def start_gui_server(port: int = 8080, open_browser: bool = True, host: str = "1
         port=actual_port,
         log_level="info",
         access_log=False,
+        timeout_graceful_shutdown=2,
     )
     server = uvicorn.Server(uvicorn_config)
-    server.run()
+
+    # Interceptar el ciclo principal para drenar conexiones SSE activas de inmediato al pedir salida
+    orig_main_loop = server.main_loop
+
+    async def _clean_main_loop():
+        await orig_main_loop()
+        from src.ui.server import state
+        state.shutdown()
+        await asyncio.sleep(0.05)
+
+    server.main_loop = _clean_main_loop
+
+    try:
+        server.run()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+    finally:
+        print("\n" + "=" * 65)
+        print("  ✅ SISTEMA APAGADO CORRECTAMENTE")
+        print("  El servidor web y los procesos de la aplicación se han cerrado.")
+        print("=" * 65 + "\n")
 
 
 if __name__ == "__main__":

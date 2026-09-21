@@ -38,4 +38,9 @@ except ModuleNotFoundError as e:
     sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (KeyboardInterrupt, SystemExit) as e:
+        if isinstance(e, SystemExit) and e.code:
+            sys.exit(e.code)
+        sys.exit(0)
