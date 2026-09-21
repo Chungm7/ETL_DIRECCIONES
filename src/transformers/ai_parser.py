@@ -327,7 +327,7 @@ class AIAddressParser:
             if not referencia:
                 referencia = piso_val
                 heuristica_aplicada = True
-            elif piso_val not in referencia:
+            elif not re.search(r"\bPISO\b", referencia, re.IGNORECASE):
                 referencia = f"{referencia} - {piso_val}".strip()
                 heuristica_aplicada = True
 
@@ -352,17 +352,18 @@ class AIAddressParser:
                     break
 
         # Respaldo Heurístico para Blocks / Pabellones / Torres
-        match_block = re.search(r"\b(BLOCK\s+[A-Z0-9\s\-]+|TORRE\s+[A-Z0-9\s\-]+)\b", raw_text, re.IGNORECASE)
+        match_block = re.search(r"(?<!DE LA\s)(?<!HAYA DE LA\s)\b(BLOCK\s+[A-Z0-9\-]+|TORRE\s+(?!N°|NRO|NUM|N\b)[A-Z0-9\-]+)\b", raw_text, re.IGNORECASE)
         if match_block:
             block_val = match_block.group(1).strip()
-            if not referencia:
-                referencia = block_val
-            elif block_val not in referencia:
-                referencia = f"{referencia} - {block_val}".strip()
-            heuristica_aplicada = True
+            if not nom_via or block_val.upper() not in nom_via.upper():
+                if not referencia:
+                    referencia = block_val
+                elif block_val not in referencia:
+                    referencia = f"{referencia} - {block_val}".strip()
+                heuristica_aplicada = True
 
         # Si nom_via contiene dos vías separadas por guión, 'Y', 'CON', 'ESQ'
-        if nom_via and any(sep in nom_via for sep in (" - ", " Y ", " CON ", " ESQ ", " CRUCE ")):
+        if nom_via and not CatalogMatcher.match_physical_via(nom_via) and any(sep in nom_via for sep in (" - ", " Y ", " CON ", " ESQ ", " CRUCE ")):
             parts = re.split(r"\s+(?:-|Y|CON|ESQ\.?|CRUCE)\s+", nom_via, flags=re.IGNORECASE)
             if len(parts) >= 2:
                 p1 = parts[0].strip()
@@ -381,8 +382,11 @@ class AIAddressParser:
                     nom_via = p1
                     heuristica_aplicada = True
                 elif m_v1 and m_v2:
-                    two_vias_conflict = (p1, p2)
-                    nom_via = p1
+                    if m_v1.get("id") != m_v2.get("id"):
+                        two_vias_conflict = (p1, p2)
+                        nom_via = p1
+                    else:
+                        nom_via = m_v1.get("nom_via", p1)
 
         # Limpieza de prefijos de centros comerciales, galerías o edificios en nom_via
         if nom_via:
@@ -402,9 +406,18 @@ class AIAddressParser:
                     num_via = None
                     heuristica_aplicada = True
 
+        # Limpieza de mercados y establecimientos comerciales asignados a nom_via
+        if nom_via and not CatalogMatcher.match_physical_via(nom_via) and re.match(r"^(?:MERCADO|MCDO|MCDONALD|CENTRO\s+DE\s+ABASTOS|C\.?C\.?|CENTRO\s+COMERCIAL|MALL|FERIA)\b", nom_via, re.IGNORECASE):
+            if not referencia:
+                referencia = nom_via
+            elif nom_via not in referencia:
+                referencia = f"{nom_via} - {referencia}".strip(" -")
+            nom_via = None
+            heuristica_aplicada = True
+
         # Limpieza de establecimientos comerciales asignados erróneamente como zona
         if nom_zona:
-            if not CatalogMatcher.match_physical_zona(nom_zona) and re.match(r"^(?:GALERIAS?|EDIFICIO|STAND|C\.?C\.?|CENTRO\s+COMERCIAL|MERCADO|COMPLEJO)\b", nom_zona, re.IGNORECASE):
+            if not CatalogMatcher.match_physical_zona(nom_zona) and re.match(r"^(?:GALERIAS?|EDIFICIO|STAND|C\.?C\.?|CENTRO\s+COMERCIAL|MERCADO|MCDO|MCDONALD|SUPERMERCADO|COMPLEJO|FERIA|MALL)\b", nom_zona, re.IGNORECASE):
                 if not referencia:
                     referencia = nom_zona
                 elif nom_zona not in referencia:
@@ -440,16 +453,38 @@ class AIAddressParser:
             z_as_via = CatalogMatcher.match_physical_via(nom_zona)
             z_as_zona = CatalogMatcher.match_physical_zona(nom_zona)
 
-            if not v_as_via and v_as_zona and z_as_via and not z_as_zona:
-                nom_via, nom_zona = nom_zona, nom_via
+            # Blindaje contra falsas inversiones: Si ambos tienen prefijos tipográficos explícitos
+            # (ej. "AV. SANTA VICTORIA" y "PP.JJ. BUENOS AIRES"), NUNCA invertir.
+            raw_upper = raw_text.upper()
+            via_has_via_prefix = bool(
+                re.match(r"^(?:AV\.?|AVENIDA|CA\.?|CALLE|JR\.?|JIRON|PSJ\.?|PASAJE|PROL\.?|PROLONGACION|MALECON|ALAMEDA)\b", nom_via, re.IGNORECASE)
+                or re.search(rf"\b(?:AV\.?|AVENIDA|CA\.?|CALLE|JR\.?|JIRON|PSJ\.?|PASAJE|PROL\.?)\s+{re.escape(nom_via[:10])}", raw_upper)
+            )
+            zona_has_zone_prefix = bool(
+                re.match(r"^(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?|ASENTAMIENTO\s+HUMANO|CASERIO|FUNDO|COOP\.?|COOPERATIVA|SECTOR|ETAPA)\b", nom_zona, re.IGNORECASE)
+                or re.search(rf"\b(?:URB\.?|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?|ASENTAMIENTO\s+HUMANO|CASERIO|FUNDO|COOP\.?)\s+{re.escape(nom_zona[:10])}", raw_upper)
+            )
+
+            can_swap = not (via_has_via_prefix and zona_has_zone_prefix)
+
+            # Caso 1: Cruzada de vías (Intersección en esquina asignada a zona, ej: CA. ARICA N 1028 - HEROES CIVILES N 178)
+            if v_as_via and z_as_via and not z_as_zona and not zona_has_zone_prefix:
+                # nom_zona es en realidad una segunda vía (calle transversal / esquina)
+                cross_ref = f"ESQ. {z_as_via.get('nom_via', nom_zona)}"
+                if not referencia:
+                    referencia = cross_ref
+                elif cross_ref not in referencia:
+                    referencia = f"{cross_ref} - {referencia}".strip(" -")
+                nom_zona = None
                 heuristica_aplicada = True
-            elif not v_as_via and v_as_zona and z_as_via:
-                nom_via, nom_zona = nom_zona, nom_via
-                heuristica_aplicada = True
-            elif not v_as_via and v_as_zona and not z_as_zona:
-                # nom_via es definitivamente una zona oficial y nom_zona no lo es -> invertir roles
-                nom_via, nom_zona = nom_zona, nom_via
-                heuristica_aplicada = True
+            elif can_swap:
+                if not v_as_via and v_as_zona and z_as_via and not z_as_zona:
+                    nom_via, nom_zona = nom_zona, nom_via
+                    heuristica_aplicada = True
+                elif not v_as_via and v_as_zona and not z_as_zona and not via_has_via_prefix:
+                    # nom_via es definitivamente una zona oficial y nom_zona no lo es -> invertir roles
+                    nom_via, nom_zona = nom_zona, nom_via
+                    heuristica_aplicada = True
 
         # Reasignación Cruzada cuando uno de los roles está vacío o quedó en referencia
         if nom_via and not nom_zona:

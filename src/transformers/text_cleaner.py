@@ -21,6 +21,20 @@ class TextCleaner:
         # 2. Despegar guiones entre palabras y números (ej. 'SAN NICOLAS-LAS AMERICAS' -> 'SAN NICOLAS - LAS AMERICAS')
         clean = re.sub(r"([A-ZÁÉÍÓÚÑ0-9])\-([A-ZÁÉÍÓÚÑ0-9])", r"\1 - \2", clean)
 
+        # 2c. Normalizar abreviaturas institucionales y comerciales peruanas comunes
+        # Evita alucinaciones en modelos de lenguaje (ej. 'MCDO.' -> 'MERCADO', no 'MCDONALD\'S')
+        clean = re.sub(r"\bMCDO\.(?=[A-ZÁÉÍÓÚÑ])", "MERCADO ", clean)
+        clean = re.sub(r"\bSTA\.(?=[A-ZÁÉÍÓÚÑ])", "SANTA ", clean)
+        clean = re.sub(r"\bSTO\.(?=[A-ZÁÉÍÓÚÑ])", "SANTO ", clean)
+        clean = re.sub(r"\bMCDO(?:\.|\b)", "MERCADO", clean)
+        clean = re.sub(r"\bSTA(?:\.|\b)", "SANTA", clean)
+        clean = re.sub(r"\bSTO(?:\.|\b)", "SANTO", clean)
+        clean = re.sub(r"\bTDA(?:\.|\b)", "TIENDA", clean)
+        clean = re.sub(r"\bSTD(?:\.|\b)", "STAND", clean)
+        clean = re.sub(r"\bPTO(?:\.|\b)", "PUESTO", clean)
+        clean = re.sub(r"\bEXT(?:\.|\b)", "EXTERIOR", clean)
+        clean = re.sub(r"\bCDRA(?:\.|\b)", "CUADRA", clean)
+
         # 3. Despegar nombres de ciudades o distritos unidos a nombres de calles (ej. CHICLAYOALFREDO -> CHICLAYO ALFREDO)
         clean = re.sub(
             r"^(CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO|REQUE|MONSEFU)([A-ZÁÉÍÓÚ])",
