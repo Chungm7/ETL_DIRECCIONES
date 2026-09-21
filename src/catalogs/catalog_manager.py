@@ -45,6 +45,7 @@ class CatalogManager:
     _vias_chiclayo_cache: Optional[List[Dict[str, Any]]] = None
     _zonas_chiclayo_cache: Optional[List[Dict[str, Any]]] = None
     _physical_vias_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
+    _physical_vias_multi_lookup_cache: Optional[Dict[str, List[Dict[str, Any]]]] = None
     _physical_zonas_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
 
     @classmethod
@@ -55,6 +56,7 @@ class CatalogManager:
         cls._vias_chiclayo_cache = None
         cls._zonas_chiclayo_cache = None
         cls._physical_vias_lookup_cache = None
+        cls._physical_vias_multi_lookup_cache = None
         cls._physical_zonas_lookup_cache = None
         # Notificar a CatalogMatcher para refrescar sus mapeos
         try:
@@ -154,6 +156,17 @@ class CatalogManager:
         "LA PRIMAVERA 3 ETAPA": "LA PRIMAVERA III",
         "LA PRIMAVERA 3RA ETAPA": "LA PRIMAVERA III",
         "3 DE OCTUBRE": "3 DE OCTUBRE - PAMPA Y MOLINO DE VIENTO",
+        "9 DE OCTUBRE": "9 DE OCTUBRE",
+        "09 DE OCTUBRE": "9 DE OCTUBRE",
+        "NUEVE DE OCTUBRE": "9 DE OCTUBRE",
+        "PJ 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "PJ NUEVE DE OCTUBRE": "9 DE OCTUBRE",
+        "AH 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "AH NUEVE DE OCTUBRE": "9 DE OCTUBRE",
+        "PUEBLO JOVEN 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "PUEBLO JOVEN NUEVE DE OCTUBRE": "9 DE OCTUBRE",
+        "ASENTAMIENTO HUMANO 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "ASENTAMIENTO HUMANO NUEVE DE OCTUBRE": "9 DE OCTUBRE",
         "SAN LORENZO": "SAN LORENZO",
         "SANTA VICTORIA": "SANTA VICTORIA",
         "LAS BRISAS": "LAS BRISAS",
@@ -191,6 +204,44 @@ class CatalogManager:
 
             cls._physical_vias_lookup_cache = lookup
         return cls._physical_vias_lookup_cache
+
+    @classmethod
+    def get_physical_vias_multi_lookup(cls) -> Dict[str, List[Dict[str, Any]]]:
+        """Retorna un índice rápido {nombre_o_sinonimo_limpio: [via_dict_1, via_dict_2, ...]}
+        para soportar vías homónimas en distintos sectores de Chiclayo.
+        """
+        if cls._physical_vias_multi_lookup_cache is None:
+            multi: Dict[str, List[Dict[str, Any]]] = {}
+
+            def _add(key: str, item: Dict[str, Any]):
+                if not key:
+                    return
+                if key not in multi:
+                    multi[key] = []
+                if item not in multi[key]:
+                    multi[key].append(item)
+
+            for item in cls.get_vias_chiclayo_catalog():
+                nom = item["nom_via"].strip().upper()
+                clean_nom = _remove_accents(nom)
+                _add(nom, item)
+                _add(clean_nom, item)
+
+                for syn in item.get("sinonimos", []):
+                    s_clean = str(syn).strip().upper()
+                    s_noacc = _remove_accents(s_clean)
+                    _add(s_clean, item)
+                    _add(s_noacc, item)
+
+            for alias, target in cls.EXTRA_VIAS_SYNONYMS.items():
+                target_clean = target.strip().upper()
+                targets = multi.get(target_clean) or multi.get(_remove_accents(target_clean)) or []
+                for target_obj in targets:
+                    _add(alias, target_obj)
+                    _add(_remove_accents(alias), target_obj)
+
+            cls._physical_vias_multi_lookup_cache = multi
+        return cls._physical_vias_multi_lookup_cache
 
     @classmethod
     def get_physical_zonas_lookup(cls) -> Dict[str, Dict[str, Any]]:

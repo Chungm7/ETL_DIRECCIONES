@@ -176,11 +176,21 @@ class CatalogMatcher:
         t = re.sub(r"\b(?:3RA|3ERA|3\s*RA|III|3)\s+ETAPA\b|\bETAPA\s+(?:3RA|3ERA|III|3)\b", "TERCERA ETAPA", t, flags=re.IGNORECASE)
         t = re.sub(r"\b(?:4TA|4TO|4\s*TA|IV|4)\s+ETAPA\b|\bETAPA\s+(?:4TA|4TO|IV|4)\b", "CUARTA ETAPA", t, flags=re.IGNORECASE)
         t = re.sub(r"\b(?:5TA|5TO|5\s*TA|V|5)\s+ETAPA\b|\bETAPA\s+(?:5TA|5TO|V|5)\b", "QUINTA ETAPA", t, flags=re.IGNORECASE)
-        # Subprogramas y sectores
-        t = re.sub(r"\bSUBPROGRAMA\s+(?:1|I)\b", "SUBPROGRAMA I", t, flags=re.IGNORECASE)
-        t = re.sub(r"\bSUBPROGRAMA\s+(?:2|II)\b", "SUBPROGRAMA II", t, flags=re.IGNORECASE)
-        t = re.sub(r"\b(?:1ER|1RO|1|I)\s+SECTOR\b|\bSECTOR\s+(?:1|I)\b", "SECTOR I", t, flags=re.IGNORECASE)
-        t = re.sub(r"\b(?:2DO|2|II)\s+SECTOR\b|\bSECTOR\s+(?:2|II)\b", "SECTOR II", t, flags=re.IGNORECASE)
+        # Limpieza de ceros iniciales en números aislados (ej. '09 DE OCTUBRE' -> '9 DE OCTUBRE')
+        t = re.sub(r"\b0+(\d+)\b", r"\1", t)
+        # Normalización de números escritos en letras para fechas/calles/zonas
+        t = re.sub(r"\bNUEVE\b", "9", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bOCHO\b", "8", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bSIETE\b", "7", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bSEIS\b", "6", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bTRES\b", "3", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bDOS\b", "2", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bPRIMERO\b", "1", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bVEINTIOCHO\b", "28", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bVEINTISIETE\b", "27", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bQUINCE\b", "15", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bCATORCE\b", "14", t, flags=re.IGNORECASE)
+        t = re.sub(r"\bDOCE\b", "12", t, flags=re.IGNORECASE)
         return re.sub(r"\s+", " ", t).strip()
 
     @classmethod
@@ -258,10 +268,11 @@ class CatalogMatcher:
         cls,
         text: str,
         tipo_via_hint: Optional[int] = None,
+        sector_hint: Optional[str] = None,
         top_k: int = 5,
         min_score: float = 0.55,
     ) -> List[Tuple[Dict[str, Any], float]]:
-        """Encuentra los top_k candidatos oficiales de vías de Chiclayo ordenados por similitud."""
+        """Encuentra los top_k candidatos oficiales de vías de Chiclayo ordenados por similitud y sector."""
         if not text:
             return []
         q_norm = cls.normalize_variants_text(text)
@@ -308,6 +319,13 @@ class CatalogMatcher:
             if tipo_via_hint and item.get("id_tipo_via") == tipo_via_hint and score >= 0.6:
                 score += 0.03
 
+            # Boost sectorial si la vía pertenece al sector de la zona identificada
+            if sector_hint and item.get("sector") and score >= 0.50:
+                s_targets = set(str(sector_hint).replace(",", " ").split())
+                v_sectors = set(str(item.get("sector") or "").replace(",", " ").split())
+                if s_targets & v_sectors:
+                    score += 0.08
+
             if score >= min_score:
                 scored.append((item, score))
 
@@ -321,9 +339,10 @@ class CatalogMatcher:
         tipo_via_hint: Optional[int] = None,
         raw_text: Optional[str] = None,
         ollama_service: Optional[Any] = None,
+        sector_hint: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
         """Homologa el nombre de una vía contra el catálogo oficial de vías físicas de Chiclayo,
-        apoyándose en coincidencia exacta, sinónimos y desambiguación con IA.
+        apoyándose en coincidencia exacta, filtro sectorial para vías homónimas, sinónimos y desambiguación con IA.
         """
         if not text:
             return None
@@ -332,12 +351,50 @@ class CatalogMatcher:
             return None
         no_acc = TextCleaner.remove_accents(clean)
 
+        multi_lookup = CatalogManager.get_physical_vias_multi_lookup()
         lookup = CatalogManager.get_physical_vias_lookup()
-        # 1. Búsqueda directa por nombre o sinónimo exacto (0ms)
-        if clean in lookup:
-            return lookup[clean]
-        if no_acc in lookup:
-            return lookup[no_acc]
+
+        # Inferencia de tipo de vía a partir del texto de entrada si no fue provisto
+        inferred_tipo_via = tipo_via_hint
+        if not inferred_tipo_via:
+            if re.match(r"^(?:AV\.|AVENIDA|AV)\s+", clean, re.IGNORECASE):
+                inferred_tipo_via = 1
+            elif re.match(r"^(?:CA\.|CALLE|CL\.|CL|CA)\s+", clean, re.IGNORECASE):
+                inferred_tipo_via = 2
+            elif re.match(r"^(?:JR\.|JIRON|JIRÓN|JR)\s+", clean, re.IGNORECASE):
+                inferred_tipo_via = 3
+            elif re.match(r"^(?:PJE\.|PASAJE|PSJ\.|PSJ|PJE)\s+", clean, re.IGNORECASE):
+                inferred_tipo_via = 4
+
+        def _resolve_sector(entries: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+            if not entries:
+                return None
+            if len(entries) == 1:
+                return entries[0]
+            if sector_hint:
+                s_targets = set(str(sector_hint).replace(",", " ").split())
+                s_matches = [itm for itm in entries if s_targets & set(str(itm.get("sector") or "").replace(",", " ").split())]
+                if s_matches:
+                    if inferred_tipo_via:
+                        t_matches = [itm for itm in s_matches if itm.get("id_tipo_via") == inferred_tipo_via]
+                        if t_matches:
+                            f_matches = [itm for itm in t_matches if itm.get("condicion") == "F"]
+                            return f_matches[0] if f_matches else t_matches[0]
+                    f_matches = [itm for itm in s_matches if itm.get("condicion") == "F"]
+                    return f_matches[0] if f_matches else s_matches[0]
+            if inferred_tipo_via:
+                t_matches = [itm for itm in entries if itm.get("id_tipo_via") == inferred_tipo_via]
+                if t_matches:
+                    f_matches = [itm for itm in t_matches if itm.get("condicion") == "F"]
+                    return f_matches[0] if f_matches else t_matches[0]
+            f_entries = [e for e in entries if e.get("condicion") == "F"]
+            return f_entries[0] if f_entries else entries[0]
+
+        # 1. Búsqueda directa por nombre o sinónimo exacto con desambiguación sectorial (0ms)
+        if clean in multi_lookup:
+            return _resolve_sector(multi_lookup[clean])
+        if no_acc in multi_lookup:
+            return _resolve_sector(multi_lookup[no_acc])
 
         # 2. Quitar prefijos comunes de vías
         clean_noprefix = re.sub(
@@ -347,18 +404,24 @@ class CatalogMatcher:
             flags=re.IGNORECASE,
         ).strip()
         no_acc_noprefix = TextCleaner.remove_accents(clean_noprefix)
-        if clean_noprefix in lookup:
-            return lookup[clean_noprefix]
-        if no_acc_noprefix in lookup:
-            return lookup[no_acc_noprefix]
+        if clean_noprefix in multi_lookup:
+            return _resolve_sector(multi_lookup[clean_noprefix])
+        if no_acc_noprefix in multi_lookup:
+            return _resolve_sector(multi_lookup[no_acc_noprefix])
 
         # 3. Normalización léxica de variantes
         norm_text = cls.normalize_variants_text(clean_noprefix)
-        if norm_text in lookup:
-            return lookup[norm_text]
+        if norm_text in multi_lookup:
+            return _resolve_sector(multi_lookup[norm_text])
 
-        # 4. Búsqueda de candidatos difusos
-        candidates = cls.find_via_candidates(clean_noprefix, tipo_via_hint, top_k=8, min_score=0.50)
+        # 4. Búsqueda de candidatos difusos con sector_hint
+        candidates = cls.find_via_candidates(
+            clean_noprefix,
+            tipo_via_hint=tipo_via_hint,
+            sector_hint=sector_hint,
+            top_k=8,
+            min_score=0.50,
+        )
         if not candidates:
             return None
 

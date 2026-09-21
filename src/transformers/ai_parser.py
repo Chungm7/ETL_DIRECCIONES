@@ -54,32 +54,34 @@ class AIAddressParser:
         if not ia_exitosa:
             heuristica_aplicada = True
 
-        # 2.5 Corrección y reconocimiento de vías emblemáticas con fechas o números (ej. '7 DE ENERO')
-        known_date_streets = [
-            "7 DE ENERO SUR", "SIETE DE ENERO SUR", "7 DE ENERO", "SIETE DE ENERO",
-            "8 DE OCTUBRE", "9 DE OCTUBRE", "NUEVE DE OCTUBRE", "28 DE JULIO",
-            "27 DE JULIO", "1 DE MAYO", "1 DE NOVIEMBRE", "15 DE ABRIL",
-            "14 DE ABRIL", "12 DE FEBRERO", "6 DE JUNIO", "7 ENSAYOS"
-        ]
-        for kds in known_date_streets:
-            if re.search(rf"\b{re.escape(kds)}\b", raw_text, re.IGNORECASE):
-                if not nom_via or nom_via.upper() != kds:
-                    nom_via = kds
-                    after_kds = raw_text[raw_text.upper().find(kds) + len(kds):]
-                    m_num_kds = re.search(r"\b(?:N°?|NUM°?|NRO\.?|N)\s*(\d+)\b", after_kds, re.IGNORECASE)
-                    if m_num_kds:
-                        num_via = m_num_kds.group(1)
-                    else:
-                        m_num_gen = re.search(r"\b(\d+)\b", after_kds)
-                        if m_num_gen:
-                            num_via = m_num_gen.group(1)
-                    if not tipo_via_detectado:
-                        before_kds = raw_text[:raw_text.upper().find(kds)]
-                        via_prefixes = CatalogManager.get_via_prefix_regex_str()
-                        m_pre = re.search(rf"\b({via_prefixes})\b", before_kds, re.IGNORECASE)
-                        tipo_via_detectado = m_pre.group(1).upper() if m_pre else "CALLE"
-                    heuristica_aplicada = True
-                break
+        # 2.5 Respaldo para vías emblemáticas con fechas o números cuando nom_via está vacío o truncado
+        if not nom_via or nom_via.upper() in ("ENERO", "OCTUBRE", "JULIO", "MAYO", "NOVIEMBRE", "ABRIL", "FEBRERO", "JUNIO", "ENSAYOS"):
+            known_date_streets = [
+                "7 DE ENERO SUR", "SIETE DE ENERO SUR", "7 DE ENERO", "SIETE DE ENERO",
+                "8 DE OCTUBRE", "9 DE OCTUBRE", "NUEVE DE OCTUBRE", "28 DE JULIO",
+                "27 DE JULIO", "1 DE MAYO", "1 DE NOVIEMBRE", "15 DE ABRIL",
+                "14 DE ABRIL", "12 DE FEBRERO", "6 DE JUNIO", "7 ENSAYOS"
+            ]
+            for kds in known_date_streets:
+                if re.search(rf"\b{re.escape(kds)}\b", raw_text, re.IGNORECASE):
+                    # Verificar que la fecha no corresponda a la zona
+                    if not nom_zona or kds not in nom_zona.upper():
+                        nom_via = kds
+                        after_kds = raw_text[raw_text.upper().find(kds) + len(kds):]
+                        m_num_kds = re.search(r"\b(?:N°?|NUM°?|NRO\.?|N)\s*(\d+)\b", after_kds, re.IGNORECASE)
+                        if m_num_kds:
+                            num_via = m_num_kds.group(1)
+                        elif not num_via:
+                            m_num_gen = re.search(r"\b(\d+)\b", after_kds)
+                            if m_num_gen:
+                                num_via = m_num_gen.group(1)
+                        if not tipo_via_detectado:
+                            before_kds = raw_text[:raw_text.upper().find(kds)]
+                            via_prefixes = CatalogManager.get_via_prefix_regex_str()
+                            m_pre = re.search(rf"\b({via_prefixes})\b", before_kds, re.IGNORECASE)
+                            tipo_via_detectado = m_pre.group(1).upper() if m_pre else "CALLE"
+                        heuristica_aplicada = True
+                        break
 
         # 3. Respaldo Heurístico Dinámico: Si Ollama no detectó el tipo de vía
         if not tipo_via_detectado:
@@ -420,18 +422,7 @@ class AIAddressParser:
         id_tipo_via = CatalogMatcher.match_tipo_via(tipo_via_detectado)
         id_tipo_zona = CatalogMatcher.match_tipo_zona(tipo_zona_detectada)
 
-        via_detectada_en_texto = bool(nom_via and nom_via.strip())
-        matched_via = (
-            CatalogMatcher.match_physical_via(
-                text=nom_via,
-                tipo_via_hint=id_tipo_via,
-                raw_text=raw_text,
-                ollama_service=self.ollama,
-            )
-            if via_detectada_en_texto
-            else None
-        )
-
+        # 8a. Primero homologar zona para obtener el sector urbano
         zona_detectada_en_texto = bool(nom_zona and nom_zona.strip())
         matched_zona = (
             CatalogMatcher.match_physical_zona(
@@ -441,6 +432,22 @@ class AIAddressParser:
                 ollama_service=self.ollama,
             )
             if zona_detectada_en_texto
+            else None
+        )
+
+        zona_sector = matched_zona.get("sector") if matched_zona else None
+
+        # 8b. Homologar vía usando el sector de la zona para desambiguar vías homónimas
+        via_detectada_en_texto = bool(nom_via and nom_via.strip())
+        matched_via = (
+            CatalogMatcher.match_physical_via(
+                text=nom_via,
+                tipo_via_hint=id_tipo_via,
+                raw_text=raw_text,
+                ollama_service=self.ollama,
+                sector_hint=zona_sector,
+            )
+            if via_detectada_en_texto
             else None
         )
 
@@ -455,13 +462,13 @@ class AIAddressParser:
         if via_detectada_en_texto and not matched_via:
             det_via = f"Vía '{nom_via}' no figura en el catálogo maestro de vías de Chiclayo."
             if matched_zona:
-                det_via += f" (Zona oficial confirmada: '{matched_zona['nom_zona']}' - ID {matched_zona['id']})"
+                det_via += f" (Zona oficial confirmada: '{matched_zona['nom_zona']}' - ID {matched_zona['id']}). Verifique si la vía pertenece a otra jurisdicción o tiene denominación alternativa."
             observaciones.append(det_via)
 
         if zona_detectada_en_texto and not matched_zona:
             det_zona = f"Zona/Habilitación '{nom_zona}' no figura en el catálogo maestro de zonas de Chiclayo."
             if matched_via:
-                det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})"
+                det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})."
             observaciones.append(det_zona)
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:

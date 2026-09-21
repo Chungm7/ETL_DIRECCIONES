@@ -256,6 +256,54 @@ class TestAIAddressObservations(unittest.TestCase):
         self.assertIsNotNone(dest.observacion)
         self.assertIn("CALLE FANTASMA NO CATASTRADA", dest.observacion)
 
+    def test_nueve_de_octubre_las_margaritas_sector_resolution(self):
+        """Verifica que 'NUEVE DE OCTUBRE-LAS MARGARITAS00455' resuelva la vía sectorizada ID 418 y zona ID 60."""
+        self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            tipo_via_detectado="CALLE",
+            nom_via="LAS MARGARITAS",
+            num_via="455",
+            tipo_zona_detectada="PUEBLO JOVEN",
+            nom_zona="09 DE OCTUBRE",
+        )
+
+        rec = DireccionOrigen(id_licencia=1342, emp_direccion="NUEVE DE OCTUBRE-LAS MARGARITAS00455")
+        dest = self.parser.parse(rec)
+        self.assertTrue(dest.es_procesado)
+        self.assertEqual(dest.id_via, 418)   # LAS MARGARITAS (Sector 23 25)
+        self.assertEqual(dest.nom_via, "LAS MARGARITAS")
+        self.assertEqual(dest.id_zona, 60)   # 9 DE OCTUBRE (Sector 23 25)
+        self.assertEqual(dest.num_via, "455")
+        self.assertIsNone(dest.observacion)
+
+    def test_three_canonical_structures(self):
+        """Verifica la validación formal de las 3 estructuras canónicas de direcciones."""
+        self.mock_ollama.parse_address_with_ai.return_value = None
+
+        # Estructura 1: Vía + Número (Sin Zona ni Mz/Lt)
+        rec1 = DireccionOrigen(id_licencia=101, emp_direccion="AV. JOSE BALTA 520")
+        dest1 = self.parser.parse(rec1)
+        self.assertTrue(dest1.es_procesado)
+        self.assertEqual(dest1.id_via, 2905)
+        self.assertEqual(dest1.num_via, "520")
+        self.assertIsNone(dest1.id_zona)
+
+        # Estructura 2: Zona + Mz/Lt puro (Sin Vía)
+        rec2 = DireccionOrigen(id_licencia=102, emp_direccion="SAN JUAN DE DIOS - MZA. E LOTE 23")
+        dest2 = self.parser.parse(rec2)
+        self.assertTrue(dest2.es_procesado)
+        self.assertIsNone(dest2.id_via)
+        self.assertEqual(dest2.id_zona, 298)
+        self.assertEqual(dest2.manzana, "E")
+        self.assertEqual(dest2.lote, "23")
+
+        # Estructura 3: Zona + Vía Interior + Número (Sin Mz/Lt)
+        rec3 = DireccionOrigen(id_licencia=103, emp_direccion="SAN NICOLAS - LAS AMERICAS 705")
+        dest3 = self.parser.parse(rec3)
+        self.assertTrue(dest3.es_procesado)
+        self.assertIn(dest3.id_via, (869, 2910))
+        self.assertEqual(dest3.id_zona, 136)
+        self.assertEqual(dest3.num_via, "705")
+
 
 if __name__ == "__main__":
     unittest.main()
