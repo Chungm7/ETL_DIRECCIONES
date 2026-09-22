@@ -15,6 +15,7 @@ const wiz = {
   ai_port: 11434,
   ai_model: '',
   aiVerified: false,
+  num_workers: 4,
 
   // Paso 2: BD
   db_host: '',
@@ -42,6 +43,19 @@ const wiz = {
   counts: { all: 0, valid: 0, observed: 0, error: 0 },
   evtSource: null,
 };
+
+function syncNumWorkers(val) {
+  let n = parseInt(val) || 4;
+  if (n < 1) n = 1;
+  if (n > 16) n = 16;
+  wiz.num_workers = n;
+  const el1 = document.getElementById('ai_num_workers');
+  const el5 = document.getElementById('inp_num_workers');
+  const elSumm = document.getElementById('summWorkers');
+  if (el1 && parseInt(el1.value) !== n) el1.value = n;
+  if (el5 && parseInt(el5.value) !== n) el5.value = n;
+  if (elSumm) elSumm.textContent = n;
+}
 
 // ── Navegación e Interactividad del Stepper ──────────────────────────────────
 function tryGoStep(n) {
@@ -579,6 +593,8 @@ function confirmTable() {
   const elAiHost = document.getElementById('summAiHost');
   if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
 
+  syncNumWorkers(wiz.num_workers || 4);
+
   wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
   const tab5 = document.getElementById('tab5');
   if (tab5) tab5.classList.remove('locked');
@@ -607,6 +623,9 @@ async function initStep5() {
       }
     }
 
+    if (data.num_workers) {
+      syncNumWorkers(data.num_workers);
+    }
     if (data.active_table && !wiz.table) wiz.table = data.active_table;
     if (data.active_schema && !wiz.schema) wiz.schema = data.active_schema;
     if (data.table_counts && !wiz.tableCounts) wiz.tableCounts = data.table_counts;
@@ -654,6 +673,53 @@ function handleEvent(ev) {
     case 'error':
       onError(ev.payload);
       break;
+    case 'stopping':
+      onStopping(ev.payload);
+      break;
+    case 'init':
+      onInitSnapshot(ev.payload);
+      break;
+  }
+}
+
+function onStopping(payload) {
+  const btnStop = document.getElementById('btnStop');
+  const btnStopSync = document.getElementById('btnStopSync');
+  if (btnStop) btnStop.disabled = true;
+  if (btnStopSync) btnStopSync.disabled = true;
+  const statusLabel = document.getElementById('statusLabel');
+  if (statusLabel) statusLabel.textContent = 'Detención solicitada. Culminando registros en curso...';
+  const dot = document.getElementById('termLiveDot');
+  if (dot) dot.style.background = 'var(--amber)';
+}
+
+function onInitSnapshot(payload) {
+  if (!payload) return;
+  if (payload.num_workers) {
+    syncNumWorkers(payload.num_workers);
+  }
+  if (payload.active_table && !wiz.table) wiz.table = payload.active_table;
+  if (payload.active_schema && !wiz.schema) wiz.schema = payload.active_schema;
+  if (payload.active_model) {
+    wiz.ai_model = payload.active_model;
+    const summAiModel = document.getElementById('summAiModel');
+    if (summAiModel) summAiModel.textContent = payload.active_model;
+  }
+  if (payload.stats) {
+    updateStats(payload.stats);
+  }
+  if (payload.records && payload.records.length > 0 && wiz.allRecords.length === 0) {
+    payload.records.forEach(r => addRecord(r, false));
+    filterInspectorRecords();
+  }
+  if (payload.is_running) {
+    document.getElementById('btnStart').disabled = true;
+    document.getElementById('btnStop').disabled = false;
+    const btnStopSync = document.getElementById('btnStopSync');
+    if (btnStopSync) btnStopSync.disabled = false;
+    const banner = document.getElementById('bannerActiveSession');
+    if (banner) banner.classList.remove('hidden');
+    [1, 2, 3, 4].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
   }
 }
 
@@ -1207,10 +1273,11 @@ async function clearRecords() {
 
 // ── Iniciar / Detener Proceso ETL ────────────────────────────────────────────
 async function startETL() {
-  const limit      = parseInt(document.getElementById('inp_limit').value) || null;
-  const batch      = parseInt(document.getElementById('inp_batch').value) || 50;
-  const filter     = document.getElementById('inp_filter').value || 'pending';
-  const require_ai = document.getElementById('inp_require_ai')?.checked ?? true;
+  const limit       = parseInt(document.getElementById('inp_limit').value) || null;
+  const batch       = parseInt(document.getElementById('inp_batch').value) || 50;
+  const num_workers = parseInt(document.getElementById('inp_num_workers')?.value || wiz.num_workers || 4);
+  const filter      = document.getElementById('inp_filter').value || 'pending';
+  const require_ai  = document.getElementById('inp_require_ai')?.checked ?? true;
 
   // NO vaciar wiz.allRecords ni wiz.counts para preservar el historial acumulativo de la sesión
 
@@ -1219,6 +1286,8 @@ async function startETL() {
 
   document.getElementById('btnStart').disabled = true;
   document.getElementById('btnStop').disabled  = false;
+  const btnStopSync = document.getElementById('btnStopSync');
+  if (btnStopSync) btnStopSync.disabled = false;
 
   const body = {
     schema_name:  wiz.schema,
@@ -1226,6 +1295,7 @@ async function startETL() {
     id_col:       wiz.id_col,
     address_col:  wiz.addr_col,
     batch_size:   batch,
+    num_workers:  num_workers,
     filter_mode:  filter,
     require_ai:   require_ai,
     limit,
@@ -1243,16 +1313,24 @@ async function startETL() {
       alert('Error al iniciar el proceso: ' + (data.detail || 'Error desconocido'));
       document.getElementById('btnStart').disabled = false;
       document.getElementById('btnStop').disabled  = true;
+      if (btnStopSync) btnStopSync.disabled = true;
+    } else {
+      const banner = document.getElementById('bannerActiveSession');
+      if (banner) banner.classList.remove('hidden');
+      [1, 2, 3, 4].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
     }
   } catch (e) {
     alert('Error de comunicación: ' + e.message);
     document.getElementById('btnStart').disabled = false;
     document.getElementById('btnStop').disabled  = true;
+    if (btnStopSync) btnStopSync.disabled = true;
   }
 }
 
 async function stopETL() {
   document.getElementById('btnStop').disabled = true;
+  const btnStopSync = document.getElementById('btnStopSync');
+  if (btnStopSync) btnStopSync.disabled = true;
   try {
     await fetch('/api/stop', { method: 'POST' });
   } catch (_) {}
@@ -1261,17 +1339,31 @@ async function stopETL() {
 function onDone(data) {
   document.getElementById('btnStart').disabled = false;
   document.getElementById('btnStop').disabled  = true;
+  const btnStopSync = document.getElementById('btnStopSync');
+  if (btnStopSync) btnStopSync.disabled = true;
   document.getElementById('statusLabel').textContent = 'Proceso completado';
   const dot = document.getElementById('termLiveDot');
   if (dot) dot.style.background = 'var(--slate-400)';
+  const banner = document.getElementById('bannerActiveSession');
+  if (banner) banner.classList.add('hidden');
+  [1, 2, 3, 4].forEach(i => {
+    if (i <= wiz.maxStepUnlocked) document.getElementById(`tab${i}`)?.classList.remove('locked');
+  });
 }
 
 function onError(data) {
   document.getElementById('btnStart').disabled = false;
   document.getElementById('btnStop').disabled  = true;
+  const btnStopSync = document.getElementById('btnStopSync');
+  if (btnStopSync) btnStopSync.disabled = true;
   document.getElementById('statusLabel').textContent = 'Error en el proceso';
   const dot = document.getElementById('termLiveDot');
   if (dot) dot.style.background = 'var(--red)';
+  const banner = document.getElementById('bannerActiveSession');
+  if (banner) banner.classList.add('hidden');
+  [1, 2, 3, 4].forEach(i => {
+    if (i <= wiz.maxStepUnlocked) document.getElementById(`tab${i}`)?.classList.remove('locked');
+  });
 }
 
 // ── Control Institucional de Apagado de Servicio ───────────────────────────
@@ -1350,7 +1442,142 @@ async function executeShutdown() {
   }, 900);
 }
 
+// ── Sincronización Multi-Sesión en Tiempo Real ───────────────────────────────
+async function checkInitialServerState() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) {
+      goStep(1);
+      return;
+    }
+    const data = await res.json();
+    if (data.is_running || data.running) {
+      syncWithActiveSession(data);
+      return;
+    } else if (data.has_completed_session || (data.stats && data.stats.status === 'FINISHED' && data.recent_records && data.recent_records.length > 0)) {
+      syncWithCompletedSession(data);
+      return;
+    }
+  } catch (e) {
+    console.warn('Aviso al verificar estado inicial del servidor:', e);
+  }
+  goStep(1);
+}
+
+function syncWithActiveSession(data) {
+  wiz.maxStepUnlocked = 5;
+  wiz.schema = data.active_schema || wiz.schema || 'public';
+  wiz.table  = data.active_table  || wiz.table  || 'direcciones_actual';
+  wiz.id_col = data.id_col || wiz.id_col || 'id_licencia';
+  wiz.addr_col = data.address_col || wiz.addr_col || 'emp_direccion';
+  wiz.ai_model = data.active_model || (data.ai ? data.ai.model : 'Ollama');
+  wiz.num_workers = data.num_workers || 4;
+
+  syncNumWorkers(wiz.num_workers);
+
+  const elSchema = document.getElementById('summSchema');
+  const elTable = document.getElementById('summTable');
+  const elId = document.getElementById('summId');
+  const elAddr = document.getElementById('summAddr');
+  const elAiModel = document.getElementById('summAiModel');
+  const elAiHost = document.getElementById('summAiHost');
+
+  if (elSchema) elSchema.textContent = wiz.schema;
+  if (elTable) elTable.textContent = wiz.table;
+  if (elId) elId.textContent = wiz.id_col;
+  if (elAddr) elAddr.textContent = wiz.addr_col;
+  if (elAiModel) elAiModel.textContent = wiz.ai_model;
+  if (elAiHost && data.ai && data.ai.base_url) elAiHost.textContent = data.ai.base_url;
+
+  goStep(5);
+
+  // Bloquear navegación a pasos de configuración durante la ejecución activa
+  [1, 2, 3, 4].forEach(i => {
+    document.getElementById(`tab${i}`)?.classList.add('locked');
+  });
+
+  const banner = document.getElementById('bannerActiveSession');
+  if (banner) {
+    banner.classList.remove('hidden');
+    const bTitle = document.getElementById('bannerActiveTitle');
+    const bDesc = document.getElementById('bannerActiveDesc');
+    if (bTitle) bTitle.textContent = `Proceso en ejecución en segundo plano [${wiz.schema}.${wiz.table}]`;
+    if (bDesc) bDesc.textContent = `Esta sesión está sincronizada en tiempo real con el servidor (${wiz.num_workers} instancias IA en paralelo). Puede monitorear o detener el proceso.`;
+  }
+
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  const btnStopSync = document.getElementById('btnStopSync');
+  if (btnStart) btnStart.disabled = true;
+  if (btnStop) btnStop.disabled = false;
+  if (btnStopSync) btnStopSync.disabled = false;
+
+  if (data.stats) updateStats(data.stats);
+  if (data.recent_records && data.recent_records.length > 0 && wiz.allRecords.length === 0) {
+    data.recent_records.forEach(r => addRecord(r, false));
+    filterInspectorRecords();
+  }
+
+  connectSSE();
+}
+
+function syncWithCompletedSession(data) {
+  wiz.maxStepUnlocked = 5;
+  wiz.schema = data.active_schema || wiz.schema || 'public';
+  wiz.table  = data.active_table  || wiz.table  || 'direcciones_actual';
+  wiz.id_col = data.id_col || wiz.id_col || 'id_licencia';
+  wiz.addr_col = data.address_col || wiz.addr_col || 'emp_direccion';
+  wiz.ai_model = data.active_model || (data.ai ? data.ai.model : 'Ollama');
+  wiz.num_workers = data.num_workers || 4;
+
+  syncNumWorkers(wiz.num_workers);
+
+  const elSchema = document.getElementById('summSchema');
+  const elTable = document.getElementById('summTable');
+  const elId = document.getElementById('summId');
+  const elAddr = document.getElementById('summAddr');
+  const elAiModel = document.getElementById('summAiModel');
+
+  if (elSchema) elSchema.textContent = wiz.schema;
+  if (elTable) elTable.textContent = wiz.table;
+  if (elId) elId.textContent = wiz.id_col;
+  if (elAddr) elAddr.textContent = wiz.addr_col;
+  if (elAiModel) elAiModel.textContent = wiz.ai_model;
+
+  goStep(5);
+
+  const btnStart = document.getElementById('btnStart');
+  const btnStop = document.getElementById('btnStop');
+  if (btnStart) btnStart.disabled = false;
+  if (btnStop) btnStop.disabled = true;
+
+  if (data.stats) updateStats(data.stats);
+  if (data.recent_records && data.recent_records.length > 0 && wiz.allRecords.length === 0) {
+    data.recent_records.forEach(r => addRecord(r, false));
+    filterInspectorRecords();
+  }
+
+  connectSSE();
+}
+
+function resetToNewSession() {
+  if (!document.getElementById('btnStop')?.disabled) {
+    alert('No puede iniciar una nueva configuración mientras haya un proceso en ejecución. Deténgalo primero.');
+    return;
+  }
+  wiz.maxStepUnlocked = 1;
+  [1, 2, 3, 4, 5].forEach(i => {
+    const tab = document.getElementById(`tab${i}`);
+    if (tab) {
+      tab.classList.remove('done', 'active');
+      if (i > 1) tab.classList.add('locked');
+      else tab.classList.remove('locked');
+    }
+  });
+  goStep(1);
+}
+
 // ── Inicialización al Cargar ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  goStep(1);
+  checkInitialServerState();
 });

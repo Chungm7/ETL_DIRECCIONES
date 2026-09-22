@@ -1,6 +1,7 @@
 """Servidor backend FastAPI con soporte SSE (Server-Sent Events) para la GUI del ETL MPCH."""
 
 import asyncio
+import json
 import logging
 import os
 import queue
@@ -41,6 +42,8 @@ class ExecutionState:
         self.thread: Optional[threading.Thread] = None
         self.active_schema: str = settings.db.schema
         self.active_table: str = settings.db.table
+        self.num_workers: int = 4
+        self.active_model: Optional[str] = None
         # Conexiones dinámicas establecidas por el wizard (independientes de .env)
         self.dynamic_db_service: Optional[DatabaseService] = None
         self.dynamic_db_settings: Optional[Any] = None
@@ -68,11 +71,20 @@ class ExecutionState:
         self._lock = threading.Lock()
         self.loop: Optional[asyncio.AbstractEventLoop] = None
 
-    def reset_for_run(self, total: int, schema: str, table: str):
+    def reset_for_run(
+        self,
+        total: int,
+        schema: str,
+        table: str,
+        num_workers: int = 4,
+        model: Optional[str] = None,
+    ):
         with self._lock:
             self.is_running = True
             self.active_schema = schema
             self.active_table = table
+            self.num_workers = max(1, int(num_workers or 1))
+            self.active_model = model
             # No vaciar self.recent_records para preservar el historial acumulado de la sesión
             self.stats = {
                 "status": "RUNNING",
@@ -316,6 +328,7 @@ class StartPipelineRequest(BaseModel):
     batch_size: Optional[int] = Field(default=50, description="Tamaño de lote")
     filter_mode: Optional[str] = Field(default="pending", description="Modo de filtro: pending, all, observed")
     require_ai: bool = Field(default=True, description="Si es True, falla de inmediato si Ollama no está operativo")
+    num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de peticiones concurrentes a Ollama")
 
 
 @app.get("/", response_class=FileResponse)
@@ -356,10 +369,16 @@ async def get_system_status():
         logger.warning("No se pudo obtener conteo de tabla: %s", e)
         table_counts = {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
+    current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or ollama_svc.model_name)
+
     return {
         "running": state.is_running,
+        "is_running": state.is_running,
         "active_schema": state.active_schema,
         "active_table": state.active_table,
+        "active_model": current_model,
+        "num_workers": state.num_workers,
+        "has_completed_session": (state.stats.get("status") == "FINISHED" and len(state.recent_records) > 0),
         "available_schemas": db_health.get("available_schemas", ["public"]),
         "db": {
             "connected": db_health.get("connected", False),
@@ -369,7 +388,7 @@ async def get_system_status():
         },
         "ai": {
             "connected": ai_health.get("connected", False),
-            "model": ai_health.get("target_model") or ai_health.get("model") or ollama_svc.model_name,
+            "model": current_model,
             "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "base_url": ollama_svc.base_url,
@@ -726,6 +745,10 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             use_ai=req.require_ai,
         )
 
+        workers_count = max(1, int(req.num_workers or 1))
+        state.num_workers = workers_count
+        state.active_model = ollama_svc.model_name
+
         pipeline = ETLPipeline(
             schema=target_schema,
             table=target_table,
@@ -735,6 +758,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             extractor=custom_extractor,
             transformer=custom_transformer,
             on_record_processed=state.add_record,
+            num_workers=workers_count,
         )
         state.pipeline = pipeline
 
@@ -765,8 +789,14 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             target_pool = total_avail
 
         to_process = min(req.limit, target_pool) if req.limit else target_pool
-        state.reset_for_run(total=to_process, schema=target_schema, table=target_table)
-        state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()})")
+        state.reset_for_run(
+            total=to_process,
+            schema=target_schema,
+            table=target_table,
+            num_workers=workers_count,
+            model=ollama_svc.model_name,
+        )
+        state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()}, Instancias concurrentes: {workers_count})")
 
         if to_process == 0:
             state.add_log(f"[INFO] No hay registros pendientes para procesar en [{target_schema}.{target_table}] con filtro '{filter_mode}'.")
@@ -809,10 +839,14 @@ def _run_pipeline_worker(req: StartPipelineRequest):
 async def start_pipeline(req: StartPipelineRequest):
     """Inicia la ejecución del pipeline ETL en segundo plano."""
     if state.is_running:
-        raise HTTPException(status_code=409, detail="Ya hay un pipeline en ejecución actualmente.")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Ya hay un pipeline en ejecución activa en el esquema [{state.active_schema}] tabla [{state.active_table}]."
+        )
 
     state.active_schema = req.schema_name
     state.active_table = req.table_name
+    state.num_workers = max(1, int(req.num_workers or 1))
 
     worker = threading.Thread(
         target=_run_pipeline_worker,
@@ -833,6 +867,8 @@ async def stop_pipeline():
         return {"status": "NOT_RUNNING", "message": "No hay un pipeline en ejecución activa."}
 
     state.pipeline.request_stop()
+    state.stats["status"] = "STOPPING"
+    state.broadcast({"type": "stopping", "payload": {"status": "STOPPING", "message": "Detención solicitada."}})
     state.add_log("[INFO] Solicitud de detención manual recibida. Esperando finalización del registro actual...")
     return {"status": "STOPPING", "message": "Detención solicitada. El proceso finalizará en breve."}
 
@@ -1459,6 +1495,23 @@ async def sse_event_stream():
         try:
             # Enviar saludo inicial y estado actual
             yield f"data: {{\"type\": \"connected\", \"payload\": {{\"running\": {str(state.is_running).lower()}}}}}\n\n"
+
+            # Enviar snapshot inicial para sincronización multisesión (dashboard, contadores y registros recientes)
+            init_payload = {
+                "type": "init",
+                "payload": {
+                    "is_running": state.is_running,
+                    "active_schema": state.active_schema,
+                    "active_table": state.active_table,
+                    "active_model": state.active_model,
+                    "num_workers": state.num_workers,
+                    "stats": state.stats,
+                    "records": list(state.recent_records)[-50:],
+                    "logs": list(state.log_history)[-50:],
+                }
+            }
+            yield f"data: {json.dumps(init_payload, default=str)}\n\n"
+
             while True:
                 try:
                     # Esperar evento con timeout para enviar ping periódico
@@ -1466,7 +1519,6 @@ async def sse_event_stream():
                     if event is None:
                         # Centinela de cierre: finalizar stream ordenadamente
                         break
-                    import json
                     json_data = json.dumps(event, default=str)
                     yield f"data: {json_data}\n\n"
                 except asyncio.TimeoutError:

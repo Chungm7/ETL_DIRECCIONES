@@ -589,6 +589,73 @@ class TestPipelineStructure(unittest.TestCase):
             self.assertIn("[ERROR      ]", output_err)
             self.assertIn("ID 101:", output_err)
 
+    def test_etl_pipeline_num_workers_configuration(self):
+        """Valida que ETLPipeline configure correctamente num_workers (mínimo 1)."""
+        p1 = ETLPipeline(num_workers=4)
+        self.assertEqual(p1.num_workers, 4)
+
+        p2 = ETLPipeline(num_workers=0)
+        self.assertEqual(p2.num_workers, 1)
+
+        p3 = ETLPipeline(num_workers=None)
+        self.assertEqual(p3.num_workers, 1)
+
+    def test_etl_pipeline_parallel_workers_execution(self):
+        """Valida que con num_workers > 1 el pipeline procese los lotes concurrentemente."""
+        mock_db = MagicMock()
+        mock_db.ensure_catalogs_exist.return_value = {
+            "tipos_via": {"table_created": False, "column_added": False, "existing_records": 12, "added_records": 0, "total_records": 12},
+            "tipos_zona": {"table_created": False, "column_added": False, "existing_records": 28, "added_records": 0, "total_records": 28},
+        }
+        mock_db.ensure_in_place_columns.return_value = ["tipo_via", "nom_via"]
+
+        records = [
+            DireccionOrigen(id_licencia=i, emp_direccion=f"CALLE BALTA {i}")
+            for i in range(1, 7)
+        ]
+
+        mock_extractor = MagicMock()
+        mock_extractor.get_total_records.return_value = len(records)
+        mock_extractor.extract_batch.side_effect = [records, []]
+
+        mock_transformer = MagicMock()
+        def fake_transform(rec):
+            return DireccionDestino(
+                id_licencia=rec.id_licencia,
+                raw_text=rec.emp_direccion,
+                es_procesado=True,
+                metodo_normalizacion="IA (patroclo-artesano-7b)",
+            )
+        mock_transformer.transform_record.side_effect = fake_transform
+
+        mock_loader = MagicMock()
+        mock_loader.load_batch.return_value = 1
+
+        processed_events = []
+        def on_rec(data):
+            processed_events.append(data)
+
+        pipeline = ETLPipeline(
+            extractor=mock_extractor,
+            transformer=mock_transformer,
+            loader=mock_loader,
+            db_service=mock_db,
+            batch_size=6,
+            schema="public",
+            table="direcciones_actual",
+            num_workers=3,
+            on_record_processed=on_rec,
+        )
+
+        with patch("src.services.ollama_service.OllamaService.test_model_inference") as mock_test:
+            mock_test.return_value = {"model_ready": True, "latency_seconds": 0.5, "error": None}
+            summary = pipeline.run()
+
+        self.assertEqual(summary.total_records, 6)
+        self.assertEqual(summary.successful_records, 6)
+        self.assertEqual(summary.valid_processed_records, 6)
+        self.assertEqual(len(processed_events), 6)
+
 
 if __name__ == "__main__":
     unittest.main()

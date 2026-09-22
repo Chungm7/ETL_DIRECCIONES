@@ -1029,6 +1029,18 @@
           </select>
           <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. patroclo-artesano-7b:latest o llama3:latest" />
         </div>
+        <div class="field full">
+          <label for="ai_num_workers" style="display:flex; justify-content:space-between; align-items:center;">
+            <span>Instancias Concurrentes de IA (Hilos Paralelos)</span>
+            <span style="font-weight:400; font-size:11.5px; color:var(--slate-500);">Recomendado: 4 (Rango: 1 a 16)</span>
+          </label>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <input type="number" id="ai_num_workers" min="1" max="16" value="4" style="max-width:130px;" onchange="syncNumWorkers(this.value)" />
+            <span style="font-size:12px; color:var(--slate-600);">
+              Permite procesar múltiples solicitudes en simultáneo contra Ollama para acelerar drásticamente el proceso manteniendo la misma calidad y precisión.
+            </span>
+          </div>
+        </div>
       </div>
 
       <!-- Tarjeta de Diagnóstico Interactivo de IA -->
@@ -1223,6 +1235,25 @@
   <!-- ════ PASO 5: EJECUCIÓN Y MONITOREO CATASTRAL ════ -->
   <section id="step5" class="hidden">
 
+    <!-- Banner de Sesión Activa / Multi-Sesión Sincronizada -->
+    <div id="bannerActiveSession" class="hidden" style="background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #2563eb; border-radius:var(--radius); padding:14px 18px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:14px; box-shadow:var(--shadow-sm);">
+      <div style="display:flex; align-items:center; gap:12px;">
+        <span class="dot-live" style="background:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,0.25);"></span>
+        <div>
+          <strong style="color:#1e40af; font-size:13.5px;" id="bannerActiveTitle">Proceso en ejecución en segundo plano</strong>
+          <div style="font-size:12px; color:#3b82f6; margin-top:2px;" id="bannerActiveDesc">
+            Esta pantalla está conectada y sincronizada en tiempo real con el servidor. Puede monitorear el progreso o detener el proceso de forma segura.
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:8px; flex-shrink:0;">
+        <button class="btn btn-red" id="btnStopSync" style="padding:6px 14px; font-size:12px; font-weight:600;" onclick="stopETL()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
+          <span>Detener Proceso</span>
+        </button>
+      </div>
+    </div>
+
     <!-- Resumen Ejecutivo de Configuración -->
     <div class="summary-card">
       <div class="summary-group">
@@ -1240,7 +1271,7 @@
           <div class="summary-col-label">Motor de Inteligencia Artificial</div>
           <div class="summary-col-val" style="color:var(--green);" id="summAiModel">Ollama</div>
           <div class="summary-col-sub">
-            Endpoint: <span id="summAiHost" style="font-family:monospace;"></span>
+            Endpoint: <span id="summAiHost" style="font-family:monospace;"></span> &nbsp;|&nbsp; Instancias IA: <strong id="summWorkers">4</strong>
           </div>
         </div>
       </div>
@@ -1281,15 +1312,21 @@
         </div>
 
         <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="field" style="margin:0; min-width:85px;">
+          <div class="field" style="margin:0; min-width:80px;">
             <label for="inp_limit" style="font-size:11px;">Límite</label>
             <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:12.5px;" />
           </div>
-          <div class="field" style="margin:0; min-width:85px;">
+          <div class="field" style="margin:0; min-width:80px;">
             <label for="inp_batch" style="font-size:11px;" title="Cantidad de registros extraídos y confirmados en la BD por ciclo de trabajo (Paginación interna). Por defecto: 50.">
               Lote <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Cantidad de registros leídos de la BD por consulta (Paginación interna). Por defecto: 50">(?)</span>
             </label>
             <input type="number" id="inp_batch" value="50" min="1" max="100" style="padding:6px 8px; font-size:12.5px;" title="Registros por paquete de consulta SQL (1-100)" />
+          </div>
+          <div class="field" style="margin:0; min-width:85px;">
+            <label for="inp_num_workers" style="font-size:11px;" title="Número de hilos o instancias concurrentes que procesan contra Ollama en paralelo.">
+              Instancias <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Instancias concurrentes de IA (1 a 16)">(?)</span>
+            </label>
+            <input type="number" id="inp_num_workers" value="4" min="1" max="16" style="padding:6px 8px; font-size:12.5px;" title="Instancias paralelas de IA (1-16)" onchange="syncNumWorkers(this.value)" />
           </div>
           <div class="field" style="margin:0;">
             <label for="inp_filter" style="font-size:11px;">Filtro</label>
@@ -1312,8 +1349,11 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
             <span>Detener</span>
           </button>
-          <button class="btn btn-ghost" onclick="goStep(3)">
+          <button class="btn btn-ghost" id="btnChangeTable" onclick="goStep(3)">
             <span>Cambiar tabla</span>
+          </button>
+          <button class="btn btn-ghost" id="btnNewSession" onclick="resetToNewSession()" title="Reiniciar el asistente desde el Paso 1 para configurar otra base o modelo">
+            <span>Nueva Sesión</span>
           </button>
         </div>
       </div>

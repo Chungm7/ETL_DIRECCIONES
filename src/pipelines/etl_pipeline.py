@@ -1,7 +1,9 @@
 """Orquestador maestro del pipeline ETL con seguimiento visual detallado registro por registro."""
 
+import concurrent.futures
 import logging
 import sys
+import threading
 import time
 from datetime import datetime
 from dataclasses import dataclass
@@ -63,6 +65,7 @@ class ETLPipeline:
         require_ai: Optional[bool] = None,
         on_record_processed: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_progress_update: Optional[Callable[[Any], None]] = None,
+        num_workers: Optional[int] = None,
     ):
         settings = get_settings()
         self.mode = "in_place"
@@ -75,6 +78,8 @@ class ETLPipeline:
         self.on_record_processed = on_record_processed
         self.on_progress_update = on_progress_update
         self._stop_requested = False
+        self.num_workers = max(1, int(num_workers or 1))
+        self._metrics_lock = threading.Lock()
 
         # Extractor (extrae de la tabla de direcciones en el esquema configurado)
         self.extractor = extractor or DatabaseExtractor(
@@ -226,6 +231,195 @@ class ETLPipeline:
             print(f"{time_str} [{index_str}] {tag_plain} ID {destino.id_licencia}: {raw_disp} {detail}")
         sys.stdout.flush()
 
+    def _process_single_record(self, rec_raw):
+        """Procesa y persiste un único registro (Transformación con IA + Carga en BD)."""
+        logger.debug("Analizando ID %s: %s", rec_raw.id_licencia, rec_raw.emp_direccion)
+        rec_dest = self.transformer.transform_record(rec_raw)
+        loaded_count = self.loader.load_batch([rec_dest])
+        is_success = (loaded_count == 1)
+        return rec_raw, rec_dest, is_success
+
+    def _record_metrics_and_notify(
+        self,
+        rec_raw,
+        rec_dest,
+        is_success: bool,
+        current_index: int,
+        total_records: int,
+        summary: ETLSummary,
+    ):
+        """Actualiza métricas protegidas, emite eventos visuales a consola y notifica callbacks."""
+        with self._metrics_lock:
+            metodo = getattr(rec_dest, "metodo_normalizacion", "")
+            if "IA (" in metodo:
+                summary.ai_records += 1
+            elif "Híbrido" in metodo:
+                summary.hybrid_records += 1
+            else:
+                summary.heuristic_records += 1
+
+            if is_success:
+                summary.successful_records += 1
+            else:
+                summary.failed_records += 1
+            summary.processed_records += 1
+
+            if rec_dest.es_procesado:
+                summary.valid_processed_records += 1
+            else:
+                summary.observed_records += 1
+
+            snap_valid = summary.valid_processed_records
+            snap_obs = summary.observed_records
+            snap_proc = summary.processed_records
+            snap_failed = summary.failed_records
+            snap_ai = summary.ai_records
+            snap_hyb = summary.hybrid_records
+            snap_heu = summary.heuristic_records
+
+        # Calcular descripciones enriquecidas idénticas a consola
+        via_name = CatalogMatcher.get_via_name(rec_dest.tipo_via)
+        zona_name = CatalogMatcher.get_zona_name(rec_dest.tipo_zona)
+        via_id_str = f"[{rec_dest.tipo_via}: {via_name}]" if rec_dest.tipo_via else "[SIN TIPO]"
+        zona_id_str = f"[{rec_dest.tipo_zona}: {zona_name}]" if rec_dest.tipo_zona else "[SIN ZONA]"
+        via_desc = f"{via_id_str} {rec_dest.nom_via or 'N/D'} N° {rec_dest.num_via or 'S/N'}"
+        if getattr(rec_dest, "id_via", None):
+            via_desc += f" [ID Vía: {rec_dest.id_via}]"
+        zona_desc = f"{zona_id_str} {rec_dest.nom_zona or 'N/D'}"
+        if getattr(rec_dest, "id_zona", None):
+            zona_desc += f" [ID Zona: {rec_dest.id_zona}]"
+        catastro = f"Mz: {rec_dest.manzana or '-'} | Lt: {rec_dest.lote or '-'} | Sublote: {rec_dest.slote or '-'}"
+        status_str = "Cargado en BD ✅" if is_success else "Error en Carga ❌"
+
+        # Mostrar seguimiento visual en vivo al instante en consola (1 sola línea limpia)
+        self._log_record_progress(
+            index=current_index,
+            total=total_records,
+            raw_text=rec_raw.emp_direccion,
+            destino=rec_dest,
+            success=is_success,
+        )
+
+        # Emitir evento en tiempo real hacia GUI/SSE si el callback está registrado
+        if self.on_record_processed:
+            try:
+                self.on_record_processed({
+                    "index": current_index,
+                    "total": total_records,
+                    "id_licencia": rec_raw.id_licencia,
+                    "raw_text": rec_raw.emp_direccion or "",
+                    "metodo": metodo,
+                    "tipo_via": rec_dest.tipo_via,
+                    "tipo_via_name": via_name,
+                    "id_via": rec_dest.id_via,
+                    "nom_via": rec_dest.nom_via,
+                    "num_via": rec_dest.num_via,
+                    "via_desc": via_desc,
+                    "tipo_zona": rec_dest.tipo_zona,
+                    "tipo_zona_name": zona_name,
+                    "id_zona": rec_dest.id_zona,
+                    "nom_zona": rec_dest.nom_zona,
+                    "zona_desc": zona_desc,
+                    "manzana": rec_dest.manzana,
+                    "lote": rec_dest.lote,
+                    "slote": rec_dest.slote,
+                    "catastro": catastro,
+                    "referencia": rec_dest.referencia,
+                    "es_procesado": bool(rec_dest.es_procesado),
+                    "observacion": rec_dest.observacion or "",
+                    "success": is_success,
+                    "status_str": status_str,
+                    "valid_count": snap_valid,
+                    "observed_count": snap_obs,
+                    "processed_count": snap_proc,
+                    "failed_count": snap_failed,
+                    "ai_records": snap_ai,
+                    "hybrid_records": snap_hyb,
+                    "heuristic_records": snap_heu,
+                })
+            except Exception as cb_err:
+                logger.warning("Error notificando on_record_processed: %s", cb_err)
+
+        if self.on_progress_update:
+            try:
+                self.on_progress_update(summary)
+            except Exception:
+                pass
+
+    def _record_metrics_and_notify_error(
+        self,
+        rec_raw,
+        rec_err: Exception,
+        current_index: int,
+        total_records: int,
+        summary: ETLSummary,
+    ):
+        with self._metrics_lock:
+            summary.failed_records += 1
+            summary.processed_records += 1
+            snap_valid = summary.valid_processed_records
+            snap_obs = summary.observed_records
+            snap_proc = summary.processed_records
+            snap_failed = summary.failed_records
+            snap_ai = summary.ai_records
+            snap_hyb = summary.hybrid_records
+            snap_heu = summary.heuristic_records
+
+        time_str = datetime.now().strftime("%H:%M:%S")
+        pad = len(str(total_records))
+        index_str = f"{current_index:>{pad}}/{total_records}"
+        raw_clean = (rec_raw.emp_direccion or "VACÍO").replace("\n", " ").strip()
+        raw_disp = f'"{raw_clean[:28]}..."' if len(raw_clean) > 30 else f'"{raw_clean}"'
+        err_str = str(rec_err).replace("\n", " ").strip()
+        if len(err_str) > 50:
+            err_str = err_str[:47] + "..."
+
+        if RICH_AVAILABLE and console:
+            console.print(
+                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] [bold red][ERROR      ][/bold red] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}",
+                soft_wrap=True,
+            )
+        else:
+            print(f"{time_str} [{index_str}] [ERROR      ] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}")
+        sys.stdout.flush()
+
+        if self.on_record_processed:
+            try:
+                self.on_record_processed({
+                    "index": current_index,
+                    "total": total_records,
+                    "id_licencia": rec_raw.id_licencia,
+                    "raw_text": rec_raw.emp_direccion or "",
+                    "metodo": "ERROR",
+                    "id_via": None,
+                    "nom_via": None,
+                    "num_via": None,
+                    "id_zona": None,
+                    "nom_zona": None,
+                    "manzana": None,
+                    "lote": None,
+                    "slote": None,
+                    "referencia": None,
+                    "es_procesado": False,
+                    "observacion": f"ERROR_EJECUCION: {str(rec_err)[:200]}",
+                    "success": False,
+                    "valid_count": snap_valid,
+                    "observed_count": snap_obs,
+                    "processed_count": snap_proc,
+                    "failed_count": snap_failed,
+                    "ai_records": snap_ai,
+                    "hybrid_records": snap_hyb,
+                    "heuristic_records": snap_heu,
+                })
+            except Exception:
+                pass
+
+        if self.on_progress_update:
+            try:
+                self.on_progress_update(summary)
+            except Exception:
+                pass
+
     def run(
         self,
         max_records: Optional[int] = None,
@@ -293,13 +487,13 @@ class ETLPipeline:
         if RICH_AVAILABLE and console:
             console.print(
                 f"[bold cyan][ETL][/bold cyan] {self.schema}.{self.table} | "
-                f"Objetivo: [bold green]{records_to_process}[/bold green] (Filtro: [magenta]{filter_mode.upper()}[/magenta], Lote: {self.batch_size}) | "
+                f"Objetivo: [bold green]{records_to_process}[/bold green] (Filtro: [magenta]{filter_mode.upper()}[/magenta], Lote: {self.batch_size}, Workers: [bold cyan]{self.num_workers}[/bold cyan]) | "
                 f"BD: [dim]{valid_count} válidos, {observed_count} observados, {pending_count} pendientes[/dim]"
             )
         else:
             print(
                 f"[ETL] {self.schema}.{self.table} | "
-                f"Objetivo: {records_to_process} (Filtro: {filter_mode.upper()}, Lote: {self.batch_size}) | "
+                f"Objetivo: {records_to_process} (Filtro: {filter_mode.upper()}, Lote: {self.batch_size}, Workers: {self.num_workers}) | "
                 f"BD: {valid_count} válidos, {observed_count} observados, {pending_count} pendientes"
             )
         sys.stdout.flush()
@@ -324,165 +518,64 @@ class ETLPipeline:
                     break
 
                 # 2. Procesamiento, carga y visualización en tiempo real registro por registro
-                for rec_raw in batch_raw:
-                    if self._stop_requested:
-                        logger.info("Pipeline detenido por usuario antes de procesar siguiente registro.")
-                        break
+                if self.num_workers <= 1:
+                    for rec_raw in batch_raw:
+                        if self._stop_requested:
+                            logger.info("Pipeline detenido por usuario antes de procesar siguiente registro.")
+                            break
 
-                    current_index += 1
-                    try:
-                        logger.debug("Analizando ID %s: %s", rec_raw.id_licencia, rec_raw.emp_direccion)
-
-                        # Transformación (Limpieza + Inferencia IA / Heurística + Catálogos)
-                        rec_dest = self.transformer.transform_record(rec_raw)
-
-                        # Métricas de motor utilizado
-                        metodo = getattr(rec_dest, "metodo_normalizacion", "")
-                        if "IA (" in metodo:
-                            summary.ai_records += 1
-                        elif "Híbrido" in metodo:
-                            summary.hybrid_records += 1
-                        else:
-                            summary.heuristic_records += 1
-
-                        # Carga inmediata en base de datos
-                        loaded_count = self.loader.load_batch([rec_dest])
-                        is_success = loaded_count == 1
-
-                        if is_success:
-                            summary.successful_records += 1
-                        else:
-                            summary.failed_records += 1
-                        summary.processed_records += 1
-
-                        if rec_dest.es_procesado:
-                            summary.valid_processed_records += 1
-                        else:
-                            summary.observed_records += 1
-
-                        # Calcular descripciones enriquecidas idénticas a consola
-                        via_name = CatalogMatcher.get_via_name(rec_dest.tipo_via)
-                        zona_name = CatalogMatcher.get_zona_name(rec_dest.tipo_zona)
-                        via_id_str = f"[{rec_dest.tipo_via}: {via_name}]" if rec_dest.tipo_via else "[SIN TIPO]"
-                        zona_id_str = f"[{rec_dest.tipo_zona}: {zona_name}]" if rec_dest.tipo_zona else "[SIN ZONA]"
-                        via_desc = f"{via_id_str} {rec_dest.nom_via or 'N/D'} N° {rec_dest.num_via or 'S/N'}"
-                        if getattr(rec_dest, "id_via", None):
-                            via_desc += f" [ID Vía: {rec_dest.id_via}]"
-                        zona_desc = f"{zona_id_str} {rec_dest.nom_zona or 'N/D'}"
-                        if getattr(rec_dest, "id_zona", None):
-                            zona_desc += f" [ID Zona: {rec_dest.id_zona}]"
-                        catastro = f"Mz: {rec_dest.manzana or '-'} | Lt: {rec_dest.lote or '-'} | Sublote: {rec_dest.slote or '-'}"
-                        status_str = "Cargado en BD ✅" if is_success else "Error en Carga ❌"
-
-                        # Mostrar seguimiento visual en vivo al instante en consola (1 sola línea limpia)
-                        self._log_record_progress(
-                            index=current_index,
-                            total=records_to_process,
-                            raw_text=rec_raw.emp_direccion,
-                            destino=rec_dest,
-                            success=is_success,
-                        )
-
-                        # Emitir evento en tiempo real hacia GUI/SSE si el callback está registrado
-                        if self.on_record_processed:
-                            try:
-                                self.on_record_processed({
-                                    "index": current_index,
-                                    "total": records_to_process,
-                                    "id_licencia": rec_raw.id_licencia,
-                                    "raw_text": rec_raw.emp_direccion or "",
-                                    "metodo": metodo,
-                                    "tipo_via": rec_dest.tipo_via,
-                                    "tipo_via_name": via_name,
-                                    "id_via": rec_dest.id_via,
-                                    "nom_via": rec_dest.nom_via,
-                                    "num_via": rec_dest.num_via,
-                                    "via_desc": via_desc,
-                                    "tipo_zona": rec_dest.tipo_zona,
-                                    "tipo_zona_name": zona_name,
-                                    "id_zona": rec_dest.id_zona,
-                                    "nom_zona": rec_dest.nom_zona,
-                                    "zona_desc": zona_desc,
-                                    "manzana": rec_dest.manzana,
-                                    "lote": rec_dest.lote,
-                                    "slote": rec_dest.slote,
-                                    "catastro": catastro,
-                                    "referencia": rec_dest.referencia,
-                                    "es_procesado": bool(rec_dest.es_procesado),
-                                    "observacion": rec_dest.observacion or "",
-                                    "success": is_success,
-                                    "status_str": status_str,
-                                    "valid_count": summary.valid_processed_records,
-                                    "observed_count": summary.observed_records,
-                                    "processed_count": summary.processed_records,
-                                    "failed_count": summary.failed_records,
-                                    "ai_records": summary.ai_records,
-                                    "hybrid_records": summary.hybrid_records,
-                                    "heuristic_records": summary.heuristic_records,
-                                })
-                            except Exception as cb_err:
-                                logger.warning("Error notificando on_record_processed: %s", cb_err)
-
-                    except Exception as rec_err:
-                        logger.error("Error procesando registro %d: %s", rec_raw.id_licencia, rec_err)
-                        summary.failed_records += 1
-                        summary.processed_records += 1
-
-                        # Log conciso en consola para trazabilidad inmediata de excepciones
-                        time_str = datetime.now().strftime("%H:%M:%S")
-                        pad = len(str(records_to_process))
-                        index_str = f"{current_index:>{pad}}/{records_to_process}"
-                        raw_clean = (rec_raw.emp_direccion or "VACÍO").replace("\n", " ").strip()
-                        raw_disp = f'"{raw_clean[:28]}..."' if len(raw_clean) > 30 else f'"{raw_clean}"'
-                        err_str = str(rec_err).replace("\n", " ").strip()
-                        if len(err_str) > 50:
-                            err_str = err_str[:47] + "..."
-
-                        if RICH_AVAILABLE and console:
-                            console.print(
-                                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] [bold red][ERROR      ][/bold red] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}",
-                                soft_wrap=True,
-                            )
-                        else:
-                            print(f"{time_str} [{index_str}] [ERROR      ] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}")
-                        sys.stdout.flush()
-
-                        if self.on_record_processed:
-                            try:
-                                self.on_record_processed({
-                                    "index": current_index,
-                                    "total": records_to_process,
-                                    "id_licencia": rec_raw.id_licencia,
-                                    "raw_text": rec_raw.emp_direccion or "",
-                                    "metodo": "ERROR",
-                                    "id_via": None,
-                                    "nom_via": None,
-                                    "num_via": None,
-                                    "id_zona": None,
-                                    "nom_zona": None,
-                                    "manzana": None,
-                                    "lote": None,
-                                    "slote": None,
-                                    "referencia": None,
-                                    "es_procesado": False,
-                                    "observacion": f"ERROR_EJECUCION: {str(rec_err)[:200]}",
-                                    "success": False,
-                                    "valid_count": summary.valid_processed_records,
-                                    "observed_count": summary.observed_records,
-                                    "processed_count": summary.processed_records,
-                                    "failed_count": summary.failed_records,
-                                    "ai_records": summary.ai_records,
-                                    "hybrid_records": summary.hybrid_records,
-                                    "heuristic_records": summary.heuristic_records,
-                                })
-                            except Exception:
-                                pass
-
-                    if self.on_progress_update:
+                        current_index += 1
                         try:
-                            self.on_progress_update(summary)
-                        except Exception:
-                            pass
+                            rec_raw, rec_dest, is_success = self._process_single_record(rec_raw)
+                            self._record_metrics_and_notify(
+                                rec_raw=rec_raw,
+                                rec_dest=rec_dest,
+                                is_success=is_success,
+                                current_index=current_index,
+                                total_records=records_to_process,
+                                summary=summary,
+                            )
+                        except Exception as rec_err:
+                            logger.error("Error procesando registro %d: %s", rec_raw.id_licencia, rec_err)
+                            self._record_metrics_and_notify_error(
+                                rec_raw=rec_raw,
+                                rec_err=rec_err,
+                                current_index=current_index,
+                                total_records=records_to_process,
+                                summary=summary,
+                            )
+                else:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
+                        future_to_rec = {
+                            executor.submit(self._process_single_record, rec): rec
+                            for rec in batch_raw
+                        }
+                        for future in concurrent.futures.as_completed(future_to_rec):
+                            rec_orig = future_to_rec[future]
+                            if self._stop_requested:
+                                logger.info("Pipeline detenido por usuario durante ejecución concurrente.")
+                                break
+
+                            current_index += 1
+                            try:
+                                rec_raw, rec_dest, is_success = future.result()
+                                self._record_metrics_and_notify(
+                                    rec_raw=rec_raw,
+                                    rec_dest=rec_dest,
+                                    is_success=is_success,
+                                    current_index=current_index,
+                                    total_records=records_to_process,
+                                    summary=summary,
+                                )
+                            except Exception as rec_err:
+                                logger.error("Error procesando registro %d: %s", rec_orig.id_licencia, rec_err)
+                                self._record_metrics_and_notify_error(
+                                    rec_raw=rec_orig,
+                                    rec_err=rec_err,
+                                    current_index=current_index,
+                                    total_records=records_to_process,
+                                    summary=summary,
+                                )
 
                 processed_in_run += len(batch_raw)
 

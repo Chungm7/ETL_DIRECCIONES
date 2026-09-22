@@ -574,6 +574,108 @@ def test_clean_shutdown_interception():
     assert q.get_nowait() is None
 
 
+def test_status_endpoint_concurrency_and_session_state(client):
+    """Verifica que /api/status exponga los campos para sincronización multisesión y concurrencia."""
+    state.is_running = True
+    state.active_schema = "catastro"
+    state.active_table = "direcciones_test"
+    state.num_workers = 6
+    state.active_model = "patroclo-artesano-7b:latest"
+
+    try:
+        with patch("src.ui.server.DatabaseService") as mock_db, \
+             patch("src.ui.server.OllamaService") as mock_ollama, \
+             patch("src.ui.server.DatabaseExtractor") as mock_ext:
+
+            mock_db.return_value.check_connection.return_value = {"connected": True}
+            mock_ollama.return_value.check_connection.return_value = {"connected": True, "model": "patroclo-artesano-7b:latest"}
+            mock_ext.return_value.get_status_counts.return_value = {"total": 10, "pendientes": 5, "validos": 5, "observados": 0}
+
+            res = client.get("/api/status")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["is_running"] is True
+            assert data["running"] is True
+            assert data["num_workers"] == 6
+            assert data["active_schema"] == "catastro"
+            assert data["active_table"] == "direcciones_test"
+            assert data["active_model"] == "patroclo-artesano-7b:latest"
+            assert "has_completed_session" in data
+    finally:
+        state.is_running = False
+        state.num_workers = 4
+
+
+def test_api_start_with_custom_workers_and_conflict(client):
+    """Verifica que /api/start configure num_workers y rechace ejecuciones concurrentes simultáneas."""
+    state.is_running = False
+    with patch("src.ui.server.threading.Thread") as mock_th:
+        payload = {
+            "schema_name": "public",
+            "table_name": "direcciones_actual",
+            "num_workers": 8,
+            "batch_size": 20,
+            "filter_mode": "pending",
+            "require_ai": True,
+        }
+        res = client.post("/api/start", json=payload)
+        assert res.status_code == 200
+        assert res.json()["status"] == "STARTED"
+        assert state.num_workers == 8
+
+        # Simular que el estado ahora está en ejecución
+        state.is_running = True
+        try:
+            # Segundo llamado debe ser rechazado con HTTP 409
+            res2 = client.post("/api/start", json=payload)
+            assert res2.status_code == 409
+            assert "Ya hay un pipeline en ejecución activa" in res2.json()["detail"]
+        finally:
+            state.is_running = False
+            state.num_workers = 4
+
+
+def test_api_stream_init_event_snapshot():
+    """Verifica que /api/stream despache un snapshot inicial con type 'init' para clientes nuevos."""
+    import asyncio
+    import json
+    from src.ui.server import sse_event_stream
+
+    state.is_running = True
+    state.active_schema = "public"
+    state.active_table = "direcciones_actual"
+    state.num_workers = 5
+    state.active_model = "test-model"
+
+    try:
+        response = asyncio.run(sse_event_stream())
+        async def read_first_events():
+            events = []
+            async for chunk in response.body_iterator:
+                lines = chunk.strip().split("\n")
+                for line in lines:
+                    if line.startswith("data: "):
+                        data = json.loads(line[6:])
+                        events.append(data)
+                if len(events) >= 2:
+                    break
+            return events
+
+        events = asyncio.run(read_first_events())
+        assert len(events) >= 2
+        assert events[0]["type"] == "connected"
+        assert events[1]["type"] == "init"
+        init_payload = events[1]["payload"]
+        assert init_payload["is_running"] is True
+        assert init_payload["num_workers"] == 5
+        assert init_payload["active_schema"] == "public"
+        assert init_payload["active_table"] == "direcciones_actual"
+        assert init_payload["active_model"] == "test-model"
+    finally:
+        state.is_running = False
+        state.num_workers = 4
+
+
 
 
 
