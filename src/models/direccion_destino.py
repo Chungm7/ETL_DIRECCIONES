@@ -1,11 +1,51 @@
-"""Modelo de datos para el destino normalizado consolidado en PostgreSQL."""
-
-from typing import Optional
-from pydantic import BaseModel, Field
+import re
+from typing import Any, Optional
+from pydantic import BaseModel, Field, model_validator
 
 
 class DireccionDestino(BaseModel):
     """Representa un registro consolidado para la tabla de direcciones normalizada."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def sanitize_field_lengths(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+
+        # 1. Tratamiento especial para slote (evitar que pisos, esquinas o textos largos rompan la validación)
+        slote = data.get("slote")
+        if slote and isinstance(slote, str):
+            slote_clean = slote.strip()
+            if len(slote_clean) > 20 or re.search(
+                r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|BLOCK|EDIFICIO)\b",
+                slote_clean,
+                re.IGNORECASE,
+            ):
+                ref = data.get("referencia") or ""
+                if slote_clean.upper() not in ref.upper():
+                    data["referencia"] = f"{ref} - {slote_clean}".strip(" -") if ref else slote_clean
+                data["slote"] = None
+            elif len(slote_clean) > 20:
+                data["slote"] = slote_clean[:20]
+            else:
+                data["slote"] = slote_clean
+
+        # 2. Guardrail defensivo contra desbordamiento en columnas de BD y validación Pydantic
+        limits = {
+            "num_via": 50,
+            "manzana": 20,
+            "lote": 20,
+            "slote": 20,
+            "referencia": 255,
+            "nom_via": 150,
+            "nom_zona": 150,
+        }
+        for field, max_len in limits.items():
+            val = data.get(field)
+            if val and isinstance(val, str) and len(val) > max_len:
+                data[field] = val[:max_len].strip()
+
+        return data
     id_licencia: int = Field(
         description="Identificador único de la licencia municipal (PK)"
     )

@@ -548,6 +548,25 @@ class AIAddressParser:
                 nom_zona = None
                 heuristica_aplicada = True
 
+        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.) o excede 20 chars, reubicar a referencia
+        if slote:
+            slote_clean = str(slote).strip()
+            if len(slote_clean) > 20 or re.search(
+                r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|BLOCK|EDIFICIO)\b",
+                slote_clean,
+                re.IGNORECASE,
+            ):
+                if not referencia:
+                    referencia = slote_clean
+                elif slote_clean.upper() not in referencia.upper():
+                    referencia = f"{referencia} - {slote_clean}".strip(" -")
+                slote = None
+                heuristica_aplicada = True
+            elif len(slote_clean) > 20:
+                slote = slote_clean[:20].strip()
+            else:
+                slote = slote_clean
+
         # Limpieza de referencia y prevención de redundancia (preserva intactos nom_via y nom_zona)
         if referencia:
             referencia = re.sub(r"\s+", " ", referencia).strip(" ,.-").upper()

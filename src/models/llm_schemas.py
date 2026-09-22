@@ -1,5 +1,4 @@
-"""Esquemas de validación y salida estructurada para el modelo de lenguaje (Ollama)."""
-
+import re
 from typing import Any, Optional
 from pydantic import BaseModel, Field, model_validator
 
@@ -116,16 +115,24 @@ class OllamaAddressExtraction(BaseModel):
                     norm["lote"] = v
                     break
 
-        # 8. slote
+        # 8. Extra elements inmobiliarios y referencias auxiliares
+        extra_refs = []
+
+        # 9. slote (con guardrail para pisos, referencias o textos mayores a 20 chars)
         for k in ("slote", "Sub LT.", "sub lt.", "sub_lote", "sublote", "Sub LT"):
             if k in data and data[k] is not None:
                 v = str(data[k]).strip()
                 if v:
-                    norm["slote"] = v
+                    if len(v) > 20 or re.search(
+                        r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|BLOCK|EDIFICIO)\b",
+                        v,
+                        re.IGNORECASE,
+                    ):
+                        extra_refs.append(v)
+                    else:
+                        norm["slote"] = v
                     break
 
-        # 9. Extra elements inmobiliarios (Dep., INT., STAND., TDA., Piso, Sección)
-        extra_refs = []
         for k, pfx in [
             ("Dep.", "DEP"), ("dep", "DEP"),
             ("INT.", "INT"), ("int", "INT"),

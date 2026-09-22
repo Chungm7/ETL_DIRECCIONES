@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import MagicMock
 
 from src.models.direccion_origen import DireccionOrigen
+from src.models.llm_schemas import OllamaAddressExtraction
 from src.transformers.text_cleaner import TextCleaner
 from src.transformers.ai_parser import AIAddressParser
 
@@ -295,7 +296,50 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertEqual(destino.num_via, "651")
         self.assertEqual(destino.referencia, "3ER. PISO")
 
+    def test_slote_with_floor_or_reference_reassigned_to_referencia(self):
+        """Verifica que un valor como '2DO. PISO ESQ. LIBERTAD' en slote se reubique a referencia sin error de longitud."""
+        self.mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            tipo_via_detectado="CALLE",
+            nom_via="LAS DIAMELIAS",
+            tipo_zona_detectada="URBANIZACION",
+            nom_zona="ARTURO CABREJOS FALLA",
+            manzana="H",
+            lote="1",
+            slote="2DO. PISO ESQ. LIBERTAD",
+        )
+
+        record = DireccionOrigen(
+            id_licencia=25312,
+            emp_direccion="CA. LAS DIAMELIAS MZ. H LT.1 2DO. PISO ESQ. LIBERTAD - URB. ARTURO CABREJOS FALLA.",
+        )
+        destino = self.parser.parse(record)
+
+        self.assertIsNone(destino.slote)
+        self.assertIn("2DO. PISO ESQ. LIBERTAD", destino.referencia)
+
+    def test_direccion_destino_model_validator_sanitizes_slote_and_lengths(self):
+        """Verifica que el validador de DireccionDestino evite errores ValidationError por longitud en slote y otros campos."""
+        from src.models.direccion_destino import DireccionDestino
+
+        # slote que supera 20 caracteres y contiene palabras de referencia
+        dest = DireccionDestino(
+            id_licencia=25312,
+            slote="2DO. PISO ESQ. LIBERTAD",
+        )
+        self.assertIsNone(dest.slote)
+        self.assertEqual(dest.referencia, "2DO. PISO ESQ. LIBERTAD")
+
+        # Texto que supera el límite de un campo se trunca de forma segura
+        dest_long = DireccionDestino(
+            id_licencia=25313,
+            manzana="A" * 30,
+            num_via="1" * 60,
+        )
+        self.assertEqual(len(dest_long.manzana), 20)
+        self.assertEqual(len(dest_long.num_via), 50)
+
 
 if __name__ == "__main__":
     unittest.main()
+
 
