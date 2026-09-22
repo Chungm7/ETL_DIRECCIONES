@@ -1,8 +1,8 @@
-"""Módulo de configuración centralizado del proyecto ETL.
+"""Módulo de configuración centralizado y dinámico del proyecto ETL.
 
-Carga variables de entorno desde el archivo .env utilizando Pydantic Settings.
-Permite parametrizar esquemas, tablas y columnas de forma totalmente dinámica
-sin modificar código, enfocado en el método único In-Place (evolución de tabla en sitio).
+Permite parametrizar esquemas, tablas, columnas y servicios de forma totalmente
+dinámica desde la interfaz web o mediante parámetros en memoria, sin requerir
+ningún archivo .env físico en disco.
 """
 
 from functools import lru_cache
@@ -196,7 +196,7 @@ class DatabaseSettings(BaseSettings):
         """Genera el Connection String para SQLAlchemy."""
         return f"postgresql+psycopg2://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}"
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
 
 class OllamaSettings(BaseSettings):
@@ -222,7 +222,7 @@ class OllamaSettings(BaseSettings):
         description="Temperatura de inferencia (0.0 para respuestas deterministas)",
     )
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
 
 class ETLSettings(BaseSettings):
@@ -246,7 +246,7 @@ class ETLSettings(BaseSettings):
         alias="PATH_CODIFICADOR_ZONAS",
     )
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(env_file=None, extra="ignore")
 
 
 class Settings(BaseSettings):
@@ -259,8 +259,7 @@ class Settings(BaseSettings):
     etl: ETLSettings = Field(default_factory=ETLSettings)
 
     model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
+        env_file=None,
         extra="ignore",
     )
 

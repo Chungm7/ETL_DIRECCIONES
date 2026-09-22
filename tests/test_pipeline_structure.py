@@ -1,5 +1,6 @@
 """Pruebas estructurales de los componentes del ETL, esquemas dinámicos y catálogos oficiales."""
 
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 from src.models.direccion_origen import DireccionOrigen
@@ -302,6 +303,7 @@ class TestPipelineStructure(unittest.TestCase):
             batch_size=1,
             schema="public",
             table="direcciones_actual",
+            require_ai=False,
         )
 
         self.assertEqual(pipeline.mode, "in_place")
@@ -620,6 +622,7 @@ class TestPipelineStructure(unittest.TestCase):
 
         mock_transformer = MagicMock()
         def fake_transform(rec):
+            time.sleep(0.02)
             return DireccionDestino(
                 id_licencia=rec.id_licencia,
                 raw_text=rec.emp_direccion,
@@ -655,6 +658,71 @@ class TestPipelineStructure(unittest.TestCase):
         self.assertEqual(summary.successful_records, 6)
         self.assertEqual(summary.valid_processed_records, 6)
         self.assertEqual(len(processed_events), 6)
+
+        # Validar que no existan duplicados y que cada evento reporte su Instancia IA
+        processed_ids = [ev["id_licencia"] for ev in processed_events]
+        self.assertEqual(len(processed_ids), 6)
+        self.assertEqual(set(processed_ids), {1, 2, 3, 4, 5, 6})
+
+        worker_ids = {ev.get("worker_id") for ev in processed_events}
+        self.assertTrue(all(w is not None and w.startswith("Instancia IA #") for w in worker_ids))
+        self.assertGreater(len(worker_ids), 1)
+
+    def test_etl_pipeline_work_queue_distribution_and_clean_stop(self):
+        """Valida que la cola de trabajo concurrente reparta registros entre workers y procese sin duplicados."""
+        mock_db = MagicMock()
+        mock_db.ensure_catalogs_exist.return_value = {}
+        mock_db.ensure_in_place_columns.return_value = []
+
+        records = [
+            DireccionOrigen(id_licencia=i, emp_direccion=f"AV. GRAU {i}")
+            for i in range(1, 21)
+        ]
+
+        mock_extractor = MagicMock()
+        mock_extractor.get_total_records.return_value = len(records)
+        mock_extractor.extract_batch.side_effect = [records, []]
+
+        mock_transformer = MagicMock()
+        def fake_transform(rec):
+            time.sleep(0.02)
+            return DireccionDestino(
+                id_licencia=rec.id_licencia,
+                raw_text=rec.emp_direccion,
+                es_procesado=True,
+                metodo_normalizacion="IA",
+            )
+        mock_transformer.transform_record.side_effect = fake_transform
+
+        mock_loader = MagicMock()
+        mock_loader.load_batch.return_value = 1
+
+        events = []
+        pipeline = ETLPipeline(
+            extractor=mock_extractor,
+            transformer=mock_transformer,
+            loader=mock_loader,
+            db_service=mock_db,
+            batch_size=20,
+            schema="public",
+            table="direcciones_actual",
+            num_workers=2,
+            require_ai=False,
+            on_record_processed=lambda d: events.append(d),
+        )
+
+        summary = pipeline.run(max_records=20)
+        self.assertEqual(summary.total_records, 20)
+        self.assertEqual(len(events), 20)
+
+        # Verificar que ambas instancias IA participaron
+        workers_seen = {ev.get("worker_id") for ev in events}
+        self.assertIn("Instancia IA #1", workers_seen)
+        self.assertIn("Instancia IA #2", workers_seen)
+
+        # Cero duplicados en los IDs procesados
+        processed_ids = [ev["id_licencia"] for ev in events]
+        self.assertEqual(len(processed_ids), len(set(processed_ids)))
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from src.config.settings import DatabaseSettings, OllamaSettings, get_settings
 from src.extractors.db_extractor import DatabaseExtractor
+from src.loaders.db_loader import DatabaseLoader
 from src.pipelines.etl_pipeline import ETLPipeline
 from src.services.db_service import DatabaseService
 from src.services.ollama_service import OllamaService
@@ -139,9 +140,11 @@ class ExecutionState:
         zona = record_data.get("zona_desc") or (record_data.get("nom_zona") or "N/D")
         cat = record_data.get("catastro") or ""
         ref = record_data.get("referencia") or ""
+        worker_id = record_data.get("worker_id")
+        worker_tag = f" [{worker_id}]" if worker_id else ""
         status_tag = "VALIDO" if es_proc else "OBSERVADO"
 
-        log_line = f"[{idx}/{tot} | ID: {pk}] [{status_tag}] [{motor}] \"{raw}\" -> {via} | {zona}"
+        log_line = f"[{idx}/{tot} | ID: {pk}]{worker_tag} [{status_tag}] [{motor}] \"{raw}\" -> {via} | {zona}"
         if cat:
             log_line += f" | {cat}"
         if ref:
@@ -720,18 +723,19 @@ async def test_ai_connection(sample_address: Optional[str] = None):
 def _run_pipeline_worker(req: StartPipelineRequest):
     """Función que ejecuta el pipeline ETL en un hilo secundario para no bloquear el servidor."""
     settings = get_settings()
-    target_schema = req.schema_name or settings.db.schema
-    target_table  = req.table_name  or settings.db.table
+    # Usar conexiones y configuraciones dinámicas del wizard si están disponibles
+    db_svc = state.dynamic_db_service or DatabaseService()
+    ollama_svc = state.dynamic_ollama_service or OllamaService()
+    dynamic_db_settings = state.dynamic_db_settings or getattr(db_svc, "settings", None) or settings.db
+
+    target_schema = req.schema_name or getattr(dynamic_db_settings, "schema", "public")
+    target_table  = req.table_name  or getattr(dynamic_db_settings, "table", "direcciones_actual")
     state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
     try:
-        # Usar conexiones dinámicas del wizard si están disponibles
-        db_svc = state.dynamic_db_service or DatabaseService()
-        ollama_svc = state.dynamic_ollama_service or OllamaService()
-
-        # Resolver columnas: las del wizard tienen prioridad sobre las del .env
-        id_col   = req.id_col      or settings.db.id_col
-        dir_col  = req.address_col or settings.db.dir_col
+        # Resolver columnas: las del wizard tienen prioridad sobre cualquier default
+        id_col   = req.id_col      or getattr(dynamic_db_settings, "id_col", "id_licencia")
+        dir_col  = req.address_col or getattr(dynamic_db_settings, "dir_col", "emp_direccion")
 
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
         state.add_log(f"Motor IA: [{ollama_svc.base_url}] | Modelo: [{ollama_svc.model_name}]")
@@ -752,6 +756,15 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             use_ai=req.require_ai,
         )
 
+        # Construir el cargador con la configuración dinámica de columnas
+        custom_loader = DatabaseLoader(
+            db_service=db_svc,
+            schema=target_schema,
+            table=target_table,
+            mode="in_place",
+            db_settings=dynamic_db_settings,
+        )
+
         workers_count = max(1, min(16, int(req.num_workers or state.num_workers or 4)))
         state.num_workers = workers_count
         state.active_model = ollama_svc.model_name
@@ -764,6 +777,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             require_ai=req.require_ai,
             extractor=custom_extractor,
             transformer=custom_transformer,
+            loader=custom_loader,
             on_record_processed=state.add_record,
             num_workers=workers_count,
         )

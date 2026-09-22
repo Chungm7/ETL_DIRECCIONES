@@ -2,6 +2,7 @@
 
 import concurrent.futures
 import logging
+import queue
 import sys
 import threading
 import time
@@ -80,14 +81,19 @@ class ETLPipeline:
         self._stop_requested = False
         self.num_workers = max(1, int(num_workers or 1))
         self._metrics_lock = threading.Lock()
+        self._index_lock = threading.Lock()
+        self._current_index = 0
+
+        # Mapeo dinámico de configuración de base de datos
+        db_settings = getattr(self.db, "settings", None) or settings.db
 
         # Extractor (extrae de la tabla de direcciones en el esquema configurado)
         self.extractor = extractor or DatabaseExtractor(
             db_service=self.db,
             schema=self.schema,
             table=self.table,
-            id_col=settings.db.id_col,
-            dir_col=settings.db.dir_col,
+            id_col=getattr(db_settings, "id_col", "id_licencia"),
+            dir_col=getattr(db_settings, "dir_col", "emp_direccion"),
         )
 
         # Transformer
@@ -99,6 +105,7 @@ class ETLPipeline:
             schema=self.schema,
             table=self.table,
             mode="in_place",
+            db_settings=db_settings,
         )
 
     def request_stop(self) -> None:
@@ -164,11 +171,16 @@ class ETLPipeline:
         raw_text: Optional[str],
         destino,
         success: bool,
+        worker_id: Optional[str] = None,
     ) -> None:
         """Emite una sola línea limpia, rápida y de alta visibilidad para trazabilidad en consola."""
         time_str = datetime.now().strftime("%H:%M:%S")
         pad = len(str(total))
         index_str = f"{index:>{pad}}/{total}"
+
+        # Identificación del worker o instancia
+        worker_plain = f"[{worker_id}] " if worker_id else ""
+        worker_rich = f"[bold cyan][{worker_id}][/bold cyan] " if worker_id else ""
 
         # 1. Identificación del motor
         metodo = getattr(destino, "metodo_normalizacion", "IA")
@@ -224,11 +236,11 @@ class ETLPipeline:
 
         if RICH_AVAILABLE and console:
             console.print(
-                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] {tag_rich} ID {destino.id_licencia}: {raw_disp} {detail}",
+                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] {tag_rich} {worker_rich}ID {destino.id_licencia}: {raw_disp} {detail}",
                 soft_wrap=True,
             )
         else:
-            print(f"{time_str} [{index_str}] {tag_plain} ID {destino.id_licencia}: {raw_disp} {detail}")
+            print(f"{time_str} [{index_str}] {tag_plain} {worker_plain}ID {destino.id_licencia}: {raw_disp} {detail}")
         sys.stdout.flush()
 
     def _process_single_record(self, rec_raw):
@@ -247,6 +259,7 @@ class ETLPipeline:
         current_index: int,
         total_records: int,
         summary: ETLSummary,
+        worker_id: Optional[str] = None,
     ):
         """Actualiza métricas protegidas, emite eventos visuales a consola y notifica callbacks."""
         with self._metrics_lock:
@@ -298,6 +311,7 @@ class ETLPipeline:
             raw_text=rec_raw.emp_direccion,
             destino=rec_dest,
             success=is_success,
+            worker_id=worker_id,
         )
 
         # Emitir evento en tiempo real hacia GUI/SSE si el callback está registrado
@@ -306,6 +320,7 @@ class ETLPipeline:
                 self.on_record_processed({
                     "index": current_index,
                     "total": total_records,
+                    "worker_id": worker_id,
                     "id_licencia": rec_raw.id_licencia,
                     "raw_text": rec_raw.emp_direccion or "",
                     "metodo": metodo,
@@ -353,6 +368,7 @@ class ETLPipeline:
         current_index: int,
         total_records: int,
         summary: ETLSummary,
+        worker_id: Optional[str] = None,
     ):
         with self._metrics_lock:
             summary.failed_records += 1
@@ -374,13 +390,16 @@ class ETLPipeline:
         if len(err_str) > 50:
             err_str = err_str[:47] + "..."
 
+        worker_plain = f"[{worker_id}] " if worker_id else ""
+        worker_rich = f"[bold cyan][{worker_id}][/bold cyan] " if worker_id else ""
+
         if RICH_AVAILABLE and console:
             console.print(
-                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] [bold red][ERROR      ][/bold red] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}",
+                f"[dim]{time_str}[/dim] [[bold]{index_str}[/bold]] [bold red][ERROR      ][/bold red] {worker_rich}ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}",
                 soft_wrap=True,
             )
         else:
-            print(f"{time_str} [{index_str}] [ERROR      ] ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}")
+            print(f"{time_str} [{index_str}] [ERROR      ] {worker_plain}ID {rec_raw.id_licencia}: {raw_disp} -> Fallo: {err_str}")
         sys.stdout.flush()
 
         if self.on_record_processed:
@@ -388,6 +407,7 @@ class ETLPipeline:
                 self.on_record_processed({
                     "index": current_index,
                     "total": total_records,
+                    "worker_id": worker_id,
                     "id_licencia": rec_raw.id_licencia,
                     "raw_text": rec_raw.emp_direccion or "",
                     "metodo": "ERROR",
@@ -499,90 +519,127 @@ class ETLPipeline:
         sys.stdout.flush()
 
         start_time = time.time()
-        processed_in_run = 0
-        current_index = 0
+        self._current_index = 0
 
-        while processed_in_run < records_to_process:
-            if self._stop_requested:
-                logger.info("Pipeline interrumpido por solicitud de usuario.")
-                break
+        # Cola thread-safe con capacidad controlada (arquitectura Work-Stealing / Productor-Consumidor)
+        queue_size = max(50, self.num_workers * 4)
+        work_queue: queue.Queue[Optional[DireccionOrigen]] = queue.Queue(maxsize=queue_size)
+        producer_done = threading.Event()
 
-            limit = min(self.batch_size, records_to_process - processed_in_run)
+        def _producer_feeder():
+            """Productor en streaming: extrae bloques continuos de BD y los alimenta a la cola sin duplicados."""
+            enqueued = 0
+            last_seen_id = None
 
-            try:
-                # 1. Extracción (en modo pending, los registros actualizados dejan de ser NULL,
-                # por lo que offset=0 siempre apunta al siguiente conjunto de registros pendientes)
-                fetch_offset = 0 if filter_mode == "pending" else processed_in_run
-                batch_raw = self.extractor.extract_batch(offset=fetch_offset, limit=limit, filter_mode=filter_mode)
-                if not batch_raw:
-                    break
+            while enqueued < records_to_process and not self._stop_requested:
+                limit_chunk = min(self.batch_size, records_to_process - enqueued)
+                try:
+                    # Intenta primero keyset pagination con after_id para inmunidad total ante concurrencia
+                    try:
+                        batch_raw = self.extractor.extract_batch(
+                            limit=limit_chunk,
+                            filter_mode=filter_mode,
+                            after_id=last_seen_id,
+                        )
+                    except TypeError:
+                        # Fallback seguro para extractores personalizados o mocks sin soporte after_id
+                        fetch_offset = 0 if filter_mode == "pending" else enqueued
+                        batch_raw = self.extractor.extract_batch(
+                            offset=fetch_offset,
+                            limit=limit_chunk,
+                            filter_mode=filter_mode,
+                        )
 
-                # 2. Procesamiento, carga y visualización en tiempo real registro por registro
-                if self.num_workers <= 1:
-                    for rec_raw in batch_raw:
-                        if self._stop_requested:
-                            logger.info("Pipeline detenido por usuario antes de procesar siguiente registro.")
+                    if not batch_raw:
+                        break
+
+                    for rec in batch_raw:
+                        if self._stop_requested or enqueued >= records_to_process:
                             break
 
-                        current_index += 1
-                        try:
-                            rec_raw, rec_dest, is_success = self._process_single_record(rec_raw)
-                            self._record_metrics_and_notify(
-                                rec_raw=rec_raw,
-                                rec_dest=rec_dest,
-                                is_success=is_success,
-                                current_index=current_index,
-                                total_records=records_to_process,
-                                summary=summary,
-                            )
-                        except Exception as rec_err:
-                            logger.error("Error procesando registro %d: %s", rec_raw.id_licencia, rec_err)
-                            self._record_metrics_and_notify_error(
-                                rec_raw=rec_raw,
-                                rec_err=rec_err,
-                                current_index=current_index,
-                                total_records=records_to_process,
-                                summary=summary,
-                            )
-                else:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=self.num_workers) as executor:
-                        future_to_rec = {
-                            executor.submit(self._process_single_record, rec): rec
-                            for rec in batch_raw
-                        }
-                        for future in concurrent.futures.as_completed(future_to_rec):
-                            rec_orig = future_to_rec[future]
-                            if self._stop_requested:
-                                logger.info("Pipeline detenido por usuario durante ejecución concurrente.")
-                                break
-
-                            current_index += 1
+                        while not self._stop_requested:
                             try:
-                                rec_raw, rec_dest, is_success = future.result()
-                                self._record_metrics_and_notify(
-                                    rec_raw=rec_raw,
-                                    rec_dest=rec_dest,
-                                    is_success=is_success,
-                                    current_index=current_index,
-                                    total_records=records_to_process,
-                                    summary=summary,
-                                )
-                            except Exception as rec_err:
-                                logger.error("Error procesando registro %d: %s", rec_orig.id_licencia, rec_err)
-                                self._record_metrics_and_notify_error(
-                                    rec_raw=rec_orig,
-                                    rec_err=rec_err,
-                                    current_index=current_index,
-                                    total_records=records_to_process,
-                                    summary=summary,
-                                )
+                                work_queue.put(rec, timeout=0.2)
+                                enqueued += 1
+                                if hasattr(rec, "id_licencia") and rec.id_licencia is not None:
+                                    last_seen_id = rec.id_licencia
+                                break
+                            except queue.Full:
+                                continue
 
-                processed_in_run += len(batch_raw)
+                except Exception as ex_feeder:
+                    logger.error("Error en productor de registros: %s", ex_feeder)
+                    break
 
-            except Exception as e:
-                logger.error("Fallo durante la extracción del lote en offset %d: %s", fetch_offset, e)
-                summary.failed_records += limit
-                processed_in_run += limit
+            producer_done.set()
+
+            # Encolar sentinelas None para señalar fin a cada worker
+            for _ in range(self.num_workers):
+                while not self._stop_requested:
+                    try:
+                        work_queue.put(None, timeout=0.2)
+                        break
+                    except queue.Full:
+                        continue
+
+        def _worker_consumer(worker_num: int):
+            """Consumidor concurrente: procesa registros individuales de forma completamente autónoma."""
+            worker_id = f"Instancia IA #{worker_num}"
+
+            while not self._stop_requested:
+                try:
+                    item = work_queue.get(timeout=0.4)
+                except queue.Empty:
+                    if producer_done.is_set():
+                        break
+                    continue
+
+                if item is None:
+                    work_queue.task_done()
+                    break
+
+                rec_raw = item
+                with self._index_lock:
+                    self._current_index += 1
+                    current_idx = self._current_index
+
+                try:
+                    rec_raw, rec_dest, is_success = self._process_single_record(rec_raw)
+                    self._record_metrics_and_notify(
+                        rec_raw=rec_raw,
+                        rec_dest=rec_dest,
+                        is_success=is_success,
+                        current_index=current_idx,
+                        total_records=records_to_process,
+                        summary=summary,
+                        worker_id=worker_id,
+                    )
+                except Exception as rec_err:
+                    rec_id = getattr(rec_raw, "id_licencia", -1)
+                    logger.error("Error procesando registro %s en %s: %s", rec_id, worker_id, rec_err)
+                    self._record_metrics_and_notify_error(
+                        rec_raw=rec_raw,
+                        rec_err=rec_err,
+                        current_index=current_idx,
+                        total_records=records_to_process,
+                        summary=summary,
+                        worker_id=worker_id,
+                    )
+                finally:
+                    work_queue.task_done()
+
+        feeder_thread = threading.Thread(target=_producer_feeder, name="ETL-Producer", daemon=True)
+        feeder_thread.start()
+
+        worker_threads = []
+        for i in range(self.num_workers):
+            t = threading.Thread(target=_worker_consumer, args=(i + 1,), name=f"ETL-Worker-{i+1}", daemon=True)
+            worker_threads.append(t)
+            t.start()
+
+        feeder_thread.join()
+        for t in worker_threads:
+            t.join()
 
         elapsed = time.time() - start_time
         if RICH_AVAILABLE and console:

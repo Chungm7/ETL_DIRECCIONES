@@ -48,7 +48,13 @@ class FileExtractor(BaseExtractor):
                 return 0
         return len(self._cached_df) if self._cached_df is not None else 0
 
-    def extract_batch(self, offset: int, limit: int) -> List[DireccionOrigen]:
+    def extract_batch(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        filter_mode: str = "pending",
+        after_id: Optional[int] = None,
+    ) -> List[DireccionOrigen]:
         """Extrae un corte de registros del DataFrame."""
         if self._cached_df is None:
             self._load_dataframe()

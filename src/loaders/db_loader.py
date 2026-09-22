@@ -26,24 +26,25 @@ class DatabaseLoader(BaseLoader):
         schema: Optional[str] = None,
         table: Optional[str] = None,
         mode: str = "in_place",
+        db_settings: Optional[Any] = None,
     ):
         self.db = db_service or DatabaseService()
-        self.settings = get_settings().db
+        self.settings = db_settings or getattr(self.db, "settings", None) or get_settings().db
         self.mode = "in_place"
         self.schema = schema or self.settings.schema
         self.table = table or self.settings.table
 
         # Mapeo de nombres dinámicos de columnas normalizadas consolidadas
-        self.col_id = self.settings.id_col
-        self.col_id_via = self.settings.col_id_via
-        self.col_num_via = self.settings.col_num_via
-        self.col_id_zona = self.settings.col_id_zona
-        self.col_mz = self.settings.col_manzana
-        self.col_lt = self.settings.col_lote
-        self.col_slt = self.settings.col_slote
-        self.col_referencia = self.settings.col_referencia
-        self.col_es_procesado = self.settings.col_es_procesado
-        self.col_observacion = self.settings.col_observacion
+        self.col_id = getattr(self.settings, "id_col", "id_licencia")
+        self.col_id_via = getattr(self.settings, "col_id_via", "id_via")
+        self.col_num_via = getattr(self.settings, "col_num_via", "num_via")
+        self.col_id_zona = getattr(self.settings, "col_id_zona", "id_zona")
+        self.col_mz = getattr(self.settings, "col_manzana", "manzana")
+        self.col_lt = getattr(self.settings, "col_lote", "lote")
+        self.col_slt = getattr(self.settings, "col_slote", "slote")
+        self.col_referencia = getattr(self.settings, "col_referencia", "referencia")
+        self.col_es_procesado = getattr(self.settings, "col_es_procesado", "es_procesado")
+        self.col_observacion = getattr(self.settings, "col_observacion", "observacion")
 
     def load_batch(self, records: List[DireccionDestino]) -> int:
         """Actualiza in-place las columnas normalizadas en la tabla existente conservando IDs."""

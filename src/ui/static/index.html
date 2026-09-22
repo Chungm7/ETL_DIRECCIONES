@@ -1032,10 +1032,10 @@
         <div class="field full">
           <label for="ai_num_workers" style="display:flex; justify-content:space-between; align-items:center;">
             <span>Instancias Concurrentes de IA (Hilos Paralelos)</span>
-            <span style="font-weight:400; font-size:11.5px; color:var(--slate-500);">Recomendado: 4 (Rango: 1 a 16)</span>
+            <span style="font-weight:400; font-size:11.5px; color:var(--slate-500);">Rango: 1 a 16</span>
           </label>
           <div style="display:flex; align-items:center; gap:12px;">
-            <input type="number" id="ai_num_workers" min="1" max="16" value="4" style="max-width:130px;" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
+            <input type="number" id="ai_num_workers" min="1" max="16" value="2" style="max-width:130px;" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
             <span style="font-size:12px; color:var(--slate-600);">
               Permite procesar múltiples solicitudes en simultáneo contra Ollama para acelerar drásticamente el proceso manteniendo la misma calidad y precisión.
             </span>
@@ -1326,7 +1326,7 @@
             <label for="inp_num_workers" style="font-size:11px;" title="Número de hilos o instancias concurrentes que procesan contra Ollama en paralelo.">
               Instancias <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Instancias concurrentes de IA (1 a 16)">(?)</span>
             </label>
-            <input type="number" id="inp_num_workers" value="4" min="1" max="16" style="padding:6px 8px; font-size:12.5px;" title="Instancias paralelas de IA (1-16)" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
+            <input type="number" id="inp_num_workers" value="2" min="1" max="16" style="padding:6px 8px; font-size:12.5px;" title="Instancias paralelas de IA (1-16)" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
           </div>
           <div class="field" style="margin:0;">
             <label for="inp_filter" style="font-size:11px;">Filtro</label>

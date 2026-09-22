@@ -45,7 +45,7 @@ def show_configuration_panel() -> None:
     if RICH_AVAILABLE and console:
         table = Table(title="🔧 Configuración Activa del Sistema", show_header=True, header_style="bold cyan")
         table.add_column("Categoría", style="bold yellow", width=25)
-        table.add_column("Parámetro (.env)", style="green", width=25)
+        table.add_column("Parámetro", style="green", width=25)
         table.add_column("Valor Actual", style="white")
 
         table.add_row("Conexión BD", "DB_HOST:DB_PORT", f"{settings.db.host}:{settings.db.port}")
@@ -80,7 +80,7 @@ def show_configuration_panel() -> None:
         console.print(table)
     else:
         print("\n" + "=" * 60)
-        print("🔧 CONFIGURACIÓN ACTIVA DEL SISTEMA (.env)")
+        print("🔧 CONFIGURACIÓN ACTIVA DEL SISTEMA")
         print("=" * 60)
         print(f"Base de Datos       : {settings.db.host}:{settings.db.port}/{settings.db.name}")
         print(f"Tabla Direcciones   : {settings.db.schema}.{settings.db.table} [ID: {settings.db.id_col}, Texto: {settings.db.dir_col}]")
@@ -161,7 +161,7 @@ def cmd_check_ollama() -> None:
         print(f"Detalle: {live_test['error'] or live_test['message']}")
         print(
             "\n💡 Sugerencias:\n"
-            "   1. Comprueba que Ollama esté corriendo en la URL configurada (.env).\n"
+            "   1. Comprueba que Ollama esté corriendo en la URL y puerto configurados.\n"
             "   2. Si es una máquina remota, verifica que el puerto 11434 esté abierto.\n"
             "   3. Si el modelo patroclo está apagado, enciéndelo antes de iniciar el ETL para máxima precisión."
         )
@@ -553,7 +553,7 @@ def interactive_menu() -> None:
         print("      Normalización Catastral asistida con IA Local (Ollama)")
         print(f"      📍 Esquema Activo: [{active_schema}] | BD: [{settings.db.name}]")
         print("=" * 65)
-        print("1. 📊 Ver Configuración Activa (.env / Schemas / Tablas)")
+        print("1. 📊 Ver Configuración Activa (Schemas / Tablas)")
         print("2. 🩺 Diagnóstico de Conexiones (PostgreSQL y Prueba en Vivo IA)")
         print(f"3. ⚡ Ejecutar ETL In-Place en [{active_schema}] (Conserva IDs y catálogos)")
         print("4. 🔄 Cambiar Esquema Activo de Trabajo (public, schema_solo_tabla, etc.)")
@@ -682,7 +682,7 @@ def main() -> None:
         "--schema",
         type=str,
         default=None,
-        help="Esquema de base de datos a procesar (por defecto .env)",
+        help="Esquema de base de datos a procesar (por defecto: public)",
     )
     run_parser.add_argument(
         "--mode",

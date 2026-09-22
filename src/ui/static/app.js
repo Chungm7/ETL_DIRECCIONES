@@ -15,7 +15,13 @@ const wiz = {
   ai_port: 11434,
   ai_model: '',
   aiVerified: false,
-  num_workers: 4,
+  num_workers: (function() {
+    try {
+      return parseInt(localStorage.getItem('etl_num_workers')) || 2;
+    } catch(e) {
+      return 2;
+    }
+  })(),
 
   // Paso 2: BD
   db_host: '',
@@ -36,6 +42,12 @@ const wiz = {
 
   // Paso 5: Inspector en Tiempo Real
   allRecords: [],
+
+  // Filtro y Ejecución
+  filter_mode: 'pending',
+  batch_size: 50,
+  max_retries: 3,
+  require_ai: true,
   autoScroll: true,
   searchInspector: '',
   inspectorStatus: 'all',  // 'all' | 'valid' | 'observed' | 'error'
@@ -45,10 +57,13 @@ const wiz = {
 };
 
 function syncNumWorkers(val) {
-  let n = parseInt(val) || 4;
+  let n = parseInt(val) || 2;
   if (n < 1) n = 1;
   if (n > 16) n = 16;
   wiz.num_workers = n;
+  try {
+    localStorage.setItem('etl_num_workers', String(n));
+  } catch (e) {}
   const el1 = document.getElementById('ai_num_workers');
   const el5 = document.getElementById('inp_num_workers');
   const elSumm = document.getElementById('summWorkers');
@@ -974,6 +989,11 @@ function createConciseRecordCard(r) {
     ? `<span class="badge" style="background:var(--slate-100); color:var(--mpch-navy); border:1px solid var(--slate-300); font-size:10px;">REPROCESADO</span>`
     : '';
 
+  // Badge de Instancia IA / Concurrencia
+  const workerBadge = r.worker_id
+    ? `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700; font-size:10px;">${escapeHtml(r.worker_id)}</span>`
+    : '';
+
   return `
     <div class="record-card ${cardClass}">
       <div class="record-header">
@@ -982,6 +1002,7 @@ function createConciseRecordCard(r) {
           <span class="record-index">#${r.index} de ${r.total || '?'}</span>
           ${statusBadge}
           ${motorBadge}
+          ${workerBadge}
           ${reproBadge}
         </div>
         <div style="display:flex; align-items:center; gap:8px;">
@@ -1599,5 +1620,6 @@ function resetToNewSession() {
 
 // ── Inicialización al Cargar ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  syncNumWorkers(wiz.num_workers);
   checkInitialServerState();
 });

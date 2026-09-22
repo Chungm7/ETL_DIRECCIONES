@@ -93,6 +93,7 @@ class DatabaseExtractor(BaseExtractor):
         offset: int = 0,
         limit: int = 100,
         filter_mode: str = "pending",
+        after_id: Optional[int] = None,
     ) -> List[DireccionOrigen]:
         """Extrae un lote aplicando filtro de estado para reanudación automática.
 
@@ -100,28 +101,42 @@ class DatabaseExtractor(BaseExtractor):
             - 'pending': Solo registros donde es_procesado IS NULL (por defecto).
             - 'observed': Solo registros donde es_procesado = FALSE (reproceso de observados).
             - 'all': Todos los registros sin filtrar por estado.
+        after_id:
+            - Si se proporciona, solo extrae registros con ID mayor a after_id (keyset pagination segura ante concurrencia).
         """
         if not SQLALCHEMY_AVAILABLE or not self.db._engine:
             return []
 
-        where_clause = ""
+        conditions = []
+        params: Dict[str, Any] = {"limit": limit}
+
         if filter_mode == "pending":
-            where_clause = f'WHERE "{self.col_es_procesado}" IS NULL'
+            conditions.append(f'"{self.col_es_procesado}" IS NULL')
         elif filter_mode == "observed":
-            where_clause = f'WHERE "{self.col_es_procesado}" = FALSE'
+            conditions.append(f'"{self.col_es_procesado}" = FALSE')
+
+        if after_id is not None:
+            conditions.append(f'"{self.id_col}" > :after_id')
+            params["after_id"] = after_id
+            offset_clause = ""
+        else:
+            params["offset"] = offset
+            offset_clause = "OFFSET :offset"
+
+        where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         query = text(f"""
             SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
             FROM "{self.schema}"."{self.table}"
             {where_clause}
             ORDER BY "{self.id_col}" ASC
-            LIMIT :limit OFFSET :offset;
+            LIMIT :limit {offset_clause};
         """)
 
         results: List[DireccionOrigen] = []
         try:
             with self.db.get_session() as session:
-                rows = session.execute(query, {"limit": limit, "offset": offset}).fetchall()
+                rows = session.execute(query, params).fetchall()
                 for row in rows:
                     results.append(
                         DireccionOrigen(
@@ -131,12 +146,13 @@ class DatabaseExtractor(BaseExtractor):
                     )
         except Exception as e:
             logger.error(
-                "Error al extraer lote de %s.%s (offset=%d, limit=%d, filter=%s): %s",
+                "Error al extraer lote de %s.%s (offset=%d, limit=%d, filter=%s, after_id=%s): %s",
                 self.schema,
                 self.table,
                 offset,
                 limit,
                 filter_mode,
+                after_id,
                 e,
             )
 
