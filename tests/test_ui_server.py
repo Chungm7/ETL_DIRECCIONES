@@ -246,6 +246,32 @@ def test_api_connect_ai_success(client):
         assert state.dynamic_ollama_service is not None
 
 
+def test_api_connect_ai_stores_num_workers(client):
+    """Verifica que /api/connect-ai persista num_workers en state.num_workers."""
+    state.num_workers = 4
+    with patch("src.ui.server.OllamaService") as mock_ollama_cls:
+        mock_instance = mock_ollama_cls.return_value
+        mock_instance.check_connection.return_value = {
+            "connected": True,
+            "model_available": True,
+            "available_models": ["patroclo-artesano-7b:latest"],
+            "message": "Modelo disponible",
+        }
+
+        req_body = {
+            "host": "localhost",
+            "port": 11434,
+            "model": "patroclo-artesano-7b:latest",
+            "num_workers": 2,
+        }
+        response = client.post("/api/connect-ai", json=req_body)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["num_workers"] == 2
+        assert state.num_workers == 2
+
+
 def test_api_connect_ai_model_missing(client):
     """Verifica que /api/connect-ai rechace modelos no descargados con error 400 descriptivo."""
     with patch("src.ui.server.OllamaService") as mock_ollama_cls:

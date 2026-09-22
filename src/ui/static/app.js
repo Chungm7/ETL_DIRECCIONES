@@ -249,13 +249,16 @@ async function verifyAIConnection() {
     return;
   }
 
+  const workersVal = parseInt(document.getElementById('ai_num_workers')?.value) || wiz.num_workers || 4;
+  syncNumWorkers(workersVal);
+
   setLoading('btnConnectAI', 'spinConnectAI', true);
 
   try {
     const res = await fetch('/api/connect-ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ host, port, model }),
+      body: JSON.stringify({ host, port, model, num_workers: wiz.num_workers }),
     });
     const data = await res.json();
 
@@ -269,6 +272,9 @@ async function verifyAIConnection() {
     wiz.ai_host = host;
     wiz.ai_port = port;
     wiz.ai_model = model;
+    if (data.num_workers) {
+      syncNumWorkers(data.num_workers);
+    }
     wiz.aiVerified = true;
     wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 2);
 
@@ -623,8 +629,10 @@ async function initStep5() {
       }
     }
 
-    if (data.num_workers) {
+    if (data.is_running && data.num_workers) {
       syncNumWorkers(data.num_workers);
+    } else if (wiz.num_workers) {
+      syncNumWorkers(wiz.num_workers);
     }
     if (data.active_table && !wiz.table) wiz.table = data.active_table;
     if (data.active_schema && !wiz.schema) wiz.schema = data.active_schema;
@@ -743,6 +751,17 @@ function updateStats(s) {
     const s2 = Math.floor(secs % 60);
     document.getElementById('elapsedLabel').textContent =
       `Tiempo: ${m > 0 ? m + 'm ' : ''}${s2}s`;
+  }
+
+  const speedEl = document.getElementById('speedLabel');
+  if (speedEl) {
+    let rps = '0.0';
+    if (s.speed_rps !== undefined && s.speed_rps !== null && s.speed_rps > 0) {
+      rps = Number(s.speed_rps).toFixed(1);
+    } else if (secs > 0 && proc > 0) {
+      rps = (proc / secs).toFixed(1);
+    }
+    speedEl.textContent = `${rps} reg/s`;
   }
 
   const status = s.status || 'IDLE';
@@ -1276,6 +1295,7 @@ async function startETL() {
   const limit       = parseInt(document.getElementById('inp_limit').value) || null;
   const batch       = parseInt(document.getElementById('inp_batch').value) || 50;
   const num_workers = parseInt(document.getElementById('inp_num_workers')?.value || wiz.num_workers || 4);
+  syncNumWorkers(num_workers);
   const filter      = document.getElementById('inp_filter').value || 'pending';
   const require_ai  = document.getElementById('inp_require_ai')?.checked ?? true;
 

@@ -35,7 +35,7 @@ class OllamaService:
 
         # Inicialización del cliente oficial de Ollama si está disponible
         if OLLAMA_LIB_AVAILABLE:
-            self._client = ollama.Client(host=self.base_url)
+            self._client = ollama.Client(host=self.base_url, timeout=float(self.timeout))
         else:
             self._client = None
             logger.warning(

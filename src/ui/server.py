@@ -173,6 +173,7 @@ class ExecutionState:
 
             start_t = self.stats.get("start_time")
             elapsed = round(time.time() - start_t, 1) if start_t else 0
+            speed_rps = round(processed / elapsed, 2) if elapsed > 0 else 0.0
 
             self.stats.update({
                 "processed": processed,
@@ -184,6 +185,8 @@ class ExecutionState:
                 "heuristic_records": record_data.get("heuristic_records", 0),
                 "progress_pct": pct,
                 "elapsed_seconds": elapsed,
+                "speed_rps": speed_rps,
+                "num_workers": self.num_workers,
             })
 
         self.broadcast({"type": "record", "payload": record_data})
@@ -293,6 +296,7 @@ class AIConnectRequest(BaseModel):
     model: str = Field(default="patroclo-artesano-7b:latest", description="Nombre del modelo seleccionado")
     timeout: Optional[int] = Field(default=60, description="Timeout en segundos")
     temperature: Optional[float] = Field(default=0.0, description="Temperatura de inferencia")
+    num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de trabajadores concurrentes a Ollama")
 
 
 class DetectModelsRequest(BaseModel):
@@ -507,12 +511,15 @@ async def wizard_connect_ai(req: AIConnectRequest):
     # Guardar en estado compartido de la sesión
     state.dynamic_ollama_service = ollama_svc
     state.dynamic_ollama_settings = dyn_settings
+    if req.num_workers:
+        state.num_workers = max(1, min(16, int(req.num_workers)))
 
     return {
         "success": True,
         "host": req.host,
         "port": req.port,
         "model": req.model,
+        "num_workers": state.num_workers,
         "model_available": True,
         "available_models": available_models,
         "latency_ms": latency_ms,
@@ -745,7 +752,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             use_ai=req.require_ai,
         )
 
-        workers_count = max(1, int(req.num_workers or 1))
+        workers_count = max(1, min(16, int(req.num_workers or state.num_workers or 4)))
         state.num_workers = workers_count
         state.active_model = ollama_svc.model_name
 
@@ -846,7 +853,7 @@ async def start_pipeline(req: StartPipelineRequest):
 
     state.active_schema = req.schema_name
     state.active_table = req.table_name
-    state.num_workers = max(1, int(req.num_workers or 1))
+    state.num_workers = max(1, min(16, int(req.num_workers or state.num_workers or 4)))
 
     worker = threading.Thread(
         target=_run_pipeline_worker,
