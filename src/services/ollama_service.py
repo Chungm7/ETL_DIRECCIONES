@@ -285,6 +285,11 @@ class OllamaService:
 
     def _call_ollama_messages(self, messages: List[Dict[str, str]], temperature: float = 0.0) -> Optional[str]:
         """Ejecuta una llamada estructurada de chat con mensajes arbitrarios hacia Ollama."""
+        call_options = {
+            "temperature": temperature,
+            "num_ctx": getattr(self.settings, "num_ctx", 16384),
+        }
+
         # Prioridad 1: Cliente oficial si está disponible
         if self._client is not None:
             try:
@@ -292,7 +297,7 @@ class OllamaService:
                     model=self.model_name,
                     messages=messages,
                     format="json",
-                    options={"temperature": temperature},
+                    options=call_options,
                 )
                 return response.get("message", {}).get("content")
             except Exception as ex_client:
@@ -305,7 +310,7 @@ class OllamaService:
                 "messages": messages,
                 "format": "json",
                 "stream": False,
-                "options": {"temperature": temperature},
+                "options": call_options,
             }
             res = client.post(f"{self.base_url}/api/chat", json=payload)
             res.raise_for_status()

@@ -367,6 +367,26 @@ def test_api_clear_session_endpoint(client):
     assert len(state.log_history) == 0
 
 
+def test_api_seed_catalogs_endpoint(client):
+    """Verifica que /api/seed-catalogs ejecute la siembra completa y retorne estadísticas."""
+    with patch("src.ui.server.DatabaseService") as mock_db_cls:
+        mock_inst = mock_db_cls.return_value
+        mock_inst.seed_v2_catalogs.return_value = {
+            "schema": "public",
+            "tb_via_count": 2935,
+            "tb_zona_count": 460,
+            "tb_tipo_via_count": 12,
+            "tb_tipo_zona_count": 28,
+        }
+        with patch("src.transformers.catalog_matcher.CatalogMatcher.sync_with_db"):
+            response = client.post("/api/seed-catalogs", json={"schema_name": "public", "force": True})
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["tb_via_count"] == 2935
+            assert data["data"]["tb_zona_count"] == 460
+
+
 def test_ui_state_cumulative_and_in_place_update():
     """Verifica que reset_for_run conserve recent_records y que add_record actualice registros por ID."""
     state.clear_session()

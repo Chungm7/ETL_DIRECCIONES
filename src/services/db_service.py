@@ -845,76 +845,83 @@ class DatabaseService:
         try:
             with self.get_session() as session:
                 # 1. tb_tipo_via
+                # 1. tb_tipo_via (12 tipos oficiales)
+                vias_tipos = CatalogManager.get_official_vias_tuples()
                 tv_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_via";')).scalar() or 0
-                if tv_count == 0:
-                    vias_tipos = CatalogManager.get_official_vias_tuples()
+                if tv_count < len(vias_tipos):
                     session.execute(text(f"""
                         INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
                         VALUES (:id, :nombre, :abrev, 'ACT')
-                        ON CONFLICT (tivi_nombre) DO NOTHING;
+                        ON CONFLICT (tivi_id) DO UPDATE
+                        SET tivi_nombre = EXCLUDED.tivi_nombre, tivi_abreviatura = EXCLUDED.tivi_abreviatura;
                     """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
                     results["seeded_tables"]["tb_tipo_via"] = len(vias_tipos)
 
-                # 2. tb_tipo_zona
+                # 2. tb_tipo_zona (Exactamente los 28 tipos oficiales)
+                zonas_tipos = CatalogManager.get_official_zonas_tuples()
                 tz_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_zona";')).scalar() or 0
-                if tz_count == 0:
-                    zonas_tipos = CatalogManager.get_official_zonas_tuples()
+                if tz_count < len(zonas_tipos):
                     session.execute(text(f"""
                         INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
                         VALUES (:id, :nombre, :abrev, 'ACT')
-                        ON CONFLICT (tizo_nombre) DO NOTHING;
+                        ON CONFLICT (tizo_id) DO UPDATE
+                        SET tizo_nombre = EXCLUDED.tizo_nombre, tizo_abreviatura = EXCLUDED.tizo_abreviatura;
                     """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
                     results["seeded_tables"]["tb_tipo_zona"] = len(zonas_tipos)
 
-                # 3. tb_via (2,935 vías oficiales de Chiclayo)
+                # 3. tb_via (Catálogo completo de 2,935 vías oficiales de Chiclayo)
+                phys_vias = CatalogManager.get_official_physical_vias_tuples()
                 via_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_via";')).scalar() or 0
-                if via_count == 0:
-                    phys_vias = CatalogManager.get_official_physical_vias_tuples()
+                if via_count < len(phys_vias):
                     chunk_size = 400
                     for i in range(0, len(phys_vias), chunk_size):
                         chunk = phys_vias[i:i + chunk_size]
                         session.execute(text(f"""
                             INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
                             VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
-                            ON CONFLICT (via_id) DO NOTHING;
+                            ON CONFLICT (via_id) DO UPDATE
+                            SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'ACT';
                         """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
                     results["seeded_tables"]["tb_via"] = len(phys_vias)
                     logger.info("Catálogo maestro sembrado en %s: %d vías oficiales de Chiclayo", target_schema, len(phys_vias))
 
-                # 4. tb_zona (460 zonas oficiales de Chiclayo)
+                # 4. tb_zona (Catálogo completo de 460 zonas oficiales de Chiclayo)
+                phys_zonas = CatalogManager.get_official_physical_zonas_tuples()
                 zona_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_zona";')).scalar() or 0
-                if zona_count == 0:
-                    phys_zonas = CatalogManager.get_official_physical_zonas_tuples()
+                if zona_count < len(phys_zonas):
                     chunk_size = 200
                     for i in range(0, len(phys_zonas), chunk_size):
                         chunk = phys_zonas[i:i + chunk_size]
                         session.execute(text(f"""
                             INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
                             VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
-                            ON CONFLICT (zona_id) DO NOTHING;
+                            ON CONFLICT (zona_id) DO UPDATE
+                            SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'ACT';
                         """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
                     results["seeded_tables"]["tb_zona"] = len(phys_zonas)
                     logger.info("Catálogo maestro sembrado en %s: %d zonas oficiales de Chiclayo", target_schema, len(phys_zonas))
 
                 # 5. tb_componente_direccion
+                comps = CatalogManager.get_default_componentes_tuples()
                 comp_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_componente_direccion";')).scalar() or 0
-                if comp_count == 0:
-                    comps = CatalogManager.get_default_componentes_tuples()
+                if comp_count < len(comps):
                     session.execute(text(f"""
                         INSERT INTO "{target_schema}"."tb_componente_direccion" (codi_id, codi_nombre, codi_es_urbano, codi_estado)
                         VALUES (:codi_id, :codi_nombre, :codi_es_urbano, :codi_estado)
-                        ON CONFLICT (codi_id) DO NOTHING;
+                        ON CONFLICT (codi_id) DO UPDATE
+                        SET codi_nombre = EXCLUDED.codi_nombre, codi_es_urbano = EXCLUDED.codi_es_urbano;
                     """), [{"codi_id": c[0], "codi_nombre": c[1], "codi_es_urbano": c[2], "codi_estado": c[3]} for c in comps])
                     results["seeded_tables"]["tb_componente_direccion"] = len(comps)
 
                 # 6. tb_tipo_modulo
+                mods = CatalogManager.get_default_tipo_modulo_tuples()
                 mod_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_modulo";')).scalar() or 0
-                if mod_count == 0:
-                    mods = CatalogManager.get_default_tipo_modulo_tuples()
+                if mod_count < len(mods):
                     session.execute(text(f"""
                         INSERT INTO "{target_schema}"."tb_tipo_modulo" (timo_id, timo_nombre, timo_estado)
                         VALUES (:timo_id, :timo_nombre, :timo_estado)
-                        ON CONFLICT (timo_id) DO NOTHING;
+                        ON CONFLICT (timo_id) DO UPDATE
+                        SET timo_nombre = EXCLUDED.timo_nombre;
                     """), [{"timo_id": m[0], "timo_nombre": m[1], "timo_estado": m[2]} for m in mods])
                     results["seeded_tables"]["tb_tipo_modulo"] = len(mods)
 
@@ -935,6 +942,67 @@ class DatabaseService:
             logger.error("Error al verificar/sembrar datos semilla V2 en %s: %s", target_schema, e)
 
         return results
+
+    def seed_v2_catalogs(self, schema: Optional[str] = None, force: bool = False) -> Dict[str, Any]:
+        """Importa y siembra forzosamente la totalidad de los catálogos oficiales V2
+        (2,935 vías oficiales, 460 zonas oficiales, 12 tipos de vía y 28 tipos de zona).
+        """
+        from src.catalogs.catalog_manager import CatalogManager
+
+        target_schema = schema or self.settings.schema
+        self.ensure_v2_tables_exist(target_schema)
+
+        res: Dict[str, Any] = {"schema": target_schema, "status": "OK"}
+        with self.get_session() as session:
+            phys_vias = CatalogManager.get_official_physical_vias_tuples()
+            phys_zonas = CatalogManager.get_official_physical_zonas_tuples()
+            vias_tipos = CatalogManager.get_official_vias_tuples()
+            zonas_tipos = CatalogManager.get_official_zonas_tuples()
+
+            # Forzar importación completa de tb_tipo_via
+            session.execute(text(f"""
+                INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
+                VALUES (:id, :nombre, :abrev, 'ACT')
+                ON CONFLICT (tivi_id) DO UPDATE
+                SET tivi_nombre = EXCLUDED.tivi_nombre, tivi_abreviatura = EXCLUDED.tivi_abreviatura;
+            """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
+
+            # Forzar importación completa de tb_tipo_zona
+            session.execute(text(f"""
+                INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
+                VALUES (:id, :nombre, :abrev, 'ACT')
+                ON CONFLICT (tizo_id) DO UPDATE
+                SET tizo_nombre = EXCLUDED.tizo_nombre, tizo_abreviatura = EXCLUDED.tizo_abreviatura;
+            """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
+
+            # Forzar importación completa de tb_via
+            chunk_size = 400
+            for i in range(0, len(phys_vias), chunk_size):
+                chunk = phys_vias[i:i + chunk_size]
+                session.execute(text(f"""
+                    INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
+                    VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
+                    ON CONFLICT (via_id) DO UPDATE
+                    SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'ACT';
+                """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
+
+            # Forzar importación completa de tb_zona
+            chunk_size = 200
+            for i in range(0, len(phys_zonas), chunk_size):
+                chunk = phys_zonas[i:i + chunk_size]
+                session.execute(text(f"""
+                    INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
+                    VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
+                    ON CONFLICT (zona_id) DO UPDATE
+                    SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'ACT';
+                """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
+
+            res["tb_tipo_via_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_via";')).scalar() or 0
+            res["tb_tipo_zona_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_zona";')).scalar() or 0
+            res["tb_via_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_via";')).scalar() or 0
+            res["tb_zona_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_zona";')).scalar() or 0
+
+        return res
 
     def execute_sql_file(self, file_path: str, target_schema: Optional[str] = None) -> bool:
         """Ejecuta un script SQL en la base de datos, configurando el search_path si se provee."""

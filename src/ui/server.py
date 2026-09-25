@@ -319,6 +319,11 @@ class InspectSchemaRequest(BaseModel):
     schema_name: str = Field(..., description="Nombre del esquema a inspeccionar")
 
 
+class SeedCatalogsRequest(BaseModel):
+    schema_name: Optional[str] = Field(default=None, description="Nombre del esquema a sembrar")
+    force: bool = Field(default=True, description="Forzar importación de los catálogos completos")
+
+
 class InspectTableRequest(BaseModel):
     schema_name: str = Field(..., description="Nombre del esquema")
     table_name: str = Field(..., description="Nombre de la tabla de direcciones")
@@ -579,6 +584,12 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
     try:
         from sqlalchemy import text as sa_text
 
+        # Asegurar arquitectura relacional V2 completa y siembra completa de catálogos oficiales
+        try:
+            db_svc.ensure_v2_tables_exist(req.schema_name)
+        except Exception as ex_v2:
+            logger.debug("Aviso al verificar arquitectura V2 en %s: %s", req.schema_name, ex_v2)
+
         tables_info = []
         with db_svc.get_session() as session:
             # Consultar tablas del esquema
@@ -623,6 +634,28 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
         raise HTTPException(status_code=400, detail=f"Error inspeccionando esquema '{req.schema_name}': {str(e)}")
 
 
+@app.post("/api/seed-catalogs")
+async def seed_catalogs_endpoint(req: SeedCatalogsRequest):
+    """Importa y siembra forzosamente la totalidad de los catálogos oficiales V2
+    (2,935 vías oficiales, 460 zonas oficiales, 12 tipos de vía y 28 tipos de zona).
+    """
+    db_svc = state.dynamic_db_service or DatabaseService()
+    target_schema = (req.schema_name or state.active_schema or getattr(db_svc.settings, "schema", "public")).strip()
+
+    try:
+        res = db_svc.seed_v2_catalogs(schema=target_schema, force=req.force)
+        from src.transformers.catalog_matcher import CatalogMatcher
+        CatalogMatcher.sync_with_db(db_svc, target_schema)
+        return {
+            "success": True,
+            "message": f"Catálogos maestros sembrados e importados exitosamente en '{target_schema}'.",
+            "data": res,
+        }
+    except Exception as e:
+        logger.error("Error al sembrar catálogos en %s: %s", target_schema, e)
+        raise HTTPException(status_code=500, detail=f"Error al sembrar catálogos: {str(e)}")
+
+
 @app.post("/api/inspect-table")
 async def wizard_inspect_table(req: InspectTableRequest):
     """Paso 3 del wizard: preview de filas y conteos de estado de la tabla de direcciones seleccionada."""
@@ -645,28 +678,15 @@ async def wizard_inspect_table(req: InspectTableRequest):
 
             preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
 
-            # Conteo total
-            total = session.execute(
-                sa_text(f'SELECT COUNT(*) FROM "{req.schema_name}"."{req.table_name}";')
-            ).scalar() or 0
-
-            # Intentar obtener conteos de estado si la columna es_procesado existe
-            try:
-                counts = session.execute(sa_text(f"""
-                    SELECT
-                        COUNT(*) FILTER (WHERE es_procesado IS NULL)     AS pendientes,
-                        COUNT(*) FILTER (WHERE es_procesado = TRUE)       AS validos,
-                        COUNT(*) FILTER (WHERE es_procesado = FALSE)      AS observados
-                    FROM "{req.schema_name}"."{req.table_name}";
-                """)).fetchone()
-                status_counts = {
-                    "total": total,
-                    "pendientes": counts[0] if counts else total,
-                    "validos": counts[1] if counts else 0,
-                    "observados": counts[2] if counts else 0,
-                }
-            except Exception:
-                status_counts = {"total": total, "pendientes": total, "validos": 0, "observados": 0}
+        # Utilizar DatabaseExtractor para conteo unificado y robusto de estados
+        extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema=req.schema_name,
+            table=req.table_name,
+            id_col=id_col,
+            dir_col=address_col,
+        )
+        status_counts = extractor.get_status_counts()
 
         return {
             "schema": req.schema_name,

@@ -557,38 +557,38 @@ class CatalogManager:
             items.append(f"{z['nombre']}{abrev}")
         return ", ".join(items)
     @classmethod
-    def format_physical_vias_for_prompt(cls, limit: int = 150) -> str:
-        """Formatea las vías metropolitanas y céntricas más representativas de Chiclayo para el LLM."""
+    def format_physical_vias_for_prompt(cls, limit: Optional[int] = None) -> str:
+        """Formatea el catálogo completo de vías oficiales de Chiclayo para el LLM.
+        Si limit es None, incluye la totalidad de vías habilitadas de Chiclayo.
+        """
         catalog = cls.get_vias_chiclayo_catalog()
-        # 1. Vías con jerarquía vial relevante (arterial, colectora, expresa, etc.)
-        prominent = set(
-            v["nom_via"]
-            for v in catalog
-            if v.get("clasificacion") and v.get("clasificacion") != "LOCAL" and v.get("nom_via")
-        )
-        # 2. Vías céntricas y de alto tránsito de Chiclayo
-        central_keys = (
-            "BALTA", "LAPOINT", "GONZALES", "TORRES PAZ", "7 DE ENERO", "PEDRO RUIZ",
-            "SAN JOSE", "ELIAS AGUIRRE", "IZAGA", "COLON", "TACNA", "ARICA",
-            "LEONCIO PRADO", "MANCO CAPAC", "VICENTE DE LA VEGA", "ORIENTE",
-            "AMERICAS", "SANTA VICTORIA", "BOLOGNESI", "GRAU", "SALAVERRY",
-            "LEGUIA", "FITZCARRAL", "JORGE CHAVEZ", "LOS INCAS", "UNION",
-            "LORA Y LORA", "FRANCISCO CABRERA", "QUIÑONES", "CHICLAYO", "PIMENTEL"
-        )
+        vias_set = set()
         for v in catalog:
-            nom = v.get("nom_via", "")
-            if any(k in nom for k in central_keys):
-                prominent.add(nom)
+            nom = v.get("nom_via")
+            if nom and not nom.startswith("SIN DENOMINACION") and not nom.startswith("S/N"):
+                vias_set.add(nom.strip().upper())
 
-        unique_vias = sorted(list(prominent))[:limit]
+        unique_vias = sorted(list(vias_set))
+        if limit is not None and limit > 0:
+            unique_vias = unique_vias[:limit]
         return ", ".join(unique_vias)
 
     @classmethod
-    def format_physical_zonas_sample_for_prompt(cls, limit: int = 80) -> str:
-        """Formatea las zonas y habilitaciones urbanas más representativas de Chiclayo para el LLM."""
+    def format_physical_zonas_for_prompt(cls, limit: Optional[int] = None) -> str:
+        """Formatea el catálogo completo de zonas y habilitaciones urbanas de Chiclayo para el LLM.
+        Si limit es None, incluye la totalidad de habilitaciones urbanas oficiales.
+        """
         catalog = cls.get_zonas_chiclayo_catalog()
-        unique_zonas = sorted(list(set(z["nom_zona"] for z in catalog if z.get("nom_zona") and not z["nom_zona"].startswith("SIN DENOMINACION"))))
-        return ", ".join(unique_zonas[:limit])
+        unique_zonas = sorted(list(set(
+            z["nom_zona"].strip().upper() for z in catalog
+            if z.get("nom_zona") and not z["nom_zona"].startswith("SIN DENOMINACION")
+        )))
+        if limit is not None and limit > 0:
+            unique_zonas = unique_zonas[:limit]
+        return ", ".join(unique_zonas)
+
+    # Alias retrocompatible
+    format_physical_zonas_sample_for_prompt = format_physical_zonas_for_prompt
 
     @classmethod
     def get_via_prefix_regex_str(cls) -> str:

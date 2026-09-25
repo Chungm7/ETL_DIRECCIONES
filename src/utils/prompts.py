@@ -11,8 +11,8 @@ def get_system_prompt_address_parser() -> str:
         zonas_str = CatalogManager.format_zonas_for_prompt()
         num_vias = len(CatalogManager.get_vias_catalog())
         num_zonas = len(CatalogManager.get_zonas_catalog())
-        official_vias_str = CatalogManager.format_physical_vias_for_prompt()
-        official_zonas_str = CatalogManager.format_physical_zonas_sample_for_prompt()
+        official_vias_str = CatalogManager.format_physical_vias_for_prompt(limit=None)
+        official_zonas_str = CatalogManager.format_physical_zonas_for_prompt(limit=None)
     except Exception:
         num_vias = 12
         vias_str = "AVENIDA (AV.), CALLE (CA.), JIRON (JR.), PASAJE (PJE.), ALAMEDA (AL.), CARRETERA (CTRA.), PROLONGACION (PRLG.), PASEO (PSO.), MALECON (ML.), CAMINO (CM.), PLAZA (PZ.), PLAZUELA (PZLA.)."
@@ -30,10 +30,10 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
 ### Catálogo de Tipos de Zona válidos ({num_zonas} tipos):
 {zonas_str}
 
-### Catálogo Oficial de Vías Metropolitanas Habilitadas de Chiclayo:
+### Catálogo Maestro Oficial Completo de Vías Habilitadas de Chiclayo:
 {official_vias_str}
 
-### Catálogo Oficial de Principales Habilitaciones Urbanas y Zonas de Chiclayo:
+### Catálogo Maestro Oficial Completo de Habilitaciones Urbanas y Zonas de Chiclayo:
 {official_zonas_str}
 """ + """
 ### Reglas críticas de normalización (Versión 2.0):
@@ -208,5 +208,25 @@ SYSTEM_PROMPT_ADDRESS_PARSER = get_system_prompt_address_parser()
 
 
 def build_user_prompt_for_address(address_text: str) -> str:
-    """Construye el prompt de usuario para una dirección individual."""
-    return f'Extrae los componentes de la siguiente dirección en formato JSON estructurado V2:\n"{address_text.strip()}"'
+    """Construye el prompt de usuario para una dirección individual con inyección dinámica de candidatos oficiales."""
+    try:
+        from src.transformers.catalog_matcher import CatalogMatcher
+
+        clean_addr = address_text.strip()
+        cands_via = CatalogMatcher.find_via_candidates(clean_addr, top_k=3, min_score=0.45)
+        cands_zona = CatalogMatcher.find_zona_candidates(clean_addr, top_k=3, min_score=0.45)
+
+        hint_lines = []
+        if cands_via:
+            v_list = [f"'{c['nom_via']}'" for c, _ in cands_via]
+            hint_lines.append(f"Vías candidatas del catálogo oficial: {', '.join(v_list)}")
+        if cands_zona:
+            z_list = [f"'{c['nom_zona']}'" for c, _ in cands_zona]
+            hint_lines.append(f"Zonas candidatas del catálogo oficial: {', '.join(z_list)}")
+
+        hints_str = f"[Candidatos Oficiales de Chiclayo Identificados:\n - " + "\n - ".join(hint_lines) + "]\n\n" if hint_lines else ""
+    except Exception:
+        hints_str = ""
+        clean_addr = address_text.strip()
+
+    return f'{hints_str}Extrae los componentes de la siguiente dirección en formato JSON estructurado V2:\n"{clean_addr}"'
