@@ -199,6 +199,17 @@ class CatalogMatcher:
         words = re.findall(r"[A-Z0-9]+", text.upper())
         return {w for w in words if (len(w) > 1 or w.isdigit()) and w not in stopwords}
 
+    @staticmethod
+    def _common_prefix_length(w1: str, w2: str) -> int:
+        """Calcula la longitud del prefijo común consecutivo desde el inicio de ambas palabras."""
+        length = 0
+        for a, b in zip(w1, w2):
+            if a == b:
+                length += 1
+            else:
+                break
+        return length
+
     @classmethod
     def find_zona_candidates(
         cls,
@@ -225,6 +236,10 @@ class CatalogMatcher:
             if not n_tokens:
                 continue
 
+            # Bloqueo explícito de colisiones fonéticas conocidas
+            if ("BRISAS" in q_norm and "FRESAS" in n_norm) or ("FRESAS" in q_norm and "BRISAS" in n_norm):
+                continue
+
             # Si ambos tienen números identificadores y no coinciden (ej. etapa 1 vs 2, o sector 3 vs 4)
             q_digits = {t for t in q_tokens if t.isdigit()}
             n_digits = {t for t in n_tokens if t.isdigit()}
@@ -235,15 +250,15 @@ class CatalogMatcher:
             seq_ratio = SequenceMatcher(None, q_norm, n_norm).ratio()
 
             # Boost para variantes ortográficas de una sola palabra (ej. PORCUYA ≈ PORCULLA)
-            # Requiere: prefijo común >= 4 chars para evitar falsos positivos (ej. SALAS ≠ SALINAS)
+            # Requiere: prefijo común consecutivo real >= 4 chars para evitar falsos positivos
             if coverage == 0 and len(q_tokens) == 1 and len(n_tokens) == 1 and seq_ratio >= 0.75:
                 q_word = next(iter(q_tokens))
                 n_word = next(iter(n_tokens))
-                prefix_len = sum(1 for a, b in zip(q_word, n_word) if a == b)
-                if prefix_len >= 4:
+                prefix_len = cls._common_prefix_length(q_word, n_word)
+                if prefix_len >= 4 and seq_ratio >= 0.80:
                     score = 0.50 + (seq_ratio * 0.50)
                 else:
-                    score = seq_ratio * 0.55
+                    score = seq_ratio * 0.40
             elif coverage >= 1.0:
                 # Penalización leve si el candidato tiene palabras extra y la consulta no mencionó etapa
                 extra_words = len(n_tokens) - len(q_tokens)
@@ -290,6 +305,10 @@ class CatalogMatcher:
             if not n_tokens:
                 continue
 
+            # Bloqueo explícito de colisiones fonéticas conocidas
+            if ("BRISAS" in q_norm and "FRESAS" in n_norm) or ("FRESAS" in q_norm and "BRISAS" in n_norm):
+                continue
+
             # Si ambos tienen números identificadores y difieren (ej. 3 de Octubre vs 31 u 8 de Octubre)
             q_digits = {t for t in q_tokens if t.isdigit()}
             n_digits = {t for t in n_tokens if t.isdigit()}
@@ -300,15 +319,15 @@ class CatalogMatcher:
             seq_ratio = SequenceMatcher(None, q_norm, n_norm).ratio()
 
             # Boost para variantes ortográficas de una sola palabra (ej. PORCUYA ≈ PORCULLA)
-            # Requiere: prefijo común >= 4 chars para evitar falsos positivos (ej. SALAS ≠ SALINAS)
+            # Requiere: prefijo común consecutivo real >= 4 chars para evitar falsos positivos
             if coverage == 0 and len(q_tokens) == 1 and len(n_tokens) == 1 and seq_ratio >= 0.75:
                 q_word = next(iter(q_tokens))
                 n_word = next(iter(n_tokens))
-                prefix_len = sum(1 for a, b in zip(q_word, n_word) if a == b)
-                if prefix_len >= 4:
+                prefix_len = cls._common_prefix_length(q_word, n_word)
+                if prefix_len >= 4 and seq_ratio >= 0.80:
                     score = 0.50 + (seq_ratio * 0.50)
                 else:
-                    score = seq_ratio * 0.55
+                    score = seq_ratio * 0.40
             elif coverage >= 1.0:
                 score = 0.82 + (seq_ratio * 0.18)
             elif coverage >= 0.5:
@@ -404,6 +423,18 @@ class CatalogMatcher:
             flags=re.IGNORECASE,
         ).strip()
         no_acc_noprefix = TextCleaner.remove_accents(clean_noprefix)
+
+        # Context-sensitive: Santa Victoria as Av. Sesquicentenario (ID 2926) only with Avenue hint/prefix
+        is_av_santa_victoria = (
+            clean_noprefix in ("SANTA VICTORIA", "STA VICTORIA", "STA. VICTORIA")
+            and (
+                inferred_tipo_via == 1
+                or (raw_text and bool(re.search(r"\b(?:AV\.?|AVENIDA)\s+ST?A\.?\s+VICTORIA\b", raw_text, re.IGNORECASE)))
+            )
+        )
+        if is_av_santa_victoria and "SESQUICENTENARIO" in multi_lookup:
+            return _resolve_sector(multi_lookup["SESQUICENTENARIO"])
+
         if clean_noprefix in multi_lookup:
             return _resolve_sector(multi_lookup[clean_noprefix])
         if no_acc_noprefix in multi_lookup:
@@ -455,6 +486,11 @@ class CatalogMatcher:
 
         # 6. Fallback algorítmico si el top candidate es suficientemente confiable (> 0.88)
         if top_score >= 0.88:
+            top_tokens = cls._extract_sig_tokens(top_candidate.get("nom_via", ""), is_via=True)
+            q_tokens = cls._extract_sig_tokens(clean_noprefix, is_via=True)
+            if not (q_tokens & top_tokens):
+                if not (len(q_tokens) == 1 and len(top_tokens) == 1 and cls._common_prefix_length(next(iter(q_tokens)), next(iter(top_tokens))) >= 4):
+                    return None
             return top_candidate
 
         return None
@@ -537,6 +573,11 @@ class CatalogMatcher:
 
         # 6. Fallback algorítmico si el top candidate es suficientemente confiable (> 0.88)
         if top_score >= 0.88:
+            top_tokens = cls._extract_sig_tokens(top_candidate.get("nom_zona", ""), is_via=False)
+            q_tokens = cls._extract_sig_tokens(clean_noprefix, is_via=False)
+            if not (q_tokens & top_tokens):
+                if not (len(q_tokens) == 1 and len(top_tokens) == 1 and cls._common_prefix_length(next(iter(q_tokens)), next(iter(top_tokens))) >= 4):
+                    return None
             return top_candidate
 
         return None
