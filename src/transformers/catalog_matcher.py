@@ -49,8 +49,13 @@ class CatalogMatcher:
         from sqlalchemy import text
         target_t_via = getattr(db_service.settings, "target_table_tipo_via", None) or getattr(db_service.settings, "table_tipo_via", None)
         target_t_zona = getattr(db_service.settings, "target_table_tipo_zona", None) or getattr(db_service.settings, "table_tipo_zona", None)
+        target_via = getattr(db_service.settings, "target_table_via", None) or getattr(db_service.settings, "table_via", None)
+        target_zona = getattr(db_service.settings, "target_table_zona", None) or getattr(db_service.settings, "table_zona", None)
+
         candidates_via = [c for c in [target_t_via, "tb_tipo_via", "tipos_via"] if c]
         candidates_zona = [c for c in [target_t_zona, "tb_tipo_zona", "tipos_zona"] if c]
+        candidates_p_via = [c for c in [target_via, "tb_via", "vias"] if c]
+        candidates_p_zona = [c for c in [target_zona, "tb_zona", "zonas"] if c]
 
         try:
             with db_service.get_session() as session:
@@ -60,7 +65,7 @@ class CatalogMatcher:
                         res = session.execute(text(f'SELECT * FROM "{schema}"."{t_via}"'))
                         keys = [str(k).lower() for k in res.keys()] if hasattr(res, "keys") and callable(res.keys) else []
                         rows = res.fetchall()
-                        if not rows:
+                        if not isinstance(rows, (list, tuple)) or not rows:
                             continue
 
                         pk_idx = 0
@@ -95,7 +100,7 @@ class CatalogMatcher:
                         res = session.execute(text(f'SELECT * FROM "{schema}"."{t_zona}"'))
                         keys = [str(k).lower() for k in res.keys()] if hasattr(res, "keys") and callable(res.keys) else []
                         rows = res.fetchall()
-                        if not rows:
+                        if not isinstance(rows, (list, tuple)) or not rows:
                             continue
 
                         pk_idx = 0
@@ -123,6 +128,84 @@ class CatalogMatcher:
                         break
                     except Exception as ex_zonas:
                         logger.debug("Aviso leyendo tipos_zona en %s.%s: %s", schema, t_zona, ex_zonas)
+
+                # 3. Leer vías físicas existentes en el esquema (tb_via o vias)
+                for t_p_via in candidates_p_via:
+                    try:
+                        res = session.execute(text(f'SELECT * FROM "{schema}"."{t_p_via}"'))
+                        keys = [str(k).lower() for k in res.keys()] if hasattr(res, "keys") and callable(res.keys) else []
+                        rows = res.fetchall()
+                        if not isinstance(rows, (list, tuple)) or not rows:
+                            continue
+
+                        pk_idx = 0
+                        name_idx = 1
+                        tivi_idx = None
+                        if "via_id" in keys and "via_nombre" in keys:
+                            pk_idx = keys.index("via_id")
+                            name_idx = keys.index("via_nombre")
+                            tivi_idx = keys.index("tivi_id") if "tivi_id" in keys else None
+                        elif "id_via" in keys and "nombre_via" in keys:
+                            pk_idx = keys.index("id_via")
+                            name_idx = keys.index("nombre_via")
+                            tivi_idx = keys.index("id_tipo_via") if "id_tipo_via" in keys else None
+                        elif "id" in keys and "nom_via" in keys:
+                            pk_idx = keys.index("id")
+                            name_idx = keys.index("nom_via")
+                            tivi_idx = keys.index("id_tipo_via") if "id_tipo_via" in keys else None
+
+                        for row in rows:
+                            try:
+                                vid = int(row[pk_idx])
+                                vname = str(row[name_idx]).strip().upper() if row[name_idx] else ""
+                                if not vname:
+                                    continue
+                                tivi_val = int(row[tivi_idx]) if tivi_idx is not None and row[tivi_idx] is not None else None
+                                CatalogManager.register_custom_physical_via(via_id=vid, nom_via=vname, tivi_id=tivi_val)
+                            except Exception:
+                                continue
+                        break
+                    except Exception as ex_p_vias:
+                        logger.debug("Aviso leyendo vias en %s.%s: %s", schema, t_p_via, ex_p_vias)
+
+                # 4. Leer zonas físicas existentes en el esquema (tb_zona o zonas)
+                for t_p_zona in candidates_p_zona:
+                    try:
+                        res = session.execute(text(f'SELECT * FROM "{schema}"."{t_p_zona}"'))
+                        keys = [str(k).lower() for k in res.keys()] if hasattr(res, "keys") and callable(res.keys) else []
+                        rows = res.fetchall()
+                        if not isinstance(rows, (list, tuple)) or not rows:
+                            continue
+
+                        pk_idx = 0
+                        name_idx = 1
+                        tizo_idx = None
+                        if "zona_id" in keys and "zona_nombre" in keys:
+                            pk_idx = keys.index("zona_id")
+                            name_idx = keys.index("zona_nombre")
+                            tizo_idx = keys.index("tizo_id") if "tizo_id" in keys else None
+                        elif "id_zona" in keys and "nombre_zona" in keys:
+                            pk_idx = keys.index("id_zona")
+                            name_idx = keys.index("nombre_zona")
+                            tizo_idx = keys.index("id_tipo_zona") if "id_tipo_zona" in keys else None
+                        elif "id" in keys and "nom_zona" in keys:
+                            pk_idx = keys.index("id")
+                            name_idx = keys.index("nom_zona")
+                            tizo_idx = keys.index("id_tipo_zona") if "id_tipo_zona" in keys else None
+
+                        for row in rows:
+                            try:
+                                zid = int(row[pk_idx])
+                                zname = str(row[name_idx]).strip().upper() if row[name_idx] else ""
+                                if not zname:
+                                    continue
+                                tizo_val = int(row[tizo_idx]) if tizo_idx is not None and row[tizo_idx] is not None else None
+                                CatalogManager.register_custom_physical_zona(zona_id=zid, nom_zona=zname, tizo_id=tizo_val)
+                            except Exception:
+                                continue
+                        break
+                    except Exception as ex_p_zonas:
+                        logger.debug("Aviso leyendo zonas en %s.%s: %s", schema, t_p_zona, ex_p_zonas)
 
             logger.info("Mapeo de catálogos sincronizado exitosamente con esquema '%s'", schema)
         except Exception as e:
@@ -700,17 +783,13 @@ class CatalogMatcher:
         """Retorna el nombre oficial de la vía física dado su ID."""
         if id_via is None:
             return "SIN VIA MAESTRA"
-        for item in CatalogManager.get_vias_chiclayo_catalog():
-            if item["id"] == id_via:
-                return item["nom_via"]
-        return f"VIA #{id_via}"
+        name = CatalogManager.get_physical_via_name_by_id(id_via)
+        return name if name else f"VIA #{id_via}"
 
     @classmethod
     def get_physical_zona_name(cls, id_zona: Optional[int]) -> str:
         """Retorna el nombre oficial de la zona física dado su ID."""
         if id_zona is None:
             return "SIN ZONA MAESTRA"
-        for item in CatalogManager.get_zonas_chiclayo_catalog():
-            if item["id"] == id_zona:
-                return item["nom_zona"]
-        return f"ZONA #{id_zona}"
+        name = CatalogManager.get_physical_zona_name_by_id(id_zona)
+        return name if name else f"ZONA #{id_zona}"

@@ -734,7 +734,7 @@ class DatabaseService:
         ddl = f"""
         ALTER TABLE "{schema}"."{table}"
             ADD COLUMN IF NOT EXISTS "dire_id" BIGINT,
-            ADD COLUMN IF NOT EXISTS "{col_proc}" BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS "{col_proc}" BOOLEAN DEFAULT NULL,
             ADD COLUMN IF NOT EXISTS "{col_obs}" TEXT;
 
         DO $$
@@ -755,6 +755,45 @@ class DatabaseService:
         try:
             with self.get_session() as session:
                 session.execute(text(ddl))
+
+                # Crear vista relacional dinámica para la tabla seleccionada por el usuario
+                try:
+                    view_ddl = f"""
+                    CREATE OR REPLACE VIEW "{schema}"."v_{table}_normalizada" AS
+                    SELECT 
+                        orig.*,
+                        d.dire_referencia,
+                        d.dire_estado,
+                        z.zona_id,
+                        z.zona_nombre AS zona_oficial,
+                        tz.tizo_nombre AS tipo_zona_oficial,
+                        tz.tizo_abreviatura AS abrev_tipo_zona,
+                        v1.via_id AS via_principal_id,
+                        v1.via_nombre AS via_principal_nombre,
+                        tv1.tivi_nombre AS tipo_via_principal,
+                        dv1.divi_numero AS num_via_principal,
+                        v2.via_id AS via_secundaria_id,
+                        v2.via_nombre AS via_secundaria_nombre,
+                        tv2.tivi_nombre AS tipo_via_secundaria,
+                        dv2.divi_numero AS num_via_secundaria
+                    FROM "{schema}"."{table}" orig
+                    LEFT JOIN "{schema}"."tb_direccion" d ON orig."dire_id" = d.dire_id
+                    LEFT JOIN "{schema}"."tb_zona" z ON d.zona_id = z.zona_id
+                    LEFT JOIN "{schema}"."tb_tipo_zona" tz ON z.tizo_id = tz.tizo_id
+                    LEFT JOIN "{schema}"."tb_direccion_via" dv1 ON d.dire_id = dv1.dire_id AND dv1.divi_orden = 1
+                    LEFT JOIN "{schema}"."tb_via" v1 ON dv1.via_id = v1.via_id
+                    LEFT JOIN "{schema}"."tb_tipo_via" tv1 ON v1.tivi_id = tv1.tivi_id
+                    LEFT JOIN "{schema}"."tb_direccion_via" dv2 ON d.dire_id = dv2.dire_id AND dv2.divi_orden = 2
+                    LEFT JOIN "{schema}"."tb_via" v2 ON dv2.via_id = v2.via_id
+                    LEFT JOIN "{schema}"."tb_tipo_via" tv2 ON v2.tivi_id = tv2.tivi_id;
+
+                    CREATE OR REPLACE VIEW "{schema}"."v_direcciones_normalizadas" AS
+                    SELECT * FROM "{schema}"."v_{table}_normalizada";
+                    """
+                    session.execute(text(view_ddl))
+                except Exception as ex_view:
+                    logger.debug("Aviso al crear vista dinámica de normalización en %s.%s: %s", schema, table, ex_view)
+
             return ["dire_id", col_proc, col_obs]
         except Exception as e:
             logger.debug("Aviso al asegurar columnas fuente V2 en %s.%s: %s", schema, table, e)
@@ -827,27 +866,35 @@ class DatabaseService:
                     """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
                     results["seeded_tables"]["tb_tipo_zona"] = len(zonas_tipos)
 
-                # 3. tb_via
+                # 3. tb_via (2,935 vías oficiales de Chiclayo)
                 via_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_via";')).scalar() or 0
                 if via_count == 0:
                     phys_vias = CatalogManager.get_official_physical_vias_tuples()
-                    session.execute(text(f"""
-                        INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
-                        VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
-                        ON CONFLICT (via_id) DO NOTHING;
-                    """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in phys_vias])
+                    chunk_size = 400
+                    for i in range(0, len(phys_vias), chunk_size):
+                        chunk = phys_vias[i:i + chunk_size]
+                        session.execute(text(f"""
+                            INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
+                            VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
+                            ON CONFLICT (via_id) DO NOTHING;
+                        """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
                     results["seeded_tables"]["tb_via"] = len(phys_vias)
+                    logger.info("Catálogo maestro sembrado en %s: %d vías oficiales de Chiclayo", target_schema, len(phys_vias))
 
-                # 4. tb_zona
+                # 4. tb_zona (460 zonas oficiales de Chiclayo)
                 zona_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_zona";')).scalar() or 0
                 if zona_count == 0:
                     phys_zonas = CatalogManager.get_official_physical_zonas_tuples()
-                    session.execute(text(f"""
-                        INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
-                        VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
-                        ON CONFLICT (zona_id) DO NOTHING;
-                    """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in phys_zonas])
+                    chunk_size = 200
+                    for i in range(0, len(phys_zonas), chunk_size):
+                        chunk = phys_zonas[i:i + chunk_size]
+                        session.execute(text(f"""
+                            INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
+                            VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
+                            ON CONFLICT (zona_id) DO NOTHING;
+                        """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
                     results["seeded_tables"]["tb_zona"] = len(phys_zonas)
+                    logger.info("Catálogo maestro sembrado en %s: %d zonas oficiales de Chiclayo", target_schema, len(phys_zonas))
 
                 # 5. tb_componente_direccion
                 comp_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_componente_direccion";')).scalar() or 0
@@ -871,8 +918,21 @@ class DatabaseService:
                     """), [{"timo_id": m[0], "timo_nombre": m[1], "timo_estado": m[2]} for m in mods])
                     results["seeded_tables"]["tb_tipo_modulo"] = len(mods)
 
+                # 7. Ajustar secuencias de PKs
+                try:
+                    session.execute(text(f"""
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_tipo_via"', 'tivi_id'), COALESCE(MAX(tivi_id), 1)) FROM "{target_schema}"."tb_tipo_via";
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_tipo_zona"', 'tizo_id'), COALESCE(MAX(tizo_id), 1)) FROM "{target_schema}"."tb_tipo_zona";
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_via"', 'via_id'), COALESCE(MAX(via_id), 1)) FROM "{target_schema}"."tb_via";
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_zona"', 'zona_id'), COALESCE(MAX(zona_id), 1)) FROM "{target_schema}"."tb_zona";
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_componente_direccion"', 'codi_id'), COALESCE(MAX(codi_id), 1)) FROM "{target_schema}"."tb_componente_direccion";
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_tipo_modulo"', 'timo_id'), COALESCE(MAX(timo_id), 1)) FROM "{target_schema}"."tb_tipo_modulo";
+                    """))
+                except Exception as seq_err:
+                    logger.debug("Aviso al sincronizar secuencias en %s: %s", target_schema, seq_err)
+
         except Exception as e:
-            logger.debug("Aviso al verificar datos semilla V2 en %s: %s", target_schema, e)
+            logger.error("Error al verificar/sembrar datos semilla V2 en %s: %s", target_schema, e)
 
         return results
 

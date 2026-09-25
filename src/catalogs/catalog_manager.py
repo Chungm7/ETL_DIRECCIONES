@@ -47,6 +47,8 @@ class CatalogManager:
     _physical_vias_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
     _physical_vias_multi_lookup_cache: Optional[Dict[str, List[Dict[str, Any]]]] = None
     _physical_zonas_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
+    _physical_vias_by_id_cache: Optional[Dict[int, str]] = None
+    _physical_zonas_by_id_cache: Optional[Dict[int, str]] = None
 
     @classmethod
     def reload(cls) -> None:
@@ -58,6 +60,8 @@ class CatalogManager:
         cls._physical_vias_lookup_cache = None
         cls._physical_vias_multi_lookup_cache = None
         cls._physical_zonas_lookup_cache = None
+        cls._physical_vias_by_id_cache = None
+        cls._physical_zonas_by_id_cache = None
         # Notificar a CatalogMatcher para refrescar sus mapeos
         try:
             from src.transformers.catalog_matcher import CatalogMatcher
@@ -355,6 +359,60 @@ class CatalogManager:
 
             cls._physical_zonas_lookup_cache = lookup
         return cls._physical_zonas_lookup_cache
+
+    @classmethod
+    def register_custom_physical_via(cls, via_id: int, nom_via: str, tivi_id: Optional[int] = None) -> None:
+        """Registra dinámicamente una vía desde la base de datos en los lookups en memoria."""
+        nom = nom_via.strip().upper()
+        clean = _remove_accents(nom)
+        item = {"id": via_id, "nom_via": nom, "id_tipo_via": tivi_id, "sinonimos": [nom, clean]}
+        multi = cls.get_physical_vias_multi_lookup()
+        for k in (nom, clean):
+            if k not in multi:
+                multi[k] = []
+            if not any(x.get("id") == via_id for x in multi[k]):
+                multi[k].append(item)
+        single = cls.get_physical_vias_lookup()
+        single[nom] = item
+        single[clean] = item
+        if cls._physical_vias_by_id_cache is None:
+            cls._physical_vias_by_id_cache = {
+                itm["id"]: itm["nom_via"] for itm in cls.get_vias_chiclayo_catalog()
+            }
+        cls._physical_vias_by_id_cache[via_id] = nom
+
+    @classmethod
+    def register_custom_physical_zona(cls, zona_id: int, nom_zona: str, tizo_id: Optional[int] = None) -> None:
+        """Registra dinámicamente una zona desde la base de datos en los lookups en memoria."""
+        nom = nom_zona.strip().upper()
+        clean = _remove_accents(nom)
+        item = {"id": zona_id, "nom_zona": nom, "id_tipo_zona": tizo_id, "sinonimos": [nom, clean]}
+        lookup = cls.get_physical_zonas_lookup()
+        lookup[nom] = item
+        lookup[clean] = item
+        if cls._physical_zonas_by_id_cache is None:
+            cls._physical_zonas_by_id_cache = {
+                itm["id"]: itm["nom_zona"] for itm in cls.get_zonas_chiclayo_catalog()
+            }
+        cls._physical_zonas_by_id_cache[zona_id] = nom
+
+    @classmethod
+    def get_physical_via_name_by_id(cls, via_id: int) -> Optional[str]:
+        """Obtiene el nombre de una vía física a partir de su ID."""
+        if cls._physical_vias_by_id_cache is None:
+            cls._physical_vias_by_id_cache = {
+                item["id"]: item["nom_via"] for item in cls.get_vias_chiclayo_catalog()
+            }
+        return cls._physical_vias_by_id_cache.get(via_id)
+
+    @classmethod
+    def get_physical_zona_name_by_id(cls, zona_id: int) -> Optional[str]:
+        """Obtiene el nombre de una zona física a partir de su ID."""
+        if cls._physical_zonas_by_id_cache is None:
+            cls._physical_zonas_by_id_cache = {
+                item["id"]: item["nom_zona"] for item in cls.get_zonas_chiclayo_catalog()
+            }
+        return cls._physical_zonas_by_id_cache.get(zona_id)
 
     @classmethod
     def _load_json(cls, file_path: Path, default: Any) -> Any:

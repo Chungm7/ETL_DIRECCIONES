@@ -296,3 +296,24 @@ class TestV2DatabaseLoader:
         assert loaded == 1
         assert dest.dire_id is None
         assert mock_session.execute.call_count == 1
+
+    def test_custom_physical_catalog_sync_and_lookup(self):
+        """Verifica que las vías y zonas físicas de la BD se sincronicen y reconozcan por nombre e ID."""
+        from src.catalogs.catalog_manager import CatalogManager
+
+        # Registrar una vía custom y zona custom
+        CatalogManager.register_custom_physical_via(via_id=9999, nom_via="VIA NUEVA TEST", tivi_id=2)
+        CatalogManager.register_custom_physical_zona(zona_id=8888, nom_zona="URB NUEVA TEST", tizo_id=6)
+
+        # Verificar lookup por ID
+        assert CatalogMatcher.get_physical_via_name(9999) == "VIA NUEVA TEST"
+        assert CatalogMatcher.get_physical_zona_name(8888) == "URB NUEVA TEST"
+
+        # Verificar matching
+        match_via = CatalogMatcher.match_physical_via("VIA NUEVA TEST")
+        assert match_via is not None
+        assert match_via["id"] == 9999
+
+        match_zona = CatalogMatcher.match_physical_zona("URB NUEVA TEST")
+        assert match_zona is not None
+        assert match_zona["id"] == 8888
