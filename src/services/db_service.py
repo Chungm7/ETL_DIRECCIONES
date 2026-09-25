@@ -63,7 +63,7 @@ class DatabaseService:
                 rows = session.execute(sql).fetchall()
                 return [r[0] for r in rows]
         except Exception as e:
-            logger.error("Error al consultar esquemas en PostgreSQL: %s", e)
+            logger.debug("Aviso al consultar esquemas en PostgreSQL: %s", e)
             return []
 
     def check_connection(self, schema: Optional[str] = None) -> Dict[str, Any]:
@@ -135,7 +135,7 @@ class DatabaseService:
 
         except Exception as e:
             result["message"] = f"Error al conectar con PostgreSQL: {str(e)}"
-            logger.error(result["message"])
+            logger.debug(result["message"])
 
         return result
 

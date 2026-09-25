@@ -378,10 +378,11 @@ async def get_system_status():
         )
         table_counts = extractor.get_status_counts()
     except Exception as e:
-        logger.warning("No se pudo obtener conteo de tabla: %s", e)
+        logger.debug("No se pudo obtener conteo de tabla: %s", e)
         table_counts = {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
-    current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or ollama_svc.model_name)
+    current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or getattr(ollama_svc, "model_name", None) or settings.ollama.model)
+    ollama_base_url = getattr(ollama_svc, "base_url", settings.ollama.base_url)
 
     return {
         "running": state.is_running,
@@ -403,7 +404,7 @@ async def get_system_status():
             "model": current_model,
             "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
-            "base_url": ollama_svc.base_url,
+            "base_url": ollama_base_url,
             "message": ai_health.get("message", ""),
         },
         "table_counts": table_counts,
@@ -417,7 +418,7 @@ async def get_system_status():
 async def get_schemas():
     """Devuelve la lista de esquemas accesibles en la base de datos."""
     try:
-        db_svc = DatabaseService()
+        db_svc = state.dynamic_db_service or DatabaseService()
         schemas = db_svc.get_available_schemas()
         return {"schemas": schemas}
     except Exception as e:
@@ -583,13 +584,6 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
 
     try:
         from sqlalchemy import text as sa_text
-
-        # Asegurar arquitectura relacional V2 completa y siembra completa de catálogos oficiales
-        try:
-            db_svc.ensure_v2_tables_exist(req.schema_name)
-        except Exception as ex_v2:
-            logger.debug("Aviso al verificar arquitectura V2 en %s: %s", req.schema_name, ex_v2)
-
         tables_info = []
         with db_svc.get_session() as session:
             # Consultar tablas del esquema

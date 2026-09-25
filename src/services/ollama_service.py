@@ -96,10 +96,10 @@ class OllamaService:
                 f"No se pudo conectar al servidor Ollama en {self.base_url}. "
                 "Asegúrate de que Ollama esté ejecutándose externamente (ej. 'ollama serve')."
             )
-            logger.error(result["message"])
+            logger.debug(result["message"])
         except Exception as e:
             result["message"] = f"Error al verificar conexión con Ollama: {str(e)}"
-            logger.exception(result["message"])
+            logger.debug(result["message"])
 
         return result
 

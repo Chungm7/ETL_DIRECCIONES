@@ -110,8 +110,8 @@ class DatabaseExtractor(BaseExtractor):
                 count = session.execute(query).scalar()
                 return int(count or 0)
         except Exception as e:
-            logger.error(
-                "Error al contar registros en %s.%s: %s", self.schema, self.table, e
+            logger.debug(
+                "Aviso al contar registros en %s.%s: %s", self.schema, self.table, e
             )
             return 0
 
