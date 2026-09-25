@@ -921,7 +921,254 @@ async def clear_session_endpoint():
     return {"status": "CLEARED", "message": "Historial de registros de la sesión reiniciado correctamente."}
 
 
+V2_EXPORT_HEADERS = [
+    "ID",
+    "ID_Direccion",
+    "Estado",
+    "Direccion_Original",
+    "Via_Principal_Tipo",
+    "Via_Principal_Nombre",
+    "Via_Principal_Numero",
+    "Via_Principal_ID",
+    "Via_Secundaria_Tipo",
+    "Via_Secundaria_Nombre",
+    "Via_Secundaria_Numero",
+    "Via_Secundaria_ID",
+    "Todas_Las_Vias",
+    "Tipo_Zona",
+    "Nombre_Zona",
+    "ID_Zona",
+    "Manzana",
+    "Lote",
+    "Sublote",
+    "Piso",
+    "Otros_Componentes",
+    "Tipo_Modulo",
+    "Numero_Modulo",
+    "Todos_Los_Modulos",
+    "Referencia",
+    "Metodo_Normalizacion",
+    "Diagnostico_Observacion",
+    "Fecha_Hora_Proceso",
+]
+
+
+def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
+    """Extrae y normaliza un registro individual hacia las 28 columnas relacionales V2."""
+    import re
+    from datetime import datetime
+    from src.transformers.catalog_matcher import CatalogMatcher
+
+    # 1. ID Origen y 2. ID_Direccion (tb_direccion.dire_id)
+    id_val = r.get("id_licencia") if r.get("id_licencia") is not None else (r.get("id") or "")
+    dire_id_val = r.get("dire_id") or ""
+
+    # 3. Estado
+    estado = r.get("estado")
+    if estado not in ("NORMALIZADO", "OBSERVADO", "PENDIENTE", "ERROR"):
+        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
+        if is_err:
+            estado = "ERROR"
+        else:
+            es_proc = r.get("es_procesado")
+            if es_proc is True:
+                estado = "NORMALIZADO"
+            elif es_proc is False:
+                estado = "OBSERVADO"
+            else:
+                estado = "PENDIENTE"
+
+    # 4. Dirección Original
+    dir_orig = r.get("raw_text") or r.get("direccion") or r.get("emp_direccion") or ""
+
+    # 5-13. Vías (Principal, Secundaria, Consolidado)
+    raw_vias = r.get("vias") or []
+    via_1_tipo = ""
+    via_1_nombre = ""
+    via_1_numero = ""
+    via_1_id = ""
+    via_2_tipo = ""
+    via_2_nombre = ""
+    via_2_numero = ""
+    via_2_id = ""
+
+    if raw_vias:
+        vias_sorted = sorted(raw_vias, key=lambda v: v.get("divi_orden", 1))
+        # Vía 1 (Principal)
+        v0 = vias_sorted[0]
+        v0_t = v0.get("tipo_via_name")
+        if not v0_t and v0.get("tipo_via") is not None:
+            v_name = CatalogMatcher.get_via_name(v0["tipo_via"])
+            v0_t = v_name if v_name != "SIN VIA" else ""
+        via_1_tipo = v0_t or r.get("tipo_via_name") or ""
+        via_1_nombre = v0.get("via_nombre") or r.get("nom_via") or ""
+        via_1_numero = str(v0.get("divi_numero") or r.get("num_via") or "")
+        via_1_id = v0.get("via_id") or r.get("id_via") or ""
+
+        # Vía 2 (Secundaria - Intersección / Cruce / Esquina)
+        if len(vias_sorted) > 1:
+            v1 = vias_sorted[1]
+            v1_t = v1.get("tipo_via_name")
+            if not v1_t and v1.get("tipo_via") is not None:
+                v_name = CatalogMatcher.get_via_name(v1["tipo_via"])
+                v1_t = v_name if v_name != "SIN VIA" else ""
+            via_2_tipo = v1_t or ""
+            via_2_nombre = v1.get("via_nombre") or ""
+            via_2_numero = str(v1.get("divi_numero") or "")
+            via_2_id = v1.get("via_id") or ""
+
+        # Todas las Vías
+        v_parts = []
+        for v in vias_sorted:
+            vt = v.get("tipo_via_name")
+            if not vt and v.get("tipo_via") is not None:
+                vn = CatalogMatcher.get_via_name(v["tipo_via"])
+                vt = vn if vn != "SIN VIA" else ""
+            vnom = v.get("via_nombre") or ""
+            vnum = str(v.get("divi_numero") or "").strip()
+            part = f"{vt} {vnom}".strip()
+            if vnum and vnum.upper() not in ("S/N", "SN"):
+                part += f" N° {vnum}"
+            elif vnum.upper() in ("S/N", "SN"):
+                part += " S/N"
+            if part:
+                v_parts.append(part)
+        todas_las_vias = " con ".join(v_parts)
+    else:
+        # Fallback de columnas planas V1
+        t_via_name = r.get("tipo_via_name")
+        if not t_via_name and r.get("tipo_via") is not None:
+            vn = CatalogMatcher.get_via_name(r["tipo_via"])
+            t_via_name = vn if vn != "SIN VIA" else ""
+        via_1_tipo = t_via_name or ""
+        via_1_nombre = r.get("nom_via") or ""
+        via_1_numero = str(r.get("num_via") or "")
+        via_1_id = r.get("id_via") or ""
+        if via_1_nombre:
+            part = f"{via_1_tipo} {via_1_nombre}".strip()
+            if via_1_numero and via_1_numero.upper() not in ("S/N", "SN"):
+                part += f" N° {via_1_numero}"
+            elif via_1_numero.upper() in ("S/N", "SN"):
+                part += " S/N"
+            todas_las_vias = part
+        else:
+            todas_las_vias = ""
+
+    # 14-16. Zona
+    t_zona_name = r.get("tipo_zona_name")
+    if not t_zona_name and r.get("tipo_zona") is not None:
+        zn = CatalogMatcher.get_zona_name(r["tipo_zona"])
+        t_zona_name = zn if zn != "SIN ZONA" else ""
+    tipo_zona = t_zona_name or ""
+    nombre_zona = r.get("nom_zona") or r.get("zona_nombre") or ""
+    id_zona = r.get("id_zona") or r.get("zona_id") or ""
+
+    # 17-21. Componentes Catastrales (Manzana, Lote, Sublote, Piso, Otros)
+    mz = str(r.get("manzana") or "").strip()
+    lt = str(r.get("lote") or "").strip()
+    sl = str(r.get("slote") or "").strip()
+    piso = str(r.get("piso") or "").strip()
+    otros_comp_list = []
+
+    raw_comps = r.get("componentes") or []
+    for c in raw_comps:
+        c_nom = (c.get("codi_nombre") or "").upper().strip()
+        c_val = str(c.get("diti_nombre") or "").strip()
+        if not c_val:
+            continue
+        if "MANZANA" in c_nom and not mz:
+            mz = c_val
+        elif "SUBLOTE" in c_nom and not sl:
+            sl = c_val
+        elif "LOTE" in c_nom and not lt:
+            lt = c_val
+        elif "PISO" in c_nom and not piso:
+            piso = c_val
+        else:
+            item_desc = f"{c.get('codi_nombre')}: {c_val}"
+            if item_desc not in otros_comp_list:
+                otros_comp_list.append(item_desc)
+
+    if not piso and sl and "PISO" in sl.upper():
+        p_m = re.search(r"PISO\s*([0-9A-Z]+)", sl, re.IGNORECASE)
+        if p_m:
+            piso = p_m.group(1)
+            sl = re.sub(r"PISO\s*[0-9A-Z]+", "", sl, flags=re.IGNORECASE).strip(" -/,.")
+
+    otros_componentes = "; ".join(otros_comp_list)
+
+    # 22-24. Módulos Inmobiliarios (Tipo, Número, Resumen)
+    raw_mods = r.get("modulos") or []
+    tipo_modulo = ""
+    numero_modulo = ""
+    todos_mod_parts = []
+
+    if raw_mods:
+        m0 = raw_mods[0]
+        tipo_modulo = m0.get("timo_nombre") or ""
+        numero_modulo = str(m0.get("ditm_nombre") or "")
+        for m in raw_mods:
+            m_t = m.get("timo_nombre") or ""
+            m_v = str(m.get("ditm_nombre") or "").strip()
+            if m_v:
+                todos_mod_parts.append(f"{m_t} {m_v}".strip())
+    elif sl:
+        m_match = re.search(r"\b(INT(?:ERIOR)?|DPTO|DEPARTAMENTO|STAND|TIENDA|PUERTA|PTA|BLOCK|LOCAL|OFICINA|OF)\b\.?\s*([A-Z0-9\-]+)?", sl, re.IGNORECASE)
+        if m_match:
+            tipo_modulo = m_match.group(1).upper()
+            numero_modulo = m_match.group(2) or ""
+            todos_mod_parts.append(f"{tipo_modulo} {numero_modulo}".strip())
+
+    todos_los_modulos = ", ".join(todos_mod_parts)
+
+    # 25. Referencia Espacial
+    referencia = r.get("dire_referencia") or r.get("referencia") or ""
+
+    # 26. Método de Normalización
+    metodo = r.get("metodo") or r.get("metodo_normalizacion") or "IA"
+
+    # 27. Diagnóstico / Observación
+    observacion = r.get("observacion") or ""
+
+    # 28. Fecha / Hora de Proceso
+    fecha_hora = r.get("time") or r.get("fecha_hora") or ""
+    if not fecha_hora or fecha_hora == "-":
+        fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    return {
+        "ID": id_val,
+        "ID_Direccion": dire_id_val,
+        "Estado": estado,
+        "Direccion_Original": dir_orig,
+        "Via_Principal_Tipo": via_1_tipo,
+        "Via_Principal_Nombre": via_1_nombre,
+        "Via_Principal_Numero": via_1_numero,
+        "Via_Principal_ID": via_1_id,
+        "Via_Secundaria_Tipo": via_2_tipo,
+        "Via_Secundaria_Nombre": via_2_nombre,
+        "Via_Secundaria_Numero": via_2_numero,
+        "Via_Secundaria_ID": via_2_id,
+        "Todas_Las_Vias": todas_las_vias,
+        "Tipo_Zona": tipo_zona,
+        "Nombre_Zona": nombre_zona,
+        "ID_Zona": id_zona,
+        "Manzana": mz,
+        "Lote": lt,
+        "Sublote": sl,
+        "Piso": piso,
+        "Otros_Componentes": otros_componentes,
+        "Tipo_Modulo": tipo_modulo,
+        "Numero_Modulo": numero_modulo,
+        "Todos_Los_Modulos": todos_los_modulos,
+        "Referencia": referencia,
+        "Metodo_Normalizacion": metodo,
+        "Diagnostico_Observacion": observacion,
+        "Fecha_Hora_Proceso": fecha_hora,
+    }
+
+
 def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
+    """Genera un libro de Excel (.xlsx) estilizado institucionalmente para la MPCH con las 28 columnas V2."""
     import io
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -929,37 +1176,20 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Direcciones MPCH"
+    ws.title = "Normalización Catastral V2"
 
-    headers = [
-        "ID Licencia",
-        "Dirección Registrada",
-        "Tipo Vía",
-        "Nombre Vía Homologada",
-        "N° Vía",
-        "ID Vía Oficial",
-        "Tipo Zona",
-        "Nombre Zona Homologada",
-        "ID Zona Oficial",
-        "Manzana",
-        "Lote",
-        "Sublote",
-        "Referencia",
-        "Método Normalización",
-        "Estado Catastral",
-        "Diagnóstico / Observación",
-        "Hora de Procesamiento",
-    ]
-    ws.append(headers)
+    ws.append(V2_EXPORT_HEADERS)
 
     header_fill = PatternFill(start_color="0C2340", end_color="0C2340", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 
-    for col_idx in range(1, len(headers) + 1):
+    for col_idx in range(1, len(V2_EXPORT_HEADERS) + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.row_dimensions[1].height = 28
 
     thin_border = Border(
         left=Side(style="thin", color="E2E8F0"),
@@ -974,61 +1204,51 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     font_obs   = Font(name="Calibri", size=11, bold=True, color="92400E")
     fill_err   = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
     font_err   = Font(name="Calibri", size=11, bold=True, color="991B1B")
+    fill_pen   = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+    font_pen   = Font(name="Calibri", size=11, bold=True, color="475569")
     fill_zebra = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
 
-    for row_idx, r in enumerate(records, start=2):
-        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
-        is_obs = not r.get("es_procesado", False) and not is_err
-        estado = "ERROR" if is_err else ("OBSERVADO" if is_obs else "NORMALIZADO")
+    center_cols = {1, 2, 3, 7, 8, 11, 12, 16, 17, 18, 19, 20, 23, 28}
 
-        row_data = [
-            r.get("id_licencia", ""),
-            r.get("raw_text", ""),
-            r.get("tipo_via_name", ""),
-            r.get("nom_via", ""),
-            r.get("num_via", ""),
-            r.get("id_via", "") or "",
-            r.get("tipo_zona_name", ""),
-            r.get("nom_zona", ""),
-            r.get("id_zona", "") or "",
-            r.get("manzana", ""),
-            r.get("lote", ""),
-            r.get("slote", ""),
-            r.get("referencia", ""),
-            r.get("metodo", ""),
-            estado,
-            r.get("observacion", ""),
-            r.get("time", ""),
-        ]
+    for row_idx, r in enumerate(records, start=2):
+        row_dict = extract_v2_export_row(r)
+        estado = row_dict["Estado"]
+
+        row_data = [row_dict[col] for col in V2_EXPORT_HEADERS]
         ws.append(row_data)
 
         is_even = (row_idx % 2 == 0)
-        for col_idx in range(1, len(headers) + 1):
+        for col_idx in range(1, len(V2_EXPORT_HEADERS) + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.border = thin_border
-            if col_idx == 15:  # Columna Estado
+
+            if col_idx == 3:  # Columna Estado
                 if estado == "NORMALIZADO":
                     cell.fill = fill_valid
                     cell.font = font_valid
                 elif estado == "OBSERVADO":
                     cell.fill = fill_obs
                     cell.font = font_obs
+                elif estado == "PENDIENTE":
+                    cell.fill = fill_pen
+                    cell.font = font_pen
                 else:
                     cell.fill = fill_err
                     cell.font = font_err
-                cell.alignment = Alignment(horizontal="center")
-            elif col_idx in (1, 5, 6, 9):
-                cell.alignment = Alignment(horizontal="center")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            elif col_idx in center_cols:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
                 if is_even:
                     cell.fill = fill_zebra
             else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
                 if is_even:
                     cell.fill = fill_zebra
 
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 65)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -1037,60 +1257,17 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
 
 
 def generate_csv_report(records: List[Dict[str, Any]]) -> Any:
-    """Genera un archivo CSV con codificación UTF-8 con BOM para compatibilidad directa con Excel en español."""
+    """Genera un archivo CSV con codificación UTF-8 con BOM para compatibilidad directa con Excel en español (28 columnas V2)."""
     import csv
     import io
 
     output = io.StringIO()
-    output.write("\ufeff")  # UTF-8 BOM
-
-    headers = [
-        "ID",
-        "Direccion_Original",
-        "Tipo_Via",
-        "Nombre_Via",
-        "Numero_Via",
-        "ID_Via",
-        "Tipo_Zona",
-        "Nombre_Zona",
-        "ID_Zona",
-        "Manzana",
-        "Lote",
-        "Sublote",
-        "Referencia",
-        "Metodo_Normalizacion",
-        "Estado",
-        "Diagnostico_Observacion",
-        "Hora_Proceso",
-    ]
-
     writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(headers)
+    writer.writerow(V2_EXPORT_HEADERS)
 
     for r in records:
-        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
-        is_obs = not r.get("es_procesado", False) and not is_err
-        estado = "ERROR" if is_err else ("OBSERVADO" if is_obs else "NORMALIZADO")
-
-        writer.writerow([
-            r.get("id_licencia", ""),
-            r.get("raw_text", ""),
-            r.get("tipo_via_name", ""),
-            r.get("nom_via", ""),
-            r.get("num_via", ""),
-            r.get("id_via", "") or "",
-            r.get("tipo_zona_name", ""),
-            r.get("nom_zona", ""),
-            r.get("id_zona", "") or "",
-            r.get("manzana", ""),
-            r.get("lote", ""),
-            r.get("slote", ""),
-            r.get("referencia", ""),
-            r.get("metodo", ""),
-            estado,
-            r.get("observacion", ""),
-            r.get("time", ""),
-        ])
+        row_dict = extract_v2_export_row(r)
+        writer.writerow([row_dict[h] for h in V2_EXPORT_HEADERS])
 
     buf = io.BytesIO(output.getvalue().encode("utf-8-sig"))
     buf.seek(0)
@@ -1102,16 +1279,146 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
     import io
     import json
     from datetime import datetime
+    from src.transformers.catalog_matcher import CatalogMatcher
+
+    formatted_records = []
+    for r in records:
+        row_dict = extract_v2_export_row(r)
+
+        # Desglose de Vías anidadas
+        vias_nested = []
+        raw_vias = r.get("vias") or []
+        if raw_vias:
+            for v in raw_vias:
+                t_name = v.get("tipo_via_name")
+                if not t_name and v.get("tipo_via") is not None:
+                    vn = CatalogMatcher.get_via_name(v["tipo_via"])
+                    t_name = vn if vn != "SIN VIA" else ""
+                vias_nested.append({
+                    "orden": v.get("divi_orden", 1),
+                    "id_via": v.get("via_id") or None,
+                    "tipo_via": t_name or None,
+                    "nombre_via": v.get("via_nombre") or None,
+                    "numero_via": v.get("divi_numero") or None,
+                })
+        elif row_dict["Via_Principal_Nombre"]:
+            vias_nested.append({
+                "orden": 1,
+                "id_via": row_dict["Via_Principal_ID"] or None,
+                "tipo_via": row_dict["Via_Principal_Tipo"] or None,
+                "nombre_via": row_dict["Via_Principal_Nombre"] or None,
+                "numero_via": row_dict["Via_Principal_Numero"] or None,
+            })
+            if row_dict["Via_Secundaria_Nombre"]:
+                vias_nested.append({
+                    "orden": 2,
+                    "id_via": row_dict["Via_Secundaria_ID"] or None,
+                    "tipo_via": row_dict["Via_Secundaria_Tipo"] or None,
+                    "nombre_via": row_dict["Via_Secundaria_Nombre"] or None,
+                    "numero_via": row_dict["Via_Secundaria_Numero"] or None,
+                })
+
+        # Desglose de Componentes anidados (lista de componentes relacionales tb_contenido_componente_direccion)
+        componentes_nested = []
+        raw_comps = r.get("componentes") or []
+        if raw_comps:
+            for c in raw_comps:
+                componentes_nested.append({
+                    "codi_id": c.get("codi_id") or None,
+                    "tipo_componente": c.get("codi_nombre") or None,
+                    "nombre": c.get("codi_nombre") or None,
+                    "codi_nombre": c.get("codi_nombre") or None,
+                    "diti_nombre": str(c.get("diti_nombre") or "").strip(),
+                    "valor": str(c.get("diti_nombre") or "").strip(),
+                })
+        else:
+            if row_dict["Manzana"]:
+                componentes_nested.append({"codi_id": 1, "tipo_componente": "MANZANA", "nombre": "MANZANA", "codi_nombre": "MANZANA", "valor": row_dict["Manzana"], "diti_nombre": row_dict["Manzana"]})
+            if row_dict["Lote"]:
+                componentes_nested.append({"codi_id": 2, "tipo_componente": "LOTE", "nombre": "LOTE", "codi_nombre": "LOTE", "valor": row_dict["Lote"], "diti_nombre": row_dict["Lote"]})
+            if row_dict["Sublote"]:
+                componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"]})
+            if row_dict["Piso"]:
+                componentes_nested.append({"codi_id": 4, "tipo_componente": "PISO", "nombre": "PISO", "codi_nombre": "PISO", "valor": row_dict["Piso"], "diti_nombre": row_dict["Piso"]})
+
+        # Desglose de Módulos anidados (lista de módulos relacionales tb_direccion_tipo_modulo)
+        modulos_nested = []
+        raw_modulos = r.get("modulos") or []
+        if raw_modulos:
+            for m in raw_modulos:
+                modulos_nested.append({
+                    "timo_id": m.get("timo_id") or None,
+                    "tipo": m.get("timo_nombre") or None,
+                    "timo_nombre": m.get("timo_nombre") or None,
+                    "numero": m.get("ditm_nombre") or None,
+                    "ditm_nombre": m.get("ditm_nombre") or None,
+                })
+        elif row_dict["Tipo_Modulo"] or row_dict["Numero_Modulo"]:
+            modulos_nested.append({
+                "timo_id": None,
+                "tipo": row_dict["Tipo_Modulo"] or None,
+                "timo_nombre": row_dict["Tipo_Modulo"] or None,
+                "numero": row_dict["Numero_Modulo"] or None,
+                "ditm_nombre": row_dict["Numero_Modulo"] or None,
+            })
+
+        # Zona anidada
+        zona_nested = {
+            "id_zona": row_dict["ID_Zona"] or None,
+            "nombre_zona": row_dict["Nombre_Zona"] or None,
+            "tipo_zona": row_dict["Tipo_Zona"] or None,
+        }
+
+        # Objeto unificado V2 con retrocompatibilidad
+        rec_obj = {
+            "id": row_dict["ID"],
+            "id_licencia": row_dict["ID"],
+            "dire_id": row_dict["ID_Direccion"] or None,
+            "estado": row_dict["Estado"],
+            "direccion_original": row_dict["Direccion_Original"],
+            "raw_text": row_dict["Direccion_Original"],
+            "zona": zona_nested,
+            "vias": vias_nested,
+            "componentes": componentes_nested,
+            "modulos": modulos_nested,
+            "referencia": row_dict["Referencia"] or None,
+            "dire_referencia": row_dict["Referencia"] or None,
+            "metodo_normalizacion": row_dict["Metodo_Normalizacion"],
+            "diagnostico_observacion": row_dict["Diagnostico_Observacion"] or None,
+            "fecha_hora_proceso": row_dict["Fecha_Hora_Proceso"],
+            # Accesores directos de compatibilidad
+            "es_procesado": (row_dict["Estado"] == "NORMALIZADO"),
+            "observacion": row_dict["Diagnostico_Observacion"],
+            "nom_via": row_dict["Via_Principal_Nombre"] or None,
+            "tipo_via_name": row_dict["Via_Principal_Tipo"] or None,
+            "num_via": row_dict["Via_Principal_Numero"] or None,
+            "id_via": row_dict["Via_Principal_ID"] or None,
+            "nom_zona": row_dict["Nombre_Zona"] or None,
+            "tipo_zona_name": row_dict["Tipo_Zona"] or None,
+            "id_zona": row_dict["ID_Zona"] or None,
+            "manzana": row_dict["Manzana"] or None,
+            "lote": row_dict["Lote"] or None,
+            "slote": row_dict["Sublote"] or None,
+            "piso": row_dict["Piso"] or None,
+            "catastro": {
+                "manzana": row_dict["Manzana"] or None,
+                "lote": row_dict["Lote"] or None,
+                "sublote": row_dict["Sublote"] or None,
+                "piso": row_dict["Piso"] or None,
+                "otros": [c.strip() for c in row_dict["Otros_Componentes"].split(";") if c.strip()] if row_dict["Otros_Componentes"] else [],
+            },
+        }
+        formatted_records.append(rec_obj)
 
     payload = {
         "metadata": {
             "institucion": "Municipalidad Provincial de Chiclayo - MPCH",
             "sistema": "ETL Normalizador Catastral V2",
             "version": "2.0",
-            "total_registros": len(records),
+            "total_registros": len(formatted_records),
             "generado_el": datetime.now().isoformat(),
         },
-        "direcciones": records,
+        "direcciones": formatted_records,
     }
 
     raw_json = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
@@ -1221,12 +1528,14 @@ def fetch_db_records_for_export(
                 where_clause = f'd."{c_es_procesado}" IS FALSE'
             elif scope_lower in ("valid", "validos", "normalizados"):
                 where_clause = f'd."{c_es_procesado}" IS TRUE'
+            elif scope_lower in ("pending", "pendientes"):
+                where_clause = f'd."{c_es_procesado}" IS NULL'
             elif scope_lower in ("processed", "procesados"):
                 where_clause = f'd."{c_es_procesado}" IS NOT NULL'
             else:
                 where_clause = "TRUE"
         else:
-            if scope_lower in ("observed", "observados", "valid", "validos", "normalizados", "processed", "procesados"):
+            if scope_lower in ("observed", "observados", "valid", "validos", "normalizados", "processed", "procesados", "pending", "pendientes"):
                 return []
             where_clause = "TRUE"
 
@@ -1397,99 +1706,109 @@ def fetch_db_records_for_export(
         # Si existen dire_ids vinculados a la arquitectura relacional V2, enriquecer con tablas hijas
         dire_ids = [r["dire_id"] for r in records if r.get("dire_id") is not None]
         if dire_ids and check_table_exists("tb_direccion"):
-            id_list_str = ", ".join(str(int(did)) for did in set(dire_ids))
+            unique_ids = list(set(int(did) for did in dire_ids))
+            chunks = [unique_ids[i:i + 1000] for i in range(0, len(unique_ids), 1000)]
 
             # 1. Enriquecer Vías (soporte multi-vía / esquinas)
             vias_by_dire = {}
             if check_table_exists("tb_direccion_via") and check_table_exists("tb_via"):
-                dv_sql = f"""
-                    SELECT 
-                        dv.dire_id, dv.via_id, dv.divi_numero, dv.divi_orden,
-                        v.via_nombre, v.tivi_id,
-                        tv.tivi_nombre, tv.tivi_abreviatura
-                    FROM "{schema}"."tb_direccion_via" dv
-                    JOIN "{schema}"."tb_via" v ON dv.via_id = v.via_id
-                    LEFT JOIN "{schema}"."tb_tipo_via" tv ON v.tivi_id = tv.tivi_id
-                    WHERE dv.dire_id IN ({id_list_str})
-                    ORDER BY dv.dire_id, dv.divi_orden ASC;
-                """
-                for row in session.execute(sa_text(dv_sql)).fetchall():
-                    did = row[0]
-                    v_item = {
-                        "via_id": row[1],
-                        "divi_numero": row[2] or "",
-                        "divi_orden": row[3],
-                        "via_nombre": row[4] or "",
-                        "tipo_via": row[5],
-                        "tipo_via_name": row[6] or "",
-                        "tivi_abreviatura": row[7] or "",
-                    }
-                    vias_by_dire.setdefault(did, []).append(v_item)
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    dv_sql = f"""
+                        SELECT 
+                            dv.dire_id, dv.via_id, dv.divi_numero, dv.divi_orden,
+                            v.via_nombre, v.tivi_id,
+                            tv.tivi_nombre, tv.tivi_abreviatura
+                        FROM "{schema}"."tb_direccion_via" dv
+                        JOIN "{schema}"."tb_via" v ON dv.via_id = v.via_id
+                        LEFT JOIN "{schema}"."tb_tipo_via" tv ON v.tivi_id = tv.tivi_id
+                        WHERE dv.dire_id IN ({id_list_str})
+                        ORDER BY dv.dire_id, dv.divi_orden ASC;
+                    """
+                    for row in session.execute(sa_text(dv_sql)).fetchall():
+                        did = row[0]
+                        v_item = {
+                            "via_id": row[1],
+                            "divi_numero": row[2] or "",
+                            "divi_orden": row[3],
+                            "via_nombre": row[4] or "",
+                            "tipo_via": row[5],
+                            "tipo_via_name": row[6] or "",
+                            "tivi_abreviatura": row[7] or "",
+                        }
+                        vias_by_dire.setdefault(did, []).append(v_item)
 
             # 2. Enriquecer Componentes Catastrales (Mz, Lt, Piso, etc.)
             comp_by_dire = {}
             if check_table_exists("tb_contenido_componente_direccion") and check_table_exists("tb_componente_direccion"):
-                cd_sql = f"""
-                    SELECT 
-                        cd.dire_id, cd.codi_id, cd.diti_nombre,
-                        c.codi_nombre, c.codi_es_urbano
-                    FROM "{schema}"."tb_contenido_componente_direccion" cd
-                    JOIN "{schema}"."tb_componente_direccion" c ON cd.codi_id = c.codi_id
-                    WHERE cd.dire_id IN ({id_list_str})
-                    ORDER BY cd.dire_id, cd.codi_id ASC;
-                """
-                for row in session.execute(sa_text(cd_sql)).fetchall():
-                    did = row[0]
-                    c_item = {
-                        "codi_id": row[1],
-                        "diti_nombre": row[2] or "",
-                        "codi_nombre": row[3] or "",
-                        "codi_es_urbano": row[4],
-                    }
-                    comp_by_dire.setdefault(did, []).append(c_item)
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    cd_sql = f"""
+                        SELECT 
+                            cd.dire_id, cd.codi_id, cd.diti_nombre,
+                            c.codi_nombre, c.codi_es_urbano
+                        FROM "{schema}"."tb_contenido_componente_direccion" cd
+                        JOIN "{schema}"."tb_componente_direccion" c ON cd.codi_id = c.codi_id
+                        WHERE cd.dire_id IN ({id_list_str})
+                        ORDER BY cd.dire_id, cd.codi_id ASC;
+                    """
+                    for row in session.execute(sa_text(cd_sql)).fetchall():
+                        did = row[0]
+                        c_item = {
+                            "codi_id": row[1],
+                            "diti_nombre": row[2] or "",
+                            "codi_nombre": row[3] or "",
+                            "codi_es_urbano": row[4],
+                        }
+                        comp_by_dire.setdefault(did, []).append(c_item)
 
             # 3. Enriquecer Módulos Inmobiliarios (Interior, Dpto, Puerta, Stand, etc.)
             mod_by_dire = {}
             if check_table_exists("tb_direccion_tipo_modulo") and check_table_exists("tb_tipo_modulo"):
-                dm_sql = f"""
-                    SELECT 
-                        dm.dire_id, dm.timo_id, dm.ditm_nombre,
-                        m.timo_nombre
-                    FROM "{schema}"."tb_direccion_tipo_modulo" dm
-                    JOIN "{schema}"."tb_tipo_modulo" m ON dm.timo_id = m.timo_id
-                    WHERE dm.dire_id IN ({id_list_str})
-                    ORDER BY dm.dire_id, dm.timo_id ASC;
-                """
-                for row in session.execute(sa_text(dm_sql)).fetchall():
-                    did = row[0]
-                    m_item = {
-                        "timo_id": row[1],
-                        "ditm_nombre": row[2] or "",
-                        "timo_nombre": row[3] or "",
-                    }
-                    mod_by_dire.setdefault(did, []).append(m_item)
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    dm_sql = f"""
+                        SELECT 
+                            dm.dire_id, dm.timo_id, dm.ditm_nombre,
+                            m.timo_nombre
+                        FROM "{schema}"."tb_direccion_tipo_modulo" dm
+                        JOIN "{schema}"."tb_tipo_modulo" m ON dm.timo_id = m.timo_id
+                        WHERE dm.dire_id IN ({id_list_str})
+                        ORDER BY dm.dire_id, dm.timo_id ASC;
+                    """
+                    for row in session.execute(sa_text(dm_sql)).fetchall():
+                        did = row[0]
+                        m_item = {
+                            "timo_id": row[1],
+                            "ditm_nombre": row[2] or "",
+                            "timo_nombre": row[3] or "",
+                        }
+                        mod_by_dire.setdefault(did, []).append(m_item)
 
             # 4. Enriquecer Zona oficial y Referencia desde tb_direccion si existen
             dir_meta = {}
             if check_table_exists("tb_direccion"):
-                dir_sql = f"""
-                    SELECT 
-                        d.dire_id, d.zona_id, d.dire_referencia,
-                        z.zona_nombre, z.tizo_id,
-                        tz.tizo_nombre, tz.tizo_abreviatura
-                    FROM "{schema}"."tb_direccion" d
-                    LEFT JOIN "{schema}"."tb_zona" z ON d.zona_id = z.zona_id
-                    LEFT JOIN "{schema}"."tb_tipo_zona" tz ON z.tizo_id = tz.tizo_id
-                    WHERE d.dire_id IN ({id_list_str});
-                """
-                for row in session.execute(sa_text(dir_sql)).fetchall():
-                    dir_meta[row[0]] = {
-                        "zona_id": row[1],
-                        "dire_referencia": row[2] or "",
-                        "zona_nombre": row[3] or "",
-                        "tizo_id": row[4],
-                        "tipo_zona_name": row[5] or "",
-                    }
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    dir_sql = f"""
+                        SELECT 
+                            d.dire_id, d.zona_id, d.dire_referencia,
+                            z.zona_nombre, z.tizo_id,
+                            tz.tizo_nombre, tz.tizo_abreviatura
+                        FROM "{schema}"."tb_direccion" d
+                        LEFT JOIN "{schema}"."tb_zona" z ON d.zona_id = z.zona_id
+                        LEFT JOIN "{schema}"."tb_tipo_zona" tz ON z.tizo_id = tz.tizo_id
+                        WHERE d.dire_id IN ({id_list_str});
+                    """
+                    for row in session.execute(sa_text(dir_sql)).fetchall():
+                        dir_meta[row[0]] = {
+                            "zona_id": row[1],
+                            "dire_referencia": row[2] or "",
+                            "zona_nombre": row[3] or "",
+                            "tizo_id": row[4],
+                            "tipo_zona_name": row[5] or "",
+                            "tizo_abreviatura": row[6] or "",
+                        }
 
             # Asignar a cada registro
             for rec in records:
@@ -1518,11 +1837,6 @@ def fetch_db_records_for_export(
                             rec["tipo_via"] = v0["tipo_via"]
                             rec["tipo_via_name"] = v0["tipo_via_name"]
                             rec["num_via"] = v0["divi_numero"]
-                        if len(rec["vias"]) > 1:
-                            rec["nom_via"] = " con ".join(
-                                f"{v.get('tipo_via_name', '')} {v.get('via_nombre', '')} {('N° ' + v['divi_numero']) if v.get('divi_numero') else ''}".strip()
-                                for v in rec["vias"]
-                            )
 
                     for c in rec["componentes"]:
                         c_name = (c.get("codi_nombre") or "").upper()
@@ -1532,6 +1846,8 @@ def fetch_db_records_for_export(
                             rec["lote"] = c["diti_nombre"]
                         elif "SUBLOTE" in c_name and not rec.get("slote"):
                             rec["slote"] = c["diti_nombre"]
+                        elif "PISO" in c_name and not rec.get("piso"):
+                            rec["piso"] = c["diti_nombre"]
 
                     if rec["modulos"] and not rec.get("slote"):
                         rec["slote"] = ", ".join(f"{m['timo_nombre']} {m['ditm_nombre']}".strip() for m in rec["modulos"])

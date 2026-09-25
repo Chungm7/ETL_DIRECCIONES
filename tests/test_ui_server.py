@@ -471,7 +471,7 @@ def test_api_export_csv_endpoint(client):
     assert "text/csv" in response.headers["content-type"]
     assert "reporte_catastral_mpch_" in response.headers.get("content-disposition", "")
     content = response.content.decode("utf-8-sig")
-    assert "ID,Direccion_Original,Tipo_Via" in content
+    assert "ID,ID_Direccion,Estado,Direccion_Original,Via_Principal_Tipo" in content
     assert "502" in content
     assert "AVENIDA" in content
 
