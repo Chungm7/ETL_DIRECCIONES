@@ -119,6 +119,38 @@ class CatalogManager:
             for item in catalog
         ]
 
+    @classmethod
+    def get_default_componentes_tuples(cls) -> List[Tuple[int, str, bool, str]]:
+        """Retorna [(codi_id, codi_nombre, codi_es_urbano, codi_estado), ...] para tb_componente_direccion."""
+        return [
+            (1, "MANZANA", True, "ACT"),
+            (2, "LOTE", True, "ACT"),
+            (3, "SUBLOTE", True, "ACT"),
+            (4, "PISO", True, "ACT"),
+            (5, "PREDIO", False, "ACT"),
+            (6, "VALLE", False, "ACT"),
+            (7, "SECTOR", False, "ACT"),
+            (8, "UNIDAD CATASTRAL", False, "ACT"),
+            (9, "COORDENADA NORTE", False, "ACT"),
+            (10, "COORDENADA ESTE", False, "ACT"),
+        ]
+
+    @classmethod
+    def get_default_tipo_modulo_tuples(cls) -> List[Tuple[int, str, str]]:
+        """Retorna [(timo_id, timo_nombre, timo_estado), ...] para tb_tipo_modulo."""
+        return [
+            (1, "INTERIOR", "ACT"),
+            (2, "DEPARTAMENTO", "ACT"),
+            (3, "PUERTA", "ACT"),
+            (4, "STAND", "ACT"),
+            (5, "TIENDA", "ACT"),
+            (6, "OFICINA", "ACT"),
+            (7, "BLOCK", "ACT"),
+            (8, "PUESTO", "ACT"),
+            (9, "LOCAL", "ACT"),
+            (10, "COCHERA", "ACT"),
+        ]
+
     EXTRA_VIAS_SYNONYMS: Dict[str, str] = {
         "NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
         "GALERIAS NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
@@ -209,6 +241,11 @@ class CatalogManager:
         "NUEVE DE OCTUBRE": "9 DE OCTUBRE",
         "PJ 9 DE OCTUBRE": "9 DE OCTUBRE",
         "PJ NUEVE DE OCTUBRE": "9 DE OCTUBRE",
+        "URB 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "URB. 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "URBANIZACION 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "URBANIZACIÓN 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "UPIS 9 DE OCTUBRE": "9 DE OCTUBRE",
         "AH 9 DE OCTUBRE": "9 DE OCTUBRE",
         "AH NUEVE DE OCTUBRE": "9 DE OCTUBRE",
         "PUEBLO JOVEN 9 DE OCTUBRE": "9 DE OCTUBRE",

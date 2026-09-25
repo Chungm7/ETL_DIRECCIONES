@@ -1077,6 +1077,29 @@ def generate_csv_report(records: List[Dict[str, Any]]) -> Any:
     return buf
 
 
+def generate_json_report(records: List[Dict[str, Any]]) -> Any:
+    """Genera un archivo JSON con estructura institucional MPCH normalizada V2 e indentación legible."""
+    import io
+    import json
+    from datetime import datetime
+
+    payload = {
+        "metadata": {
+            "institucion": "Municipalidad Provincial de Chiclayo - MPCH",
+            "sistema": "ETL Normalizador Catastral V2",
+            "version": "2.0",
+            "total_registros": len(records),
+            "generado_el": datetime.now().isoformat(),
+        },
+        "direcciones": records,
+    }
+
+    raw_json = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+    buf = io.BytesIO(raw_json.encode("utf-8"))
+    buf.seek(0)
+    return buf
+
+
 def fetch_db_records_for_export(
     db_svc: DatabaseService,
     schema: Optional[str] = None,
@@ -1215,9 +1238,12 @@ def fetch_db_records_for_export(
             """), {"schema": schema, "table": zonas_table}).fetchall()
             zonas_cols = {r[0].lower() for r in z_col_rows}
 
+        c_dire_id = "dire_id" if "dire_id" in existing_cols else None
+
         select_fields = [
             f'd."{target_id_col}" AS id_licencia',
             f'd."{target_dir_col}" AS raw_text' if target_dir_col else "NULL AS raw_text",
+            f'd."{c_dire_id}" AS dire_id' if c_dire_id else "NULL AS dire_id",
             f'd."{c_id_via}" AS id_via' if c_id_via else "NULL AS id_via",
             f'd."{c_num_via}" AS num_via' if c_num_via else "NULL AS num_via",
             f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
@@ -1322,6 +1348,7 @@ def fetch_db_records_for_export(
             records.append({
                 "id_licencia": r.get("id_licencia"),
                 "raw_text": r.get("raw_text") or "",
+                "dire_id": r.get("dire_id"),
                 "id_via": r.get("id_via"),
                 "nom_via": r.get("nom_via") or "",
                 "tipo_via": id_tipo_via,
@@ -1335,6 +1362,10 @@ def fetch_db_records_for_export(
                 "lote": r.get("lote") or "",
                 "slote": r.get("slote") or "",
                 "referencia": r.get("referencia") or "",
+                "dire_referencia": r.get("referencia") or "",
+                "vias": [],
+                "componentes": [],
+                "modulos": [],
                 "es_procesado": bool(es_proc) if es_proc is not None else False,
                 "observacion": r.get("observacion") or "",
                 "estado": estado,
@@ -1342,6 +1373,148 @@ def fetch_db_records_for_export(
                 "success": True,
                 "time": "-",
             })
+
+        # Si existen dire_ids vinculados a la arquitectura relacional V2, enriquecer con tablas hijas
+        dire_ids = [r["dire_id"] for r in records if r.get("dire_id") is not None]
+        if dire_ids and check_table_exists("tb_direccion"):
+            id_list_str = ", ".join(str(int(did)) for did in set(dire_ids))
+
+            # 1. Enriquecer Vías (soporte multi-vía / esquinas)
+            vias_by_dire = {}
+            if check_table_exists("tb_direccion_via") and check_table_exists("tb_via"):
+                dv_sql = f"""
+                    SELECT 
+                        dv.dire_id, dv.via_id, dv.divi_numero, dv.divi_orden,
+                        v.via_nombre, v.tivi_id,
+                        tv.tivi_nombre, tv.tivi_abreviatura
+                    FROM "{schema}"."tb_direccion_via" dv
+                    JOIN "{schema}"."tb_via" v ON dv.via_id = v.via_id
+                    LEFT JOIN "{schema}"."tb_tipo_via" tv ON v.tivi_id = tv.tivi_id
+                    WHERE dv.dire_id IN ({id_list_str})
+                    ORDER BY dv.dire_id, dv.divi_orden ASC;
+                """
+                for row in session.execute(sa_text(dv_sql)).fetchall():
+                    did = row[0]
+                    v_item = {
+                        "via_id": row[1],
+                        "divi_numero": row[2] or "",
+                        "divi_orden": row[3],
+                        "via_nombre": row[4] or "",
+                        "tipo_via": row[5],
+                        "tipo_via_name": row[6] or "",
+                        "tivi_abreviatura": row[7] or "",
+                    }
+                    vias_by_dire.setdefault(did, []).append(v_item)
+
+            # 2. Enriquecer Componentes Catastrales (Mz, Lt, Piso, etc.)
+            comp_by_dire = {}
+            if check_table_exists("tb_contenido_componente_direccion") and check_table_exists("tb_componente_direccion"):
+                cd_sql = f"""
+                    SELECT 
+                        cd.dire_id, cd.codi_id, cd.diti_nombre,
+                        c.codi_nombre, c.codi_es_urbano
+                    FROM "{schema}"."tb_contenido_componente_direccion" cd
+                    JOIN "{schema}"."tb_componente_direccion" c ON cd.codi_id = c.codi_id
+                    WHERE cd.dire_id IN ({id_list_str})
+                    ORDER BY cd.dire_id, cd.codi_id ASC;
+                """
+                for row in session.execute(sa_text(cd_sql)).fetchall():
+                    did = row[0]
+                    c_item = {
+                        "codi_id": row[1],
+                        "diti_nombre": row[2] or "",
+                        "codi_nombre": row[3] or "",
+                        "codi_es_urbano": row[4],
+                    }
+                    comp_by_dire.setdefault(did, []).append(c_item)
+
+            # 3. Enriquecer Módulos Inmobiliarios (Interior, Dpto, Puerta, Stand, etc.)
+            mod_by_dire = {}
+            if check_table_exists("tb_direccion_tipo_modulo") and check_table_exists("tb_tipo_modulo"):
+                dm_sql = f"""
+                    SELECT 
+                        dm.dire_id, dm.timo_id, dm.ditm_nombre,
+                        m.timo_nombre
+                    FROM "{schema}"."tb_direccion_tipo_modulo" dm
+                    JOIN "{schema}"."tb_tipo_modulo" m ON dm.timo_id = m.timo_id
+                    WHERE dm.dire_id IN ({id_list_str})
+                    ORDER BY dm.dire_id, dm.timo_id ASC;
+                """
+                for row in session.execute(sa_text(dm_sql)).fetchall():
+                    did = row[0]
+                    m_item = {
+                        "timo_id": row[1],
+                        "ditm_nombre": row[2] or "",
+                        "timo_nombre": row[3] or "",
+                    }
+                    mod_by_dire.setdefault(did, []).append(m_item)
+
+            # 4. Enriquecer Zona oficial y Referencia desde tb_direccion si existen
+            dir_meta = {}
+            if check_table_exists("tb_direccion"):
+                dir_sql = f"""
+                    SELECT 
+                        d.dire_id, d.zona_id, d.dire_referencia,
+                        z.zona_nombre, z.tizo_id,
+                        tz.tizo_nombre, tz.tizo_abreviatura
+                    FROM "{schema}"."tb_direccion" d
+                    LEFT JOIN "{schema}"."tb_zona" z ON d.zona_id = z.zona_id
+                    LEFT JOIN "{schema}"."tb_tipo_zona" tz ON z.tizo_id = tz.tizo_id
+                    WHERE d.dire_id IN ({id_list_str});
+                """
+                for row in session.execute(sa_text(dir_sql)).fetchall():
+                    dir_meta[row[0]] = {
+                        "zona_id": row[1],
+                        "dire_referencia": row[2] or "",
+                        "zona_nombre": row[3] or "",
+                        "tizo_id": row[4],
+                        "tipo_zona_name": row[5] or "",
+                    }
+
+            # Asignar a cada registro
+            for rec in records:
+                did = rec.get("dire_id")
+                if did:
+                    rec["vias"] = vias_by_dire.get(did, [])
+                    rec["componentes"] = comp_by_dire.get(did, [])
+                    rec["modulos"] = mod_by_dire.get(did, [])
+
+                    if did in dir_meta:
+                        meta = dir_meta[did]
+                        if meta["dire_referencia"]:
+                            rec["referencia"] = meta["dire_referencia"]
+                            rec["dire_referencia"] = meta["dire_referencia"]
+                        if meta["zona_id"]:
+                            rec["id_zona"] = meta["zona_id"]
+                            rec["nom_zona"] = meta["zona_nombre"]
+                            rec["tipo_zona"] = meta["tizo_id"]
+                            rec["tipo_zona_name"] = meta["tipo_zona_name"]
+
+                    if rec["vias"]:
+                        v0 = rec["vias"][0]
+                        if not rec.get("id_via"):
+                            rec["id_via"] = v0["via_id"]
+                            rec["nom_via"] = v0["via_nombre"]
+                            rec["tipo_via"] = v0["tipo_via"]
+                            rec["tipo_via_name"] = v0["tipo_via_name"]
+                            rec["num_via"] = v0["divi_numero"]
+                        if len(rec["vias"]) > 1:
+                            rec["nom_via"] = " con ".join(
+                                f"{v.get('tipo_via_name', '')} {v.get('via_nombre', '')} {('N° ' + v['divi_numero']) if v.get('divi_numero') else ''}".strip()
+                                for v in rec["vias"]
+                            )
+
+                    for c in rec["componentes"]:
+                        c_name = (c.get("codi_nombre") or "").upper()
+                        if "MANZANA" in c_name and not rec.get("manzana"):
+                            rec["manzana"] = c["diti_nombre"]
+                        elif "LOTE" in c_name and "SUBLOTE" not in c_name and not rec.get("lote"):
+                            rec["lote"] = c["diti_nombre"]
+                        elif "SUBLOTE" in c_name and not rec.get("slote"):
+                            rec["slote"] = c["diti_nombre"]
+
+                    if rec["modulos"] and not rec.get("slote"):
+                        rec["slote"] = ", ".join(f"{m['timo_nombre']} {m['ditm_nombre']}".strip() for m in rec["modulos"])
 
     return records
 
@@ -1411,6 +1584,34 @@ async def export_csv_endpoint(payload: Optional[Dict[str, Any]] = None):
     )
 
 
+@app.post("/api/export-json")
+async def export_json_endpoint(payload: Optional[Dict[str, Any]] = None):
+    """Genera y descarga un archivo JSON estructurado normalizado V2 desde registros en memoria."""
+    from datetime import datetime
+
+    records = []
+    if payload and isinstance(payload, dict):
+        records = payload.get("records", [])
+    if not records:
+        records = state.recent_records
+
+    if not records:
+        raise HTTPException(status_code=400, detail="No hay registros disponibles para exportar.")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    buf = generate_json_report(records)
+    filename = f"reporte_catastral_mpch_{timestamp}.json"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
 @app.api_route("/api/export-db", methods=["GET", "POST"])
 async def export_db_endpoint(
     req: Optional[ExportDbRequest] = None,
@@ -1421,7 +1622,7 @@ async def export_db_endpoint(
     id_col: Optional[str] = Query(None),
     dir_col: Optional[str] = Query(None),
 ):
-    """Genera y descarga exportación masiva directamente desde PostgreSQL en Excel o CSV."""
+    """Genera y descarga exportación masiva directamente desde PostgreSQL en Excel, CSV o JSON."""
     from datetime import datetime
 
     db_svc = state.dynamic_db_service or DatabaseService()
@@ -1453,7 +1654,11 @@ async def export_db_endpoint(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     scope_slug = target_scope.lower()
 
-    if target_format.lower() in ("csv", "text/csv"):
+    if target_format.lower() in ("json", "application/json"):
+        buf = generate_json_report(records)
+        filename = f"reporte_{target_table}_{scope_slug}_{timestamp}.json"
+        media_type = "application/json; charset=utf-8"
+    elif target_format.lower() in ("csv", "text/csv"):
         buf = generate_csv_report(records)
         filename = f"reporte_{target_table}_{scope_slug}_{timestamp}.csv"
         media_type = "text/csv; charset=utf-8"

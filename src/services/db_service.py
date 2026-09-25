@@ -170,8 +170,8 @@ class DatabaseService:
         official_zonas = CatalogManager.get_official_zonas_tuples()
 
         target_schema = schema or self.settings.schema
-        t_via = table_tipo_via or self.settings.table_tipo_via
-        t_zona = table_tipo_zona or self.settings.table_tipo_zona
+        t_via = table_tipo_via or "tipos_via"
+        t_zona = table_tipo_zona or "tipos_zona"
         dir_table = directions_table or self.settings.table
         col_via = self.settings.col_tipo_via
         col_zona = self.settings.col_tipo_zona
@@ -685,6 +685,196 @@ class DatabaseService:
         except Exception as e:
             logger.error("Error al alterar tabla in-place %s.%s: %s", schema, table, e)
             raise
+
+    def table_exists(self, table: str, schema: Optional[str] = None) -> bool:
+        """Comprueba si una tabla existe en el esquema especificado."""
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return False
+        target_schema = schema or self.settings.schema
+        try:
+            with self.get_session() as session:
+                count = session.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = :schema AND table_name = :table;
+                """), {"schema": target_schema, "table": table}).scalar()
+                return bool(count and count > 0)
+        except Exception as e:
+            logger.debug("Error comprobando existencia de tabla %s.%s: %s", target_schema, table, e)
+            return False
+
+    def get_table_columns(self, table: str, schema: Optional[str] = None) -> List[str]:
+        """Retorna la lista de columnas existentes en una tabla."""
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return []
+        target_schema = schema or self.settings.schema
+        try:
+            with self.get_session() as session:
+                rows = session.execute(text("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_schema = :schema AND table_name = :table
+                    ORDER BY ordinal_position ASC;
+                """), {"schema": target_schema, "table": table}).fetchall()
+                return [r[0] for r in rows]
+        except Exception as e:
+            logger.debug("Error obteniendo columnas de %s.%s: %s", target_schema, table, e)
+            return []
+
+    def ensure_v2_source_columns(self, schema: str, table: str) -> List[str]:
+        """Asegura que la tabla fuente (ej. tb_xxx) cuente con las columnas requeridas para vincular
+        a la arquitectura V2: dire_id (FK a tb_direccion), es_procesado y observacion."""
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return []
+
+        existing_cols = {c.lower() for c in self.get_table_columns(table, schema)}
+        
+        has_xxxx = any(c.startswith("xxxx_") for c in existing_cols)
+        col_proc = "xxxx_es_procesado" if has_xxxx or "xxxx_es_procesado" in existing_cols else "es_procesado"
+        col_obs = "xxxx_observacion_ia" if has_xxxx or "xxxx_observacion_ia" in existing_cols else "observacion"
+
+        ddl = f"""
+        ALTER TABLE "{schema}"."{table}"
+            ADD COLUMN IF NOT EXISTS "dire_id" BIGINT,
+            ADD COLUMN IF NOT EXISTS "{col_proc}" BOOLEAN DEFAULT FALSE,
+            ADD COLUMN IF NOT EXISTS "{col_obs}" TEXT;
+
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'fk_{table}_tb_direccion'
+            ) THEN
+                BEGIN
+                    ALTER TABLE "{schema}"."{table}"
+                        ADD CONSTRAINT fk_{table}_tb_direccion
+                        FOREIGN KEY ("dire_id") REFERENCES "{schema}"."tb_direccion"("dire_id")
+                        ON UPDATE CASCADE ON DELETE SET NULL;
+                EXCEPTION WHEN OTHERS THEN NULL;
+                END;
+            END IF;
+        END $$;
+        """
+        try:
+            with self.get_session() as session:
+                session.execute(text(ddl))
+            return ["dire_id", col_proc, col_obs]
+        except Exception as e:
+            logger.debug("Aviso al asegurar columnas fuente V2 en %s.%s: %s", schema, table, e)
+            return []
+
+    def ensure_v2_tables_exist(self, schema: Optional[str] = None) -> Dict[str, Any]:
+        """Asegura que la arquitectura relacional V2 completa exista en el esquema objetivo:
+        - tb_tipo_via, tb_via
+        - tb_tipo_zona (los 28 tipos de zona oficiales), tb_zona
+        - tb_direccion, tb_direccion_via
+        - tb_componente_direccion, tb_contenido_componente_direccion
+        - tb_tipo_modulo, tb_direccion_tipo_modulo
+        - tb_xxx (tabla de prueba representativa)
+        - Vista v_direcciones_v2
+        """
+        from src.catalogs.catalog_manager import CatalogManager
+
+        target_schema = schema or self.settings.schema
+        results: Dict[str, Any] = {
+            "schema": target_schema,
+            "created_tables": [],
+            "seeded_tables": {},
+            "status": "OK",
+        }
+
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            results["status"] = "NO_ENGINE"
+            return results
+
+        tables_to_check = [
+            "tb_tipo_via", "tb_via", "tb_tipo_zona", "tb_zona",
+            "tb_direccion", "tb_direccion_via", "tb_componente_direccion",
+            "tb_contenido_componente_direccion", "tb_tipo_modulo",
+            "tb_direccion_tipo_modulo"
+        ]
+
+        missing = []
+        for t in tables_to_check:
+            if not self.table_exists(t, target_schema):
+                missing.append(t)
+
+        if missing:
+            sql_file = Path("scripts_data_base/06_crear_estructura_v2_normalizada.sql")
+            if sql_file.exists():
+                logger.info("Ejecutando script de estructura relacional V2 en %s...", target_schema)
+                self.execute_sql_file(str(sql_file), target_schema=target_schema)
+                results["created_tables"] = missing
+
+        try:
+            with self.get_session() as session:
+                # 1. tb_tipo_via
+                tv_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_via";')).scalar() or 0
+                if tv_count == 0:
+                    vias_tipos = CatalogManager.get_official_vias_tuples()
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
+                        VALUES (:id, :nombre, :abrev, 'ACT')
+                        ON CONFLICT (tivi_nombre) DO NOTHING;
+                    """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
+                    results["seeded_tables"]["tb_tipo_via"] = len(vias_tipos)
+
+                # 2. tb_tipo_zona
+                tz_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_zona";')).scalar() or 0
+                if tz_count == 0:
+                    zonas_tipos = CatalogManager.get_official_zonas_tuples()
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
+                        VALUES (:id, :nombre, :abrev, 'ACT')
+                        ON CONFLICT (tizo_nombre) DO NOTHING;
+                    """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
+                    results["seeded_tables"]["tb_tipo_zona"] = len(zonas_tipos)
+
+                # 3. tb_via
+                via_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_via";')).scalar() or 0
+                if via_count == 0:
+                    phys_vias = CatalogManager.get_official_physical_vias_tuples()
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
+                        VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
+                        ON CONFLICT (via_id) DO NOTHING;
+                    """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in phys_vias])
+                    results["seeded_tables"]["tb_via"] = len(phys_vias)
+
+                # 4. tb_zona
+                zona_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_zona";')).scalar() or 0
+                if zona_count == 0:
+                    phys_zonas = CatalogManager.get_official_physical_zonas_tuples()
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
+                        VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
+                        ON CONFLICT (zona_id) DO NOTHING;
+                    """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in phys_zonas])
+                    results["seeded_tables"]["tb_zona"] = len(phys_zonas)
+
+                # 5. tb_componente_direccion
+                comp_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_componente_direccion";')).scalar() or 0
+                if comp_count == 0:
+                    comps = CatalogManager.get_default_componentes_tuples()
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_componente_direccion" (codi_id, codi_nombre, codi_es_urbano, codi_estado)
+                        VALUES (:codi_id, :codi_nombre, :codi_es_urbano, :codi_estado)
+                        ON CONFLICT (codi_id) DO NOTHING;
+                    """), [{"codi_id": c[0], "codi_nombre": c[1], "codi_es_urbano": c[2], "codi_estado": c[3]} for c in comps])
+                    results["seeded_tables"]["tb_componente_direccion"] = len(comps)
+
+                # 6. tb_tipo_modulo
+                mod_count = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_modulo";')).scalar() or 0
+                if mod_count == 0:
+                    mods = CatalogManager.get_default_tipo_modulo_tuples()
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_tipo_modulo" (timo_id, timo_nombre, timo_estado)
+                        VALUES (:timo_id, :timo_nombre, :timo_estado)
+                        ON CONFLICT (timo_id) DO NOTHING;
+                    """), [{"timo_id": m[0], "timo_nombre": m[1], "timo_estado": m[2]} for m in mods])
+                    results["seeded_tables"]["tb_tipo_modulo"] = len(mods)
+
+        except Exception as e:
+            logger.debug("Aviso al verificar datos semilla V2 en %s: %s", target_schema, e)
+
+        return results
 
     def execute_sql_file(self, file_path: str, target_schema: Optional[str] = None) -> bool:
         """Ejecuta un script SQL en la base de datos, configurando el search_path si se provee."""

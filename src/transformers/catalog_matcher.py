@@ -47,56 +47,82 @@ class CatalogMatcher:
             return
 
         from sqlalchemy import text
-        t_via = db_service.settings.target_table_tipo_via
-        t_zona = db_service.settings.target_table_tipo_zona
+        target_t_via = getattr(db_service.settings, "target_table_tipo_via", None) or getattr(db_service.settings, "table_tipo_via", None)
+        target_t_zona = getattr(db_service.settings, "target_table_tipo_zona", None) or getattr(db_service.settings, "table_tipo_zona", None)
+        candidates_via = [c for c in [target_t_via, "tb_tipo_via", "tipos_via"] if c]
+        candidates_zona = [c for c in [target_t_zona, "tb_tipo_zona", "tipos_zona"] if c]
 
         try:
             with db_service.get_session() as session:
                 # 1. Leer tipos_via existentes en el esquema
-                try:
-                    vias_rows = session.execute(text(f"""
-                        SELECT id_tipo_via, nombre_tipo_via 
-                        FROM "{schema}"."{t_via}"
-                        ORDER BY id_tipo_via ASC;
-                    """)).fetchall()
-
-                    for vid, vname in vias_rows:
-                        if not vname:
+                for t_via in candidates_via:
+                    try:
+                        res = session.execute(text(f'SELECT * FROM "{schema}"."{t_via}"'))
+                        keys = [str(k).lower() for k in res.keys()] if hasattr(res, "keys") and callable(res.keys) else []
+                        rows = res.fetchall()
+                        if not rows:
                             continue
-                        vname_clean = str(vname).strip().upper()
-                        cls.VIAS_NAMES[vid] = vname_clean
-                        norm_vname = TextCleaner.remove_accents(vname_clean)
 
-                        # Mapear sinónimos canónicos si coincide
-                        synonyms = cls.CANONICAL_VIA_SYNONYMS.get(norm_vname, [vname_clean, norm_vname])
-                        for syn in synonyms:
-                            cls.VIAS_MAPPING[syn] = vid
-                            cls.VIAS_MAPPING[TextCleaner.remove_accents(syn)] = vid
-                except Exception as ex_vias:
-                    logger.debug("No se pudieron leer tipos_via en %s: %s", schema, ex_vias)
+                        pk_idx = 0
+                        name_idx = 1
+                        if "tivi_id" in keys and "tivi_nombre" in keys:
+                            pk_idx = keys.index("tivi_id")
+                            name_idx = keys.index("tivi_nombre")
+                        elif "id_tipo_via" in keys and "nombre_tipo_via" in keys:
+                            pk_idx = keys.index("id_tipo_via")
+                            name_idx = keys.index("nombre_tipo_via")
+
+                        for row in rows:
+                            vid = row[pk_idx]
+                            vname = row[name_idx]
+                            if not vname:
+                                continue
+                            vname_clean = str(vname).strip().upper()
+                            cls.VIAS_NAMES[vid] = vname_clean
+                            norm_vname = TextCleaner.remove_accents(vname_clean)
+
+                            synonyms = cls.CANONICAL_VIA_SYNONYMS.get(norm_vname, [vname_clean, norm_vname])
+                            for syn in synonyms:
+                                cls.VIAS_MAPPING[syn] = vid
+                                cls.VIAS_MAPPING[TextCleaner.remove_accents(syn)] = vid
+                        break
+                    except Exception as ex_vias:
+                        logger.debug("Aviso leyendo tipos_via en %s.%s: %s", schema, t_via, ex_vias)
 
                 # 2. Leer tipos_zona existentes en el esquema
-                try:
-                    zonas_rows = session.execute(text(f"""
-                        SELECT id_tipo_zona, nombre_tipo_zona 
-                        FROM "{schema}"."{t_zona}"
-                        ORDER BY id_tipo_zona ASC;
-                    """)).fetchall()
-
-                    for zid, zname in zonas_rows:
-                        if not zname:
+                for t_zona in candidates_zona:
+                    try:
+                        res = session.execute(text(f'SELECT * FROM "{schema}"."{t_zona}"'))
+                        keys = [str(k).lower() for k in res.keys()] if hasattr(res, "keys") and callable(res.keys) else []
+                        rows = res.fetchall()
+                        if not rows:
                             continue
-                        zname_clean = str(zname).strip().upper()
-                        cls.ZONAS_NAMES[zid] = zname_clean
-                        norm_zname = TextCleaner.remove_accents(zname_clean)
 
-                        # Mapear sinónimos canónicos si coincide
-                        synonyms = cls.CANONICAL_ZONA_SYNONYMS.get(norm_zname, [zname_clean, norm_zname])
-                        for syn in synonyms:
-                            cls.ZONAS_MAPPING[syn] = zid
-                            cls.ZONAS_MAPPING[TextCleaner.remove_accents(syn)] = zid
-                except Exception as ex_zonas:
-                    logger.debug("No se pudieron leer tipos_zona en %s: %s", schema, ex_zonas)
+                        pk_idx = 0
+                        name_idx = 1
+                        if "tizo_id" in keys and "tizo_nombre" in keys:
+                            pk_idx = keys.index("tizo_id")
+                            name_idx = keys.index("tizo_nombre")
+                        elif "id_tipo_zona" in keys and "nombre_tipo_zona" in keys:
+                            pk_idx = keys.index("id_tipo_zona")
+                            name_idx = keys.index("nombre_tipo_zona")
+
+                        for row in rows:
+                            zid = row[pk_idx]
+                            zname = row[name_idx]
+                            if not zname:
+                                continue
+                            zname_clean = str(zname).strip().upper()
+                            cls.ZONAS_NAMES[zid] = zname_clean
+                            norm_zname = TextCleaner.remove_accents(zname_clean)
+
+                            synonyms = cls.CANONICAL_ZONA_SYNONYMS.get(norm_zname, [zname_clean, norm_zname])
+                            for syn in synonyms:
+                                cls.ZONAS_MAPPING[syn] = zid
+                                cls.ZONAS_MAPPING[TextCleaner.remove_accents(syn)] = zid
+                        break
+                    except Exception as ex_zonas:
+                        logger.debug("Aviso leyendo tipos_zona en %s.%s: %s", schema, t_zona, ex_zonas)
 
             logger.info("Mapeo de catálogos sincronizado exitosamente con esquema '%s'", schema)
         except Exception as e:
@@ -145,6 +171,92 @@ class CatalogMatcher:
         if id_zona is None:
             return "SIN ZONA"
         return cls.ZONAS_NAMES.get(id_zona, f"TIPO ZONA #{id_zona}")
+
+    # -------------------------------------------------------------------------
+    # Homologación de Componentes y Módulos V2
+    # -------------------------------------------------------------------------
+    COMPONENTES_DICT: Dict[str, Tuple[int, str, bool]] = {
+        "MANZANA": (1, "MANZANA", True),
+        "MZ": (1, "MANZANA", True),
+        "MZA": (1, "MANZANA", True),
+        "MZA.": (1, "MANZANA", True),
+        "MZ.": (1, "MANZANA", True),
+        "LOTE": (2, "LOTE", True),
+        "LT": (2, "LOTE", True),
+        "LT.": (2, "LOTE", True),
+        "SUBLOTE": (3, "SUBLOTE", True),
+        "SLOTE": (3, "SUBLOTE", True),
+        "SLT": (3, "SUBLOTE", True),
+        "SLT.": (3, "SUBLOTE", True),
+        "SUB-LOTE": (3, "SUBLOTE", True),
+        "SUB LOTE": (3, "SUBLOTE", True),
+        "PISO": (4, "PISO", True),
+        "PISOS": (4, "PISO", True),
+        "NIVEL": (4, "PISO", True),
+        "PREDIO": (5, "PREDIO", False),
+        "FUNDO": (5, "PREDIO", False),
+        "VALLE": (6, "VALLE", False),
+        "SECTOR": (7, "SECTOR", False),
+        "UNIDAD CATASTRAL": (8, "UNIDAD CATASTRAL", False),
+        "UC": (8, "UNIDAD CATASTRAL", False),
+        "U.C.": (8, "UNIDAD CATASTRAL", False),
+        "COORDENADA NORTE": (9, "COORDENADA NORTE", False),
+        "NORTE": (9, "COORDENADA NORTE", False),
+        "COORDENADA ESTE": (10, "COORDENADA ESTE", False),
+        "ESTE": (10, "COORDENADA ESTE", False),
+    }
+
+    MODULOS_DICT: Dict[str, Tuple[int, str]] = {
+        "INTERIOR": (1, "INTERIOR"),
+        "INT": (1, "INTERIOR"),
+        "INT.": (1, "INTERIOR"),
+        "DEPARTAMENTO": (2, "DEPARTAMENTO"),
+        "DPTO": (2, "DEPARTAMENTO"),
+        "DPTO.": (2, "DEPARTAMENTO"),
+        "DEP": (2, "DEPARTAMENTO"),
+        "DEP.": (2, "DEPARTAMENTO"),
+        "PUERTA": (3, "PUERTA"),
+        "PTA": (3, "PUERTA"),
+        "PTA.": (3, "PUERTA"),
+        "STAND": (4, "STAND"),
+        "STAND.": (4, "STAND"),
+        "STD": (4, "STAND"),
+        "TIENDA": (5, "TIENDA"),
+        "TDA": (5, "TIENDA"),
+        "TDA.": (5, "TIENDA"),
+        "OFICINA": (6, "OFICINA"),
+        "OF": (6, "OFICINA"),
+        "OF.": (6, "OFICINA"),
+        "BLOCK": (7, "BLOCK"),
+        "BLQ": (7, "BLOCK"),
+        "TORRE": (7, "BLOCK"),
+        "PABELLON": (7, "BLOCK"),
+        "PABELLÓN": (7, "BLOCK"),
+        "PUESTO": (8, "PUESTO"),
+        "PTO": (8, "PUESTO"),
+        "LOCAL": (9, "LOCAL"),
+        "LC": (9, "LOCAL"),
+        "COCHERA": (10, "COCHERA"),
+        "ESTACIONAMIENTO": (10, "COCHERA"),
+    }
+
+    @classmethod
+    def match_componente(cls, text: Optional[str]) -> Optional[Tuple[int, str, bool]]:
+        """Homologa el nombre del componente catastral hacia (codi_id, codi_nombre, codi_es_urbano)."""
+        if not text:
+            return None
+        clean = TextCleaner.sanitize(text).upper()
+        clean_no_accents = TextCleaner.remove_accents(clean)
+        return cls.COMPONENTES_DICT.get(clean) or cls.COMPONENTES_DICT.get(clean_no_accents)
+
+    @classmethod
+    def match_tipo_modulo(cls, text: Optional[str]) -> Optional[Tuple[int, str]]:
+        """Homologa el tipo de módulo hacia (timo_id, timo_nombre)."""
+        if not text:
+            return None
+        clean = TextCleaner.sanitize(text).upper()
+        clean_no_accents = TextCleaner.remove_accents(clean)
+        return cls.MODULOS_DICT.get(clean) or cls.MODULOS_DICT.get(clean_no_accents)
 
     # -------------------------------------------------------------------------
     # -------------------------------------------------------------------------

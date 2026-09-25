@@ -281,11 +281,8 @@ class TestPipelineStructure(unittest.TestCase):
     def test_etl_pipeline_in_place_execution(self):
         """Valida la ejecución del pipeline en su método único in-place."""
         mock_db = MagicMock()
-        mock_db.ensure_catalogs_exist.return_value = {
-            "tipos_via": {"table_created": False, "column_added": False, "existing_records": 12, "added_records": 0, "total_records": 12},
-            "tipos_zona": {"table_created": False, "column_added": False, "existing_records": 28, "added_records": 0, "total_records": 28},
-        }
-        mock_db.ensure_in_place_columns.return_value = ["id_via", "num_via", "id_zona", "es_procesado", "observacion"]
+        mock_db.ensure_v2_tables_exist.return_value = {"status": "OK"}
+        mock_db.ensure_v2_source_columns.return_value = ["dire_id", "es_procesado", "observacion"]
 
         mock_extractor = MagicMock()
         mock_extractor.get_total_records.return_value = 1
@@ -313,8 +310,8 @@ class TestPipelineStructure(unittest.TestCase):
         self.assertEqual(summary.total_records, 1)
         self.assertEqual(summary.successful_records, 1)
         self.assertEqual(summary.failed_records, 0)
-        mock_db.ensure_catalogs_exist.assert_called_once()
-        mock_db.ensure_in_place_columns.assert_called_once()
+        mock_db.ensure_v2_tables_exist.assert_called_once()
+        mock_db.ensure_v2_source_columns.assert_called_once()
 
     def test_ai_parser_pure_ai_tagging(self):
         """Valida que AIAddressParser asigne 'IA (<modelo>)' si la inferencia fue 100% exitosa."""

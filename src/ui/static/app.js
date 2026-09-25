@@ -968,20 +968,44 @@ function createConciseRecordCard(r) {
       </div>`;
   }
 
-  // Formato conciso de componentes
+  // Formato conciso de componentes y arquitectura V2
   const viaName = r.nom_via || 'Sin vía';
   const numVia = r.num_via ? `N° ${r.num_via}` : 'S/N';
   const viaChip = r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '';
 
+  // Multi-vías (Esquinas / Intersecciones)
+  let viaLabel = 'Vía';
+  let viaValue = `${escapeHtml(r.tipo_via_name ? r.tipo_via_name + ' ' : '')}${escapeHtml(viaName)} ${escapeHtml(numVia)}`;
+  if (r.vias && r.vias.length > 1) {
+    viaLabel = 'Vías (Esquina)';
+    viaValue = r.vias.map(v => `${escapeHtml(v.tipo_via_name || '')} ${escapeHtml(v.via_nombre || '')} ${v.divi_numero ? 'N° ' + escapeHtml(v.divi_numero) : ''}`.trim()).join(' <span style="color:var(--slate-400); font-weight:700;">con</span> ');
+  }
+
   const zonaName = r.nom_zona || 'Sin zona';
   const zonaChip = r.id_zona ? `<span class="chip-id chip-zona">ID: ${r.id_zona}</span>` : '';
 
-  const catastroText = (r.manzana || r.lote)
-    ? `Mz: ${r.manzana || '-'} | Lt: ${r.lote || '-'}${r.slote ? ' | Slt: ' + r.slote : ''}`
-    : 'N/D';
+  // Catastro (componentes urbanos / rurales)
+  let catastroText = 'N/D';
+  if (r.componentes && r.componentes.length > 0) {
+    catastroText = r.componentes.map(c => `${escapeHtml(c.codi_nombre || '')}: ${escapeHtml(c.diti_nombre || '')}`).join(' | ');
+  } else if (r.manzana || r.lote) {
+    catastroText = `Mz: ${r.manzana || '-'} | Lt: ${r.lote || '-'}${r.slote ? ' | Slt: ' + r.slote : ''}`;
+  }
+
+  // Módulos inmobiliarios (interior, dpto, puerta, stand, etc.)
+  let moduloItem = '';
+  if (r.modulos && r.modulos.length > 0) {
+    const modText = r.modulos.map(m => `${escapeHtml(m.timo_nombre || '')} ${escapeHtml(m.ditm_nombre || '')}`.trim()).join(', ');
+    moduloItem = `<div class="breakdown-item"><span class="breakdown-lbl">Módulo(s)</span> <span class="breakdown-val" style="color:#2563eb; font-weight:600;">${modText}</span></div>`;
+  }
 
   const refItem = r.referencia
     ? `<div class="breakdown-item"><span class="breakdown-lbl">Referencia</span> <span class="breakdown-val" style="color:var(--mpch-navy);">${escapeHtml(r.referencia)}</span></div>`
+    : '';
+
+  // Chip de ID V2 normalizado si existe
+  const direIdChip = r.dire_id
+    ? `<span class="chip-id" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">DIRE_ID: ${r.dire_id}</span>`
     : '';
 
   // Badge de Reintento / Actualización si aplica
@@ -999,6 +1023,7 @@ function createConciseRecordCard(r) {
       <div class="record-header">
         <div class="record-meta">
           <span class="record-id-chip">ID: ${r.id_licencia}</span>
+          ${direIdChip}
           <span class="record-index">#${r.index} de ${r.total || '?'}</span>
           ${statusBadge}
           ${motorBadge}
@@ -1021,8 +1046,8 @@ function createConciseRecordCard(r) {
 
       <div class="record-breakdown">
         <div class="breakdown-item">
-          <span class="breakdown-lbl">Vía</span>
-          <span class="breakdown-val">${escapeHtml(r.tipo_via_name ? r.tipo_via_name + ' ' : '')}${escapeHtml(viaName)} ${escapeHtml(numVia)}</span>
+          <span class="breakdown-lbl">${viaLabel}</span>
+          <span class="breakdown-val">${viaValue}</span>
           ${viaChip}
         </div>
         <div class="breakdown-item">
@@ -1034,6 +1059,7 @@ function createConciseRecordCard(r) {
           <span class="breakdown-lbl">Catastro</span>
           <span class="breakdown-val">${escapeHtml(catastroText)}</span>
         </div>
+        ${moduloItem}
         ${refItem}
       </div>
 
@@ -1170,10 +1196,13 @@ async function executeExport(scope, format) {
   let btnId = '';
   if (scope === 'processed' && format === 'excel') btnId = 'btnDlExcelProcessed';
   else if (scope === 'processed' && format === 'csv') btnId = 'btnDlCsvProcessed';
+  else if (scope === 'processed' && format === 'json') btnId = 'btnDlJsonProcessed';
   else if (scope === 'observed' && format === 'excel') btnId = 'btnDlExcelObserved';
   else if (scope === 'observed' && format === 'csv') btnId = 'btnDlCsvObserved';
+  else if (scope === 'observed' && format === 'json') btnId = 'btnDlJsonObserved';
   else if (scope === 'valid' && format === 'excel') btnId = 'btnDlExcelValid';
   else if (scope === 'valid' && format === 'csv') btnId = 'btnDlCsvValid';
+  else if (scope === 'valid' && format === 'json') btnId = 'btnDlJsonValid';
 
   const btn = document.getElementById(btnId);
   const origHtml = btn ? btn.innerHTML : '';
@@ -1214,7 +1243,7 @@ async function executeExport(scope, format) {
         const now = new Date();
         const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
         const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-        const ext = format === 'csv' ? 'csv' : 'xlsx';
+        const ext = format === 'csv' ? 'csv' : (format === 'json' ? 'json' : 'xlsx');
         filename = `reporte_${table}_${scope}_${dateStr}_${timeStr}.${ext}`;
       }
 
@@ -1240,7 +1269,10 @@ async function executeExport(scope, format) {
         return;
       }
 
-      const endpoint = format === 'csv' ? '/api/export-csv' : '/api/export-excel';
+      let endpoint = '/api/export-excel';
+      if (format === 'csv') endpoint = '/api/export-csv';
+      else if (format === 'json') endpoint = '/api/export-json';
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1257,7 +1289,7 @@ async function executeExport(scope, format) {
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
       const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-      const ext = format === 'csv' ? 'csv' : 'xlsx';
+      const ext = format === 'csv' ? 'csv' : (format === 'json' ? 'json' : 'xlsx');
       const filename = `reporte_vista_${scope}_${dateStr}_${timeStr}.${ext}`;
 
       triggerBrowserDownload(blob, filename);
@@ -1290,6 +1322,10 @@ function exportRecordsExcel() {
 
 function exportRecordsCSV() {
   executeExport('processed', 'csv');
+}
+
+function exportRecordsJSON() {
+  executeExport('processed', 'json');
 }
 
 async function clearRecords() {

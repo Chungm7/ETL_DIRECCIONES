@@ -888,6 +888,15 @@
     .export-btn-csv:hover:not(:disabled) {
       background: var(--slate-200);
     }
+    .export-btn-json {
+      background: var(--blue-bg);
+      border: 1px solid var(--blue-border);
+      color: var(--mpch-navy);
+    }
+    .export-btn-json:hover:not(:disabled) {
+      background: #dbeafe;
+      border-color: #3b82f6;
+    }
     .export-btn-dl:disabled {
       opacity: 0.6;
       cursor: not-allowed;
@@ -1449,7 +1458,7 @@
       </div>
       <div>
         <h3 style="margin:0; font-size:16px; color:var(--mpch-navy);">Centro de Descargas y Exportación Catastral</h3>
-        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Exporte registros procesados en Excel (.xlsx) institucional o CSV delimitado</p>
+        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Exporte registros procesados en Excel (.xlsx), CSV delimitado o JSON estructurado V2</p>
       </div>
     </div>
 
@@ -1500,6 +1509,10 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>CSV</span>
           </button>
+          <button class="export-btn-dl export-btn-json" id="btnDlJsonProcessed" onclick="executeExport('processed', 'json')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>JSON</span>
+          </button>
         </div>
       </div>
 
@@ -1523,6 +1536,10 @@
           <button class="export-btn-dl export-btn-csv" id="btnDlCsvObserved" onclick="executeExport('observed', 'csv')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>CSV</span>
+          </button>
+          <button class="export-btn-dl export-btn-json" id="btnDlJsonObserved" onclick="executeExport('observed', 'json')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>JSON</span>
           </button>
         </div>
       </div>
@@ -1548,8 +1565,13 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>CSV</span>
           </button>
+          <button class="export-btn-dl export-btn-json" id="btnDlJsonValid" onclick="executeExport('valid', 'json')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>JSON</span>
+          </button>
         </div>
       </div>
+    </div>
     </div>
 
     <div class="modal-footer" style="border-top:1px solid var(--slate-200); padding-top:12px; margin-top:0;">

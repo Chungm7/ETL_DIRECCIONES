@@ -726,6 +726,127 @@ class AIAddressParser:
 
         observaciones = []
 
+        # Construcción relacional V2 de Vías
+        vias_result = []
+        is_explicit_corner = bool(
+            (extraction and getattr(extraction, "es_esquina", False))
+            or re.search(r"\b(?:ESQ(?:UINA)?|CON|\bY\b)\b", raw_text, re.IGNORECASE)
+        )
+        if extraction and extraction.vias and len(extraction.vias) > 1:
+            for ev in extraction.vias:
+                ev_matched = CatalogMatcher.match_physical_via(ev.nombre)
+                if ev_matched:
+                    vias_result.append({
+                        "via_id": ev_matched["id"],
+                        "divi_numero": ev.numero or num_via or "S/N",
+                        "divi_orden": ev.orden,
+                        "via_nombre": ev_matched["nom_via"],
+                        "tipo_via": ev_matched.get("id_tipo_via") or id_tipo_via,
+                    })
+            if vias_result:
+                matched_via = {"id": vias_result[0]["via_id"], "nom_via": vias_result[0]["via_nombre"], "id_tipo_via": vias_result[0]["tipo_via"]}
+                two_vias_conflict = None
+
+        if not vias_result and two_vias_conflict and is_explicit_corner:
+            # Evaluar si corresponde a esquina / intersección oficial
+            m_v1_c = CatalogMatcher.match_physical_via(two_vias_conflict[0])
+            m_v2_c = CatalogMatcher.match_physical_via(two_vias_conflict[1])
+            if m_v1_c and m_v2_c:
+                vias_result.append({
+                    "via_id": m_v1_c["id"],
+                    "divi_numero": num_via or "S/N",
+                    "divi_orden": 1,
+                    "via_nombre": m_v1_c["nom_via"],
+                    "tipo_via": m_v1_c.get("id_tipo_via") or id_tipo_via,
+                })
+                vias_result.append({
+                    "via_id": m_v2_c["id"],
+                    "divi_numero": "S/N",
+                    "divi_orden": 2,
+                    "via_nombre": m_v2_c["nom_via"],
+                    "tipo_via": m_v2_c.get("id_tipo_via"),
+                })
+                matched_via = m_v1_c
+                two_vias_conflict = None
+
+        if not vias_result and matched_via:
+            vias_result.append({
+                "via_id": matched_via["id"],
+                "divi_numero": num_via or "S/N",
+                "divi_orden": 1,
+                "via_nombre": matched_via["nom_via"],
+                "tipo_via": matched_via.get("id_tipo_via") or id_tipo_via,
+            })
+
+        # Construcción relacional V2 de Componentes
+        componentes_result = []
+        if extraction and extraction.componentes:
+            for c in extraction.componentes:
+                mc = CatalogMatcher.match_componente(c.nombre)
+                if mc:
+                    componentes_result.append({
+                        "codi_id": mc[0],
+                        "codi_nombre": mc[1],
+                        "diti_nombre": str(c.valor).strip(),
+                    })
+        if manzana and not any(cr["codi_nombre"] == "MANZANA" for cr in componentes_result):
+            componentes_result.append({"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": str(manzana).strip()})
+        if lote and not any(cr["codi_nombre"] == "LOTE" for cr in componentes_result):
+            componentes_result.append({"codi_id": 2, "codi_nombre": "LOTE", "diti_nombre": str(lote).strip()})
+
+        # Construcción relacional V2 de Módulos (Interiores, Dpto, Puerta, Stand, Block, etc.)
+        modulos_result = []
+        if extraction and extraction.modulos:
+            for m in extraction.modulos:
+                mm = CatalogMatcher.match_tipo_modulo(m.tipo_modulo)
+                if mm:
+                    modulos_result.append({
+                        "timo_id": mm[0],
+                        "timo_nombre": mm[1],
+                        "ditm_nombre": str(m.valor).strip(),
+                    })
+        if not modulos_result:
+            source_mod = f"{slote or ''} {referencia or ''}"
+            m_sl = re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|PUERTA|PTA|STAND|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)", source_mod, re.IGNORECASE)
+            if m_sl:
+                tname = m_sl.group(1).upper()
+                mval = m_sl.group(2).strip()
+                mm = CatalogMatcher.match_tipo_modulo(tname)
+                if mm:
+                    modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": mval})
+            elif slote:
+                modulos_result.append({"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": str(slote).strip()})
+
+        # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
+        clean_referencia = None
+        if referencia:
+            clean_referencia = str(referencia).strip()
+            # Eliminar pisos y niveles
+            clean_referencia = re.sub(
+                r"\b(?:PISO\s*\d+|\d+\s*PISO)\b",
+                "",
+                clean_referencia,
+                flags=re.IGNORECASE,
+            )
+            # Eliminar menciones de módulos o interiores (STAND, TIENDA, INT, DPTO, OFICINA, PUERTA, etc.)
+            clean_referencia = re.sub(
+                r"\b(?:STAND|TIENDA|TDA|LOCAL|INT(?:ERIOR)?|DEP(?:TO|ARTAMENTO)?|OF(?:ICINA)?|PTA|PUERTA|BLOCK|BLQ|PUESTO)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)?",
+                "",
+                clean_referencia,
+                flags=re.IGNORECASE,
+            )
+            # Eliminar menciones de componentes catastrales (MZ, LT, LOTE, etc.)
+            clean_referencia = re.sub(
+                r"\b(?:MZ|MZA|MANZANA|LT|LOTE|SUBLOTE|S_LOTE)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)?",
+                "",
+                clean_referencia,
+                flags=re.IGNORECASE,
+            )
+            # Remover residuos de puntuación y espacios
+            clean_referencia = re.sub(r"\s+", " ", clean_referencia).strip(" -/,.:;")
+            if not clean_referencia:
+                clean_referencia = None
+
         if two_vias_conflict:
             observaciones.append(
                 f"Conflicto de vías: Se detectaron dos vías oficiales juntas ('{two_vias_conflict[0]}' y '{two_vias_conflict[1]}'). "
@@ -748,9 +869,7 @@ class AIAddressParser:
             observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
 
         # Guardrail de Integridad Estricta:
-        # Una dirección solo puede carecer de vía (id_via = None) si es un predio catastral sin calle
-        # (es decir, cuenta con zona oficial confirmada Y manzana o lote, y NO tiene numeración de calle).
-        # Si la dirección tiene numeración municipal o texto residual no identificado, se prohíbe normalizarla sin vía.
+        # Una dirección solo puede carecer de vía si es un predio catastral sin calle
         if not matched_via:
             tiene_predio_mz_lt = bool(matched_zona and (manzana or lote))
             if not tiene_predio_mz_lt or num_via:
@@ -769,12 +888,15 @@ class AIAddressParser:
             observaciones.append("Advertencia registrada: Restricción de uso de vía pública en la licencia.")
 
         if observaciones:
-            # Caso observado: Se nullifican todas las columnas derivadas para evitar datos sin sentido
+            # Caso observado: Se nullifican relaciones para consistencia
             return DireccionDestino(
                 id_licencia=record.id_licencia,
-                id_via=None,
-                num_via=None,
-                id_zona=None,
+                dire_id=None,
+                zona_id=None,
+                dire_referencia=None,
+                vias=[],
+                componentes=[],
+                modulos=[],
                 manzana=None,
                 lote=None,
                 slote=None,
@@ -787,17 +909,21 @@ class AIAddressParser:
             # Caso exitoso: Asociado formalmente a las tablas maestras oficiales
             return DireccionDestino(
                 id_licencia=record.id_licencia,
-                id_via=matched_via["id"] if matched_via else None,
-                num_via=num_via,
-                id_zona=matched_zona["id"] if matched_zona else None,
+                dire_id=None,
+                zona_id=matched_zona["id"] if matched_zona else None,
+                dire_referencia=clean_referencia,
+                vias=vias_result,
+                componentes=componentes_result,
+                modulos=modulos_result,
                 manzana=manzana,
                 lote=lote,
                 slote=slote,
-                referencia=referencia,
+                referencia=referencia or clean_referencia,
                 es_procesado=True,
                 observacion=None,
                 tipo_via=matched_via.get("id_tipo_via") or id_tipo_via if matched_via else None,
                 nom_via=matched_via["nom_via"] if matched_via else None,
+                num_via=num_via,
                 tipo_zona=matched_zona.get("id_tipo_zona") or id_tipo_zona if matched_zona else None,
                 nom_zona=matched_zona["nom_zona"] if matched_zona else None,
                 metodo_normalizacion=metodo,

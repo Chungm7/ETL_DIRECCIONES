@@ -43,22 +43,22 @@ class DatabaseSettings(BaseSettings):
 
     # --- Tablas Maestras Categorizables (En el mismo esquema) ---
     table_tipo_via: str = Field(
-        default="tipos_via",
+        default="tb_tipo_via",
         validation_alias=AliasChoices("DB_TABLE_TIPO_VIA", "DB_TARGET_TABLE_TIPO_VIA", "table_tipo_via"),
         description="Nombre de la tabla maestra de tipos de vía en el esquema",
     )
     table_tipo_zona: str = Field(
-        default="tipos_zona",
+        default="tb_tipo_zona",
         validation_alias=AliasChoices("DB_TABLE_TIPO_ZONA", "DB_TARGET_TABLE_TIPO_ZONA", "table_tipo_zona"),
         description="Nombre de la tabla maestra de tipos de zona en el esquema",
     )
     table_vias: str = Field(
-        default="vias",
+        default="tb_via",
         validation_alias=AliasChoices("DB_TABLE_VIAS", "DB_TARGET_TABLE_VIAS", "table_vias"),
         description="Nombre de la tabla maestra de vías de Chiclayo en el esquema",
     )
     table_zonas: str = Field(
-        default="zonas",
+        default="tb_zona",
         validation_alias=AliasChoices("DB_TABLE_ZONAS", "DB_TARGET_TABLE_ZONAS", "table_zonas"),
         description="Nombre de la tabla maestra de habilitaciones urbanas de Chiclayo en el esquema",
     )

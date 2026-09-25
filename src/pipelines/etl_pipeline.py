@@ -150,18 +150,16 @@ class ETLPipeline:
                     f"Ejecución abortada (--require-ai): El modelo '{ollama_svc.model_name}' está apagado o no responde."
                 )
 
-        # Paso 1: Examinar tablas categorizables
-        self.db.ensure_catalogs_exist(schema=self.schema, directions_table=self.table)
+        # Paso 1: Asegurar arquitectura relacional V2 completa con nomenclatura tb_
+        self.db.ensure_v2_tables_exist(schema=self.schema)
+        cols = self.db.ensure_v2_source_columns(schema=self.schema, table=self.table)
 
         # Paso 2: Sincronizar mapeo dinámico de CatalogMatcher para el esquema
         CatalogMatcher.sync_with_db(self.db, self.schema)
-
-        # Paso 3: Asegurar columnas in-place en la tabla
-        cols = self.db.ensure_in_place_columns(schema=self.schema, table=self.table)
         if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan][CONFIG][/bold cyan] BD: Esquema '{self.schema}', Tabla '{self.table}' lista ({len(cols)} columnas)")
+            console.print(f"[bold cyan][CONFIG][/bold cyan] BD: Esquema '{self.schema}', Tabla '{self.table}' lista (vinculación V2 lista)")
         else:
-            print(f"[CONFIG] BD: Esquema '{self.schema}', Tabla '{self.table}' lista ({len(cols)} columnas)")
+            print(f"[CONFIG] BD: Esquema '{self.schema}', Tabla '{self.table}' lista (vinculación V2 lista)")
         sys.stdout.flush()
 
     def _log_record_progress(
@@ -204,24 +202,45 @@ class ETLPipeline:
             tag_plain = "[NORMALIZADO]"
             tag_rich = "[bold green][NORMALIZADO][/bold green]"
 
-            tipo_via = CatalogMatcher.get_via_name(destino.tipo_via) or ""
-            via_part = f"{tipo_via} {destino.nom_via or ''}".strip()
-            if destino.num_via:
-                via_part = f"{via_part} N° {destino.num_via}".strip()
+            # Manejo V2 de vías (soporte esquina / multi-vía)
+            if destino.vias and len(destino.vias) > 1:
+                via_names = []
+                for v in destino.vias:
+                    t_via = CatalogMatcher.get_via_name(v.get("tipo_via")) or ""
+                    v_nom = f"{t_via} {v.get('via_nombre') or ''}".strip()
+                    if v.get("divi_numero"):
+                        v_nom += f" N° {v.get('divi_numero')}"
+                    via_names.append(v_nom)
+                via_part = " / ".join(via_names)
+            else:
+                tipo_via = CatalogMatcher.get_via_name(destino.tipo_via) or ""
+                via_part = f"{tipo_via} {destino.nom_via or ''}".strip()
+                if destino.num_via:
+                    via_part = f"{via_part} N° {destino.num_via}".strip()
 
             tipo_zona = CatalogMatcher.get_zona_name(destino.tipo_zona) or ""
             zona_part = f"{tipo_zona} {destino.nom_zona or ''}".strip()
 
             cat_part = []
-            if destino.manzana:
-                cat_part.append(f"Mz. {destino.manzana}")
-            if destino.lote:
-                cat_part.append(f"Lt. {destino.lote}")
-            if getattr(destino, "slote", None):
-                cat_part.append(f"Sl. {destino.slote}")
+            if destino.componentes:
+                for c in destino.componentes:
+                    cat_part.append(f"{c.get('codi_nombre', '')}: {c.get('diti_nombre', '')}")
+            else:
+                if destino.manzana:
+                    cat_part.append(f"Mz. {destino.manzana}")
+                if destino.lote:
+                    cat_part.append(f"Lt. {destino.lote}")
+                if getattr(destino, "slote", None):
+                    cat_part.append(f"Sl. {destino.slote}")
             cat_str = " ".join(cat_part)
 
-            parts = [p for p in [via_part, zona_part, cat_str] if p]
+            mod_part = []
+            if destino.modulos:
+                for m in destino.modulos:
+                    mod_part.append(f"{m.get('timo_nombre', '')} {m.get('ditm_nombre', '')}".strip())
+            mod_str = " ".join(mod_part)
+
+            parts = [p for p in [via_part, zona_part, cat_str, mod_str] if p]
             res_str = ", ".join(parts) if parts else (destino.referencia or "NORMALIZADO")
             if len(res_str) > 55:
                 res_str = res_str[:52] + "..."
@@ -340,6 +359,11 @@ class ETLPipeline:
                     "slote": rec_dest.slote,
                     "catastro": catastro,
                     "referencia": rec_dest.referencia,
+                    "dire_id": getattr(rec_dest, "dire_id", None),
+                    "dire_referencia": getattr(rec_dest, "dire_referencia", None),
+                    "vias": getattr(rec_dest, "vias", []),
+                    "componentes": getattr(rec_dest, "componentes", []),
+                    "modulos": getattr(rec_dest, "modulos", []),
                     "es_procesado": bool(rec_dest.es_procesado),
                     "observacion": rec_dest.observacion or "",
                     "success": is_success,
