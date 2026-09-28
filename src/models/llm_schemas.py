@@ -2,7 +2,7 @@
 
 import re
 from typing import Any, List, Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, field_validator
 
 
 class ExtractedVia(BaseModel):
@@ -23,7 +23,18 @@ class ExtractedComponente(BaseModel):
 class ExtractedModulo(BaseModel):
     """Representa una dependencia o módulo inmobiliario interior (interior, dpto, puerta, stand, etc.)."""
     tipo_modulo: str = Field(description="INTERIOR, DEPARTAMENTO, PUERTA, STAND, TIENDA, OFICINA, BLOCK, etc.")
-    valor: str = Field(description="Detalle del módulo (ej. 102, B, 15, STAND 4)")
+    valor: Any = Field(description="Detalle del módulo (ej. 102, B, 15, STAND 4)")
+
+    @field_validator("valor", mode="before")
+    @classmethod
+    def clean_valor(cls, v: Any) -> str:
+        if isinstance(v, list):
+            cleaned = [str(x).strip(" '\"[]") for x in v if str(x).strip(" '\"[]")]
+            return ", ".join(cleaned)
+        s = str(v).strip()
+        s = re.sub(r"^[\[\(]+|[\]\)]+$", "", s).strip()
+        s = s.replace("'", "").replace('"', '').strip()
+        return s
 
 
 class OllamaAddressExtraction(BaseModel):

@@ -68,6 +68,11 @@ class DatabaseLoader(BaseLoader):
                     WHERE table_schema = :schema AND table_name = 'tb_direccion';
                 """), {"schema": self.schema}).scalar()
                 self._has_tb_direccion = bool(res_tb_dir and res_tb_dir > 0)
+                if self._has_tb_direccion and hasattr(self.db, "ensure_modulo_pk_constraint"):
+                    try:
+                        self.db.ensure_modulo_pk_constraint(self.schema)
+                    except Exception as ex_mig:
+                        logger.debug("Aviso al asegurar PK de tb_direccion_tipo_modulo: %s", ex_mig)
 
                 # Inspeccionar columnas de la tabla de origen seleccionada
                 col_rows = session.execute(text("""
@@ -198,12 +203,31 @@ class DatabaseLoader(BaseLoader):
                                 timo_id = m.get("timo_id")
                                 ditm_nombre = m.get("ditm_nombre")
                                 if timo_id is not None and ditm_nombre:
-                                    session.execute(ins_mod_sql, {
-                                        "dire_id": dire_id,
-                                        "timo_id": timo_id,
-                                        "ditm_nombre": str(ditm_nombre).strip().upper(),
-                                        "ditm_estado": "A",
-                                    })
+                                    clean_ditm = str(ditm_nombre).strip().upper()
+                                    try:
+                                        session.execute(ins_mod_sql, {
+                                            "dire_id": dire_id,
+                                            "timo_id": timo_id,
+                                            "ditm_nombre": clean_ditm,
+                                            "ditm_estado": "A",
+                                        })
+                                    except Exception as ex_mod:
+                                        err_str = str(ex_mod)
+                                        if "ON CONFLICT" in err_str or "InvalidColumnReference" in err_str:
+                                            logger.warning(
+                                                "Restricción única ausente en %s.tb_direccion_tipo_modulo. Migrando en caliente...",
+                                                self.schema,
+                                            )
+                                            if hasattr(self.db, "ensure_modulo_pk_constraint"):
+                                                self.db.ensure_modulo_pk_constraint(self.schema)
+                                            session.execute(ins_mod_sql, {
+                                                "dire_id": dire_id,
+                                                "timo_id": timo_id,
+                                                "ditm_nombre": clean_ditm,
+                                                "ditm_estado": "A",
+                                            })
+                                        else:
+                                            raise ex_mod
 
                         # 5. Actualizar la tabla origen vinculando dire_id
                         upd_params: Dict[str, Any] = {

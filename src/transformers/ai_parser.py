@@ -858,8 +858,32 @@ class AIAddressParser:
                 mm = CatalogMatcher.match_tipo_modulo(m.tipo_modulo)
                 if mm:
                     val_str = str(m.valor).strip()
-                    # Desglosar si el valor agrupa múltiples interiores (ej. "1, 2 Y 3" o "I, II, III")
-                    split_parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", val_str, flags=re.IGNORECASE) if p.strip()]
+                    # 1. Limpieza de formato de lista o residuos de corchetes / comillas
+                    val_str = re.sub(r"^[\[\(]+|[\]\)]+$", "", val_str).strip()
+                    val_str = val_str.replace("'", "").replace('"', '').strip()
+                    # 2. Descartar prefijos de número municipal pegados al módulo (ej. "N 2", "N° 2", "NRO. 5")
+                    val_str = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", val_str, flags=re.IGNORECASE).strip()
+
+                    # 3. Si quedó únicamente como "N" o "NRO" (falso positivo por abreviatura de número), recuperar de raw_text
+                    if val_str.upper() in ("N", "N.", "NRO", "NRO.", "NUM", "NUM."):
+                        m_real = re.search(
+                            rf"\b(?:{re.escape(str(m.tipo_modulo))}|TDA|STAND|INT|DEP|DPTO|TIENDA|PTA|PUERTA)\b\.?\s*(?:N°?\.?|NUM°?\.?|NRO\.?|N\.?)\s*([A-Z0-9\-]+)",
+                            raw_text,
+                            re.IGNORECASE,
+                        )
+                        if m_real:
+                            val_str = m_real.group(1).strip()
+                        else:
+                            continue
+
+                    # 4. Desglosar si el valor agrupa múltiples interiores (ej. "1, 2 Y 3" o "B - C" o "I, II, III")
+                    split_parts = [
+                        re.sub(r"[\[\]'\" ]", "", p).strip(" ,.-")
+                        for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", val_str, flags=re.IGNORECASE)
+                        if p.strip()
+                    ]
+                    split_parts = [p for p in split_parts if p and p.upper() not in ("N", "NRO", "NUM")]
+
                     if len(split_parts) > 1 and all(len(p) <= 6 for p in split_parts):
                         for sp in split_parts:
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == sp for mr in modulos_result):
@@ -869,12 +893,14 @@ class AIAddressParser:
                                     "ditm_nombre": sp,
                                 })
                     else:
-                        if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == val_str for mr in modulos_result):
-                            modulos_result.append({
-                                "timo_id": mm[0],
-                                "timo_nombre": mm[1],
-                                "ditm_nombre": val_str,
-                            })
+                        clean_single = re.sub(r"[\[\]'\" ]", "", val_str).strip(" ,.-")
+                        if clean_single and clean_single.upper() not in ("N", "NRO", "NUM"):
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_single for mr in modulos_result):
+                                modulos_result.append({
+                                    "timo_id": mm[0],
+                                    "timo_nombre": mm[1],
+                                    "ditm_nombre": clean_single,
+                                })
 
         if not modulos_result:
             source_mod = f"{slote or ''} {referencia or ''} {raw_text or ''}"
@@ -887,19 +913,29 @@ class AIAddressParser:
                 raw_vals = m_match.group(2).strip()
                 if tname in ("BLOCK", "BLQ") and "HAYA DE LA TORRE" in source_mod:
                     continue
+                # Limpiar prefijo de número N° / N
+                raw_vals = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", raw_vals, flags=re.IGNORECASE).strip()
                 mm = CatalogMatcher.match_tipo_modulo(tname)
                 if mm:
-                    parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_vals, flags=re.IGNORECASE) if p.strip()]
+                    parts = [
+                        re.sub(r"[\[\]'\" ]", "", p).strip(" ,.-")
+                        for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_vals, flags=re.IGNORECASE)
+                        if p.strip()
+                    ]
+                    parts = [p for p in parts if p and p.upper() not in ("N", "NRO", "NUM")]
                     if len(parts) > 1 and all(len(p) <= 6 for p in parts):
                         for p in parts:
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p for mr in modulos_result):
                                 modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": p})
-                    else:
-                        if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == raw_vals for mr in modulos_result):
-                            modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": raw_vals})
+                    elif parts:
+                        clean_v = parts[0]
+                        if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
+                            modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
 
             if not modulos_result and slote:
-                modulos_result.append({"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": str(slote).strip()})
+                clean_slote = re.sub(r"[\[\]'\" ]", "", str(slote)).strip(" ,.-")
+                if clean_slote and clean_slote.upper() not in ("N", "NRO", "NUM"):
+                    modulos_result.append({"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": clean_slote})
 
         # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
         clean_referencia = None

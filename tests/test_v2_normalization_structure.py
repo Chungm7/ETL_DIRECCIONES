@@ -393,3 +393,87 @@ class TestV2DatabaseLoader:
         ditm_nombres = [call.args[1]["ditm_nombre"] for call in modulo_sql_calls]
         assert ditm_nombres == ["1", "2", "3"]
         assert all(call.args[1]["ditm_estado"] == "A" for call in modulo_sql_calls)
+
+    def test_extracted_modulo_bracket_and_list_sanitization(self):
+        """Verifica que ExtractedModulo limpie automáticamente formatos de lista serializada como ['B', 'C'] o listas reales."""
+        # 1. String con formato de lista de Python
+        m1 = ExtractedModulo(tipo_modulo="INTERIOR", valor="['B', 'C']")
+        assert m1.valor == "B, C"
+
+        # 2. Lista nativa de Python
+        m2 = ExtractedModulo(tipo_modulo="INTERIOR", valor=["B", "C"])
+        assert m2.valor == "B, C"
+
+        # 3. String con corchetes aislados
+        m3 = ExtractedModulo(tipo_modulo="INTERIOR", valor="['104']")
+        assert m3.valor == "104"
+
+    def test_ai_parser_multiple_interiors_without_brackets(self):
+        """Verifica que direcciones con múltiples interiores en letras (ej. INT-B - C) se separen limpiamente sin corchetes."""
+        mock_ollama = MagicMock()
+        mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            nom_via="ALFREDO LAPOINT",
+            num_via="838",
+            modulos=[ExtractedModulo(tipo_modulo="INTERIOR", valor="['B', 'C']")],
+        )
+        parser = AIAddressParser(mock_ollama)
+
+        orig = DireccionOrigen(
+            id_licencia=248,
+            emp_direccion="CA. ALFREDO LAPOINT N 838 INT-B - C - CHICLAYO",
+        )
+        dest = parser.parse(orig)
+        assert dest.es_procesado is True
+        assert len(dest.modulos) == 2
+        assert [m["ditm_nombre"] for m in dest.modulos] == ["B", "C"]
+        assert all("[" not in m["ditm_nombre"] and "'" not in m["ditm_nombre"] for m in dest.modulos)
+
+    def test_ai_parser_tienda_number_not_n(self):
+        """Verifica que 'TDA. N 2' capture el número '2' y no la abreviatura 'N' como nombre de módulo."""
+        mock_ollama = MagicMock()
+        # Simula caso donde el LLM extrajo erróneamente 'N' como valor
+        mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+            nom_via="SAN JOSE",
+            num_via="100",
+            modulos=[ExtractedModulo(tipo_modulo="TIENDA", valor="N")],
+        )
+        parser = AIAddressParser(mock_ollama)
+
+        orig = DireccionOrigen(
+            id_licencia=250,
+            emp_direccion="CA. SAN JOSE N 100 TDA. N 2 - CHICLAYO",
+        )
+        dest = parser.parse(orig)
+        assert dest.es_procesado is True
+        assert len(dest.modulos) == 1
+        assert dest.modulos[0]["ditm_nombre"] == "2"
+        assert dest.modulos[0]["timo_nombre"] == "TIENDA"
+
+    def test_db_service_ensure_modulo_pk_constraint_migration(self):
+        """Verifica que ensure_modulo_pk_constraint ejecute la migración de PK cuando ditm_nombre no está en la PK."""
+        from src.services.db_service import DatabaseService
+
+        mock_db = DatabaseService()
+        mock_session = MagicMock()
+        mock_db.get_session = MagicMock()
+        mock_db.get_session.return_value.__enter__.return_value = mock_session
+        mock_db._engine = True
+
+        # Simular que la tabla existe y su PK actual solo contiene dire_id y timo_id
+        mock_session.execute.side_effect = [
+            MagicMock(scalar=MagicMock(return_value=1)),  # Table exists
+            MagicMock(fetchall=MagicMock(return_value=[("dire_id",), ("timo_id",)])),  # Old PK columns
+            MagicMock(),  # DELETE deduplicate
+            MagicMock(fetchall=MagicMock(return_value=[("pk_tb_direccion_tipo_modulo",)])),  # Constraint names
+            MagicMock(),  # DROP CONSTRAINT
+            MagicMock(),  # ADD CONSTRAINT
+            MagicMock(),  # ALTER COLUMN ditm_estado
+            MagicMock(),  # CREATE UNIQUE INDEX
+        ]
+
+        migrated = mock_db.ensure_modulo_pk_constraint("sc_migracion_direcciones")
+        assert migrated is True
+        # Verificar que se ejecutó el DROP y ADD constraint
+        executed_sqls = [str(call.args[0]) for call in mock_session.execute.call_args_list if len(call.args) > 0]
+        assert any("DROP CONSTRAINT IF EXISTS \"pk_tb_direccion_tipo_modulo\"" in s for s in executed_sqls)
+        assert any("ADD CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre)" in s for s in executed_sqls)

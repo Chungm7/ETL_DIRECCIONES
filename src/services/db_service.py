@@ -806,6 +806,100 @@ class DatabaseService:
             logger.debug("Aviso al asegurar columnas fuente V2 en %s.%s: %s", schema, table, e)
             return []
 
+    def ensure_modulo_pk_constraint(self, schema: Optional[str] = None) -> bool:
+        """Verifica y migra la clave primaria de tb_direccion_tipo_modulo a (dire_id, timo_id, ditm_nombre).
+        Garantiza compatibilidad con inserciones múltiples de interiores y cláusulas ON CONFLICT en PostgreSQL.
+        """
+        target_schema = schema or self.settings.schema
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return False
+
+        try:
+            with self.get_session() as session:
+                # 1. Comprobar si la tabla existe en el esquema
+                table_check = session.execute(text("""
+                    SELECT COUNT(*) FROM information_schema.tables
+                    WHERE table_schema = :schema AND table_name = 'tb_direccion_tipo_modulo';
+                """), {"schema": target_schema}).scalar()
+                if not table_check or table_check == 0:
+                    return False
+
+                # 2. Consultar columnas que conforman la clave primaria actual
+                pk_rows = session.execute(text("""
+                    SELECT kcu.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                      ON tc.constraint_name = kcu.constraint_name
+                     AND tc.table_schema = kcu.table_schema
+                    WHERE tc.table_schema = :schema
+                      AND tc.table_name = 'tb_direccion_tipo_modulo'
+                      AND tc.constraint_type = 'PRIMARY KEY';
+                """), {"schema": target_schema}).fetchall()
+                current_pk_cols = {r[0].lower() for r in pk_rows}
+
+                # Si ya incluye las 3 columnas de la PK compuesta, está al día
+                if {"dire_id", "timo_id", "ditm_nombre"}.issubset(current_pk_cols):
+                    return True
+
+                logger.info(
+                    "Migrando clave primaria en %s.tb_direccion_tipo_modulo de %s a (dire_id, timo_id, ditm_nombre)...",
+                    target_schema,
+                    current_pk_cols,
+                )
+
+                # 3. Deduplicar filas si existiesen antes de crear la PK compuesta
+                session.execute(text(f"""
+                    DELETE FROM "{target_schema}"."tb_direccion_tipo_modulo" a
+                    USING "{target_schema}"."tb_direccion_tipo_modulo" b
+                    WHERE a.ctid < b.ctid
+                      AND a.dire_id = b.dire_id
+                      AND a.timo_id = b.timo_id
+                      AND a.ditm_nombre = b.ditm_nombre;
+                """))
+
+                # 4. Obtener nombres de restricciones PK existentes para eliminarlas
+                con_names = session.execute(text("""
+                    SELECT tc.constraint_name
+                    FROM information_schema.table_constraints tc
+                    WHERE tc.table_schema = :schema
+                      AND tc.table_name = 'tb_direccion_tipo_modulo'
+                      AND tc.constraint_type = 'PRIMARY KEY';
+                """), {"schema": target_schema}).fetchall()
+
+                for c_row in con_names:
+                    c_name = c_row[0]
+                    session.execute(text(f"""
+                        ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo"
+                        DROP CONSTRAINT IF EXISTS "{c_name}" CASCADE;
+                    """))
+
+                # 5. Agregar la clave primaria compuesta definitiva
+                session.execute(text(f"""
+                    ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo"
+                    ADD CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre);
+                """))
+
+                # 6. Asegurar que ditm_estado sea VARCHAR(1)
+                try:
+                    session.execute(text(f"""
+                        ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo"
+                        ALTER COLUMN ditm_estado TYPE VARCHAR(1);
+                    """))
+                except Exception as ex_col:
+                    logger.debug("Aviso al asegurar VARCHAR(1) en ditm_estado: %s", ex_col)
+
+                # 7. Crear índice único de respaldo para ON CONFLICT
+                session.execute(text(f"""
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_tipo_modulo
+                    ON "{target_schema}"."tb_direccion_tipo_modulo" (dire_id, timo_id, ditm_nombre);
+                """))
+
+                logger.info("Migración de PK en %s.tb_direccion_tipo_modulo completada exitosamente.", target_schema)
+                return True
+        except Exception as e:
+            logger.error("Error al asegurar restricción PK en %s.tb_direccion_tipo_modulo: %s", target_schema, e)
+            return False
+
     def ensure_v2_tables_exist(self, schema: Optional[str] = None) -> Dict[str, Any]:
         """Asegura que la arquitectura relacional V2 completa exista en el esquema objetivo:
         - tb_tipo_via, tb_via
@@ -848,6 +942,9 @@ class DatabaseService:
                 logger.info("Ejecutando script de estructura relacional V2 en %s...", target_schema)
                 self.execute_sql_file(str(sql_file), target_schema=target_schema)
                 results["created_tables"] = missing
+
+        # Asegurar restricción PK compuesta en tb_direccion_tipo_modulo
+        self.ensure_modulo_pk_constraint(target_schema)
 
         try:
             with self.get_session() as session:
