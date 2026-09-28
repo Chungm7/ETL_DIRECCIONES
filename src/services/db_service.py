@@ -775,7 +775,11 @@ class DatabaseService:
                         v2.via_id AS via_secundaria_id,
                         v2.via_nombre AS via_secundaria_nombre,
                         tv2.tivi_nombre AS tipo_via_secundaria,
-                        dv2.divi_numero AS num_via_secundaria
+                        dv2.divi_numero AS num_via_secundaria,
+                        v3.via_id AS via_3_id,
+                        v3.via_nombre AS via_3_nombre,
+                        tv3.tivi_nombre AS tipo_via_3,
+                        dv3.divi_numero AS num_via_3
                     FROM "{schema}"."{table}" orig
                     LEFT JOIN "{schema}"."tb_direccion" d ON orig."dire_id" = d.dire_id
                     LEFT JOIN "{schema}"."tb_zona" z ON d.zona_id = z.zona_id
@@ -785,7 +789,10 @@ class DatabaseService:
                     LEFT JOIN "{schema}"."tb_tipo_via" tv1 ON v1.tivi_id = tv1.tivi_id
                     LEFT JOIN "{schema}"."tb_direccion_via" dv2 ON d.dire_id = dv2.dire_id AND dv2.divi_orden = 2
                     LEFT JOIN "{schema}"."tb_via" v2 ON dv2.via_id = v2.via_id
-                    LEFT JOIN "{schema}"."tb_tipo_via" tv2 ON v2.tivi_id = tv2.tivi_id;
+                    LEFT JOIN "{schema}"."tb_tipo_via" tv2 ON v2.tivi_id = tv2.tivi_id
+                    LEFT JOIN "{schema}"."tb_direccion_via" dv3 ON d.dire_id = dv3.dire_id AND dv3.divi_orden = 3
+                    LEFT JOIN "{schema}"."tb_via" v3 ON dv3.via_id = v3.via_id
+                    LEFT JOIN "{schema}"."tb_tipo_via" tv3 ON v3.tivi_id = tv3.tivi_id;
 
                     CREATE OR REPLACE VIEW "{schema}"."v_direcciones_normalizadas" AS
                     SELECT * FROM "{schema}"."v_{table}_normalizada";
@@ -851,7 +858,7 @@ class DatabaseService:
                 if tv_count < len(vias_tipos):
                     session.execute(text(f"""
                         INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
-                        VALUES (:id, :nombre, :abrev, 'ACT')
+                        VALUES (:id, :nombre, :abrev, 'A')
                         ON CONFLICT (tivi_id) DO UPDATE
                         SET tivi_nombre = EXCLUDED.tivi_nombre, tivi_abreviatura = EXCLUDED.tivi_abreviatura;
                     """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
@@ -863,7 +870,7 @@ class DatabaseService:
                 if tz_count < len(zonas_tipos):
                     session.execute(text(f"""
                         INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
-                        VALUES (:id, :nombre, :abrev, 'ACT')
+                        VALUES (:id, :nombre, :abrev, 'A')
                         ON CONFLICT (tizo_id) DO UPDATE
                         SET tizo_nombre = EXCLUDED.tizo_nombre, tizo_abreviatura = EXCLUDED.tizo_abreviatura;
                     """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
@@ -878,9 +885,9 @@ class DatabaseService:
                         chunk = phys_vias[i:i + chunk_size]
                         session.execute(text(f"""
                             INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
-                            VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
+                            VALUES (:via_id, :tivi_id, :via_nombre, 'A')
                             ON CONFLICT (via_id) DO UPDATE
-                            SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'ACT';
+                            SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'A';
                         """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
                     results["seeded_tables"]["tb_via"] = len(phys_vias)
                     logger.info("Catálogo maestro sembrado en %s: %d vías oficiales de Chiclayo", target_schema, len(phys_vias))
@@ -894,9 +901,9 @@ class DatabaseService:
                         chunk = phys_zonas[i:i + chunk_size]
                         session.execute(text(f"""
                             INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
-                            VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
+                            VALUES (:zona_id, :tizo_id, :zona_nombre, 'A')
                             ON CONFLICT (zona_id) DO UPDATE
-                            SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'ACT';
+                            SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'A';
                         """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
                     results["seeded_tables"]["tb_zona"] = len(phys_zonas)
                     logger.info("Catálogo maestro sembrado en %s: %d zonas oficiales de Chiclayo", target_schema, len(phys_zonas))
@@ -962,7 +969,7 @@ class DatabaseService:
             # Forzar importación completa de tb_tipo_via
             session.execute(text(f"""
                 INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
-                VALUES (:id, :nombre, :abrev, 'ACT')
+                VALUES (:id, :nombre, :abrev, 'A')
                 ON CONFLICT (tivi_id) DO UPDATE
                 SET tivi_nombre = EXCLUDED.tivi_nombre, tivi_abreviatura = EXCLUDED.tivi_abreviatura;
             """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
@@ -970,7 +977,7 @@ class DatabaseService:
             # Forzar importación completa de tb_tipo_zona
             session.execute(text(f"""
                 INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
-                VALUES (:id, :nombre, :abrev, 'ACT')
+                VALUES (:id, :nombre, :abrev, 'A')
                 ON CONFLICT (tizo_id) DO UPDATE
                 SET tizo_nombre = EXCLUDED.tizo_nombre, tizo_abreviatura = EXCLUDED.tizo_abreviatura;
             """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
@@ -981,9 +988,9 @@ class DatabaseService:
                 chunk = phys_vias[i:i + chunk_size]
                 session.execute(text(f"""
                     INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
-                    VALUES (:via_id, :tivi_id, :via_nombre, 'ACT')
+                    VALUES (:via_id, :tivi_id, :via_nombre, 'A')
                     ON CONFLICT (via_id) DO UPDATE
-                    SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'ACT';
+                    SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'A';
                 """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
 
             # Forzar importación completa de tb_zona
@@ -992,9 +999,9 @@ class DatabaseService:
                 chunk = phys_zonas[i:i + chunk_size]
                 session.execute(text(f"""
                     INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
-                    VALUES (:zona_id, :tizo_id, :zona_nombre, 'ACT')
+                    VALUES (:zona_id, :tizo_id, :zona_nombre, 'A')
                     ON CONFLICT (zona_id) DO UPDATE
-                    SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'ACT';
+                    SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'A';
                 """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
 
             res["tb_tipo_via_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_via";')).scalar() or 0

@@ -5,12 +5,13 @@ import json
 import logging
 import os
 import queue
+import re
 import signal
 import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -947,8 +948,163 @@ V2_EXPORT_HEADERS = [
 ]
 
 
-def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
-    """Extrae y normaliza un registro individual hacia las 28 columnas relacionales V2."""
+def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[str], Dict[str, Any]]:
+    """Calcula dinámicamente las columnas de exportación según la cardinalidad máxima
+    de vías, módulos y componentes presentes en el conjunto de registros.
+    """
+    if not records:
+        return list(V2_EXPORT_HEADERS), {"max_vias": 2, "max_modulos": 1, "max_extra_comps": 0}
+
+    # 1. Determinar cardinalidad máxima de vías
+    max_vias = 1
+    for r in records:
+        raw_vias = r.get("vias") or []
+        num_v = len(raw_vias)
+        if not num_v and (r.get("nom_via") or r.get("id_via")):
+            num_v = 1
+        if num_v > max_vias:
+            max_vias = num_v
+
+    # 2. Determinar cardinalidad máxima de módulos
+    max_modulos = 0
+    for r in records:
+        raw_mods = r.get("modulos") or []
+        num_m = len(raw_mods)
+        if not num_m and (r.get("tipo_modulo") or r.get("numero_modulo")):
+            num_m = 1
+        elif not num_m and r.get("slote"):
+            sl_str = str(r.get("slote") or "")
+            if re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|STAND|TIENDA|BLOCK|OFICINA|PUERTA)\b", sl_str, re.IGNORECASE):
+                parts = [p for p in re.split(r",|\s+Y\s+", sl_str, flags=re.IGNORECASE) if p.strip()]
+                num_m = max(1, len(parts)) if len(parts) > 1 else 1
+        if num_m > max_modulos:
+            max_modulos = num_m
+
+    # 3. Determinar cardinalidad máxima de componentes adicionales (rurales / no estándar)
+    standard_comp_names = {"MANZANA", "LOTE", "SUBLOTE", "PISO"}
+    max_extra_comps = 0
+    for r in records:
+        raw_comps = r.get("componentes") or []
+        extra_c = [
+            c for c in raw_comps
+            if (c.get("codi_nombre") or "").upper().strip() not in standard_comp_names
+        ]
+        if len(extra_c) > max_extra_comps:
+            max_extra_comps = len(extra_c)
+
+    # 4. Construcción dinámica de cabeceras
+    headers: List[str] = [
+        "ID",
+        "ID_Direccion",
+        "Estado",
+        "Direccion_Original",
+    ]
+
+    # Vías
+    if max_vias == 1:
+        headers.extend([
+            "Via_Principal_Tipo",
+            "Via_Principal_Nombre",
+            "Via_Principal_Numero",
+            "Via_Principal_ID",
+        ])
+    elif max_vias == 2:
+        headers.extend([
+            "Via_Principal_Tipo",
+            "Via_Principal_Nombre",
+            "Via_Principal_Numero",
+            "Via_Principal_ID",
+            "Via_Secundaria_Tipo",
+            "Via_Secundaria_Nombre",
+            "Via_Secundaria_Numero",
+            "Via_Secundaria_ID",
+        ])
+    else:
+        # 3 o más vías
+        headers.extend([
+            "Via_Principal_Tipo",
+            "Via_Principal_Nombre",
+            "Via_Principal_Numero",
+            "Via_Principal_ID",
+            "Via_Secundaria_Tipo",
+            "Via_Secundaria_Nombre",
+            "Via_Secundaria_Numero",
+            "Via_Secundaria_ID",
+        ])
+        for v in range(3, max_vias + 1):
+            headers.extend([
+                f"Via_{v}_Tipo",
+                f"Via_{v}_Nombre",
+                f"Via_{v}_Numero",
+                f"Via_{v}_ID",
+            ])
+
+    headers.append("Todas_Las_Vias")
+
+    # Zona
+    headers.extend([
+        "Tipo_Zona",
+        "Nombre_Zona",
+        "ID_Zona",
+    ])
+
+    # Componentes Catastrales Estándar
+    headers.extend([
+        "Manzana",
+        "Lote",
+        "Sublote",
+        "Piso",
+    ])
+
+    # Componentes Catastrales Adicionales (Rurales / Otros) si existen
+    if max_extra_comps > 0:
+        for k in range(1, max_extra_comps + 1):
+            headers.extend([
+                f"Componente_{k}_Nombre",
+                f"Componente_{k}_Valor",
+                f"Componente_{k}_Tipo",
+            ])
+        headers.append("Otros_Componentes")
+
+    # Módulos Inmobiliarios (Interiores, Dptos, Stands, etc.)
+    # SOLO si max_modulos > 0 (si no hay módulos en el dataset, NO se crean columnas vacías)
+    if max_modulos == 1:
+        headers.extend([
+            "Tipo_Modulo",
+            "Numero_Modulo",
+            "Todos_Los_Modulos",
+        ])
+    elif max_modulos > 1:
+        for m in range(1, max_modulos + 1):
+            headers.extend([
+                f"Modulo_{m}_Tipo",
+                f"Modulo_{m}_Valor",
+            ])
+        headers.append("Todos_Los_Modulos")
+
+    # Metadatos del proceso y diagnóstico
+    headers.extend([
+        "Referencia",
+        "Metodo_Normalizacion",
+        "Diagnostico_Observacion",
+        "Fecha_Hora_Proceso",
+    ])
+
+    meta = {
+        "max_vias": max_vias,
+        "max_modulos": max_modulos,
+        "max_extra_comps": max_extra_comps,
+    }
+    return headers, meta
+
+
+def extract_v2_export_row(
+    r: Dict[str, Any],
+    max_vias: int = 2,
+    max_modulos: int = 1,
+    max_extra_comps: int = 0,
+) -> Dict[str, Any]:
+    """Extrae y normaliza un registro individual hacia las columnas relacionales V2 dinámicas."""
     import re
     from datetime import datetime
     from src.transformers.catalog_matcher import CatalogMatcher
@@ -975,78 +1131,67 @@ def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
     # 4. Dirección Original
     dir_orig = r.get("raw_text") or r.get("direccion") or r.get("emp_direccion") or ""
 
-    # 5-13. Vías (Principal, Secundaria, Consolidado)
+    # 5-13. Vías (Principal, Secundaria, Terciaria, Consolidado)
     raw_vias = r.get("vias") or []
-    via_1_tipo = ""
-    via_1_nombre = ""
-    via_1_numero = ""
-    via_1_id = ""
-    via_2_tipo = ""
-    via_2_nombre = ""
-    via_2_numero = ""
-    via_2_id = ""
+    vias_sorted = sorted(raw_vias, key=lambda v: v.get("divi_orden", 1)) if raw_vias else []
 
-    if raw_vias:
-        vias_sorted = sorted(raw_vias, key=lambda v: v.get("divi_orden", 1))
-        # Vía 1 (Principal)
-        v0 = vias_sorted[0]
-        v0_t = v0.get("tipo_via_name")
-        if not v0_t and v0.get("tipo_via") is not None:
-            v_name = CatalogMatcher.get_via_name(v0["tipo_via"])
-            v0_t = v_name if v_name != "SIN VIA" else ""
-        via_1_tipo = v0_t or r.get("tipo_via_name") or ""
-        via_1_nombre = v0.get("via_nombre") or r.get("nom_via") or ""
-        via_1_numero = str(v0.get("divi_numero") or r.get("num_via") or "")
-        via_1_id = v0.get("via_id") or r.get("id_via") or ""
+    row_vias_data: Dict[str, Any] = {}
+    v_parts = []
 
-        # Vía 2 (Secundaria - Intersección / Cruce / Esquina)
-        if len(vias_sorted) > 1:
-            v1 = vias_sorted[1]
-            v1_t = v1.get("tipo_via_name")
-            if not v1_t and v1.get("tipo_via") is not None:
-                v_name = CatalogMatcher.get_via_name(v1["tipo_via"])
-                v1_t = v_name if v_name != "SIN VIA" else ""
-            via_2_tipo = v1_t or ""
-            via_2_nombre = v1.get("via_nombre") or ""
-            via_2_numero = str(v1.get("divi_numero") or "")
-            via_2_id = v1.get("via_id") or ""
-
-        # Todas las Vías
-        v_parts = []
-        for v in vias_sorted:
-            vt = v.get("tipo_via_name")
-            if not vt and v.get("tipo_via") is not None:
-                vn = CatalogMatcher.get_via_name(v["tipo_via"])
+    limit_vias = max(3, max_vias, len(vias_sorted))
+    for v_idx in range(1, limit_vias + 1):
+        if v_idx <= len(vias_sorted):
+            v_curr = vias_sorted[v_idx - 1]
+            vt = v_curr.get("tipo_via_name")
+            if not vt and v_curr.get("tipo_via") is not None:
+                vn = CatalogMatcher.get_via_name(v_curr["tipo_via"])
                 vt = vn if vn != "SIN VIA" else ""
-            vnom = v.get("via_nombre") or ""
-            vnum = str(v.get("divi_numero") or "").strip()
-            part = f"{vt} {vnom}".strip()
-            if vnum and vnum.upper() not in ("S/N", "SN"):
-                part += f" N° {vnum}"
-            elif vnum.upper() in ("S/N", "SN"):
-                part += " S/N"
-            if part:
-                v_parts.append(part)
-        todas_las_vias = " con ".join(v_parts)
-    else:
-        # Fallback de columnas planas V1
-        t_via_name = r.get("tipo_via_name")
-        if not t_via_name and r.get("tipo_via") is not None:
-            vn = CatalogMatcher.get_via_name(r["tipo_via"])
-            t_via_name = vn if vn != "SIN VIA" else ""
-        via_1_tipo = t_via_name or ""
-        via_1_nombre = r.get("nom_via") or ""
-        via_1_numero = str(r.get("num_via") or "")
-        via_1_id = r.get("id_via") or ""
-        if via_1_nombre:
-            part = f"{via_1_tipo} {via_1_nombre}".strip()
-            if via_1_numero and via_1_numero.upper() not in ("S/N", "SN"):
-                part += f" N° {via_1_numero}"
-            elif via_1_numero.upper() in ("S/N", "SN"):
-                part += " S/N"
-            todas_las_vias = part
+            v_tipo = vt or ""
+            v_nombre = v_curr.get("via_nombre") or ""
+            v_numero = str(v_curr.get("divi_numero") or "")
+            v_id = v_curr.get("via_id") or ""
+        elif v_idx == 1 and not vias_sorted:
+            # Fallback plano V1
+            t_via_name = r.get("tipo_via_name")
+            if not t_via_name and r.get("tipo_via") is not None:
+                vn = CatalogMatcher.get_via_name(r["tipo_via"])
+                t_via_name = vn if vn != "SIN VIA" else ""
+            v_tipo = t_via_name or ""
+            v_nombre = r.get("nom_via") or ""
+            v_numero = str(r.get("num_via") or "")
+            v_id = r.get("id_via") or ""
         else:
-            todas_las_vias = ""
+            v_tipo = ""
+            v_nombre = ""
+            v_numero = ""
+            v_id = ""
+
+        row_vias_data[f"Via_{v_idx}_Tipo"] = v_tipo
+        row_vias_data[f"Via_{v_idx}_Nombre"] = v_nombre
+        row_vias_data[f"Via_{v_idx}_Numero"] = v_numero
+        row_vias_data[f"Via_{v_idx}_ID"] = v_id
+
+        if v_idx == 1:
+            row_vias_data["Via_Principal_Tipo"] = v_tipo
+            row_vias_data["Via_Principal_Nombre"] = v_nombre
+            row_vias_data["Via_Principal_Numero"] = v_numero
+            row_vias_data["Via_Principal_ID"] = v_id
+        elif v_idx == 2:
+            row_vias_data["Via_Secundaria_Tipo"] = v_tipo
+            row_vias_data["Via_Secundaria_Nombre"] = v_nombre
+            row_vias_data["Via_Secundaria_Numero"] = v_numero
+            row_vias_data["Via_Secundaria_ID"] = v_id
+
+        if v_nombre:
+            part = f"{v_tipo} {v_nombre}".strip()
+            if v_numero and v_numero.upper() not in ("S/N", "SN"):
+                part += f" N° {v_numero}"
+            elif v_numero.upper() in ("S/N", "SN"):
+                part += " S/N"
+            if part and part not in v_parts:
+                v_parts.append(part)
+
+    todas_las_vias = " con ".join(v_parts)
 
     # 14-16. Zona
     t_zona_name = r.get("tipo_zona_name")
@@ -1063,8 +1208,10 @@ def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
     sl = str(r.get("slote") or "").strip()
     piso = str(r.get("piso") or "").strip()
     otros_comp_list = []
+    extra_comps_list = []
 
     raw_comps = r.get("componentes") or []
+    standard_names = {"MANZANA", "LOTE", "SUBLOTE", "PISO"}
     for c in raw_comps:
         c_nom = (c.get("codi_nombre") or "").upper().strip()
         c_val = str(c.get("diti_nombre") or "").strip()
@@ -1082,6 +1229,8 @@ def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
             item_desc = f"{c.get('codi_nombre')}: {c_val}"
             if item_desc not in otros_comp_list:
                 otros_comp_list.append(item_desc)
+            if c_nom not in standard_names:
+                extra_comps_list.append(c)
 
     if not piso and sl and "PISO" in sl.upper():
         p_m = re.search(r"PISO\s*([0-9A-Z]+)", sl, re.IGNORECASE)
@@ -1091,28 +1240,58 @@ def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
 
     otros_componentes = "; ".join(otros_comp_list)
 
+    row_comp_data: Dict[str, Any] = {}
+    limit_comps = max(1, max_extra_comps, len(extra_comps_list))
+    for k in range(1, limit_comps + 1):
+        if k <= len(extra_comps_list):
+            ck = extra_comps_list[k - 1]
+            row_comp_data[f"Componente_{k}_Nombre"] = ck.get("codi_nombre") or ""
+            row_comp_data[f"Componente_{k}_Valor"] = str(ck.get("diti_nombre") or "")
+            row_comp_data[f"Componente_{k}_Tipo"] = "Urbano" if ck.get("codi_es_urbano", True) else "Rural"
+        else:
+            row_comp_data[f"Componente_{k}_Nombre"] = ""
+            row_comp_data[f"Componente_{k}_Valor"] = ""
+            row_comp_data[f"Componente_{k}_Tipo"] = ""
+
     # 22-24. Módulos Inmobiliarios (Tipo, Número, Resumen)
     raw_mods = r.get("modulos") or []
-    tipo_modulo = ""
-    numero_modulo = ""
-    todos_mod_parts = []
-
+    extracted_mods = []
     if raw_mods:
-        m0 = raw_mods[0]
-        tipo_modulo = m0.get("timo_nombre") or ""
-        numero_modulo = str(m0.get("ditm_nombre") or "")
         for m in raw_mods:
             m_t = m.get("timo_nombre") or ""
             m_v = str(m.get("ditm_nombre") or "").strip()
             if m_v:
-                todos_mod_parts.append(f"{m_t} {m_v}".strip())
+                extracted_mods.append((m_t, m_v))
     elif sl:
-        m_match = re.search(r"\b(INT(?:ERIOR)?|DPTO|DEPARTAMENTO|STAND|TIENDA|PUERTA|PTA|BLOCK|LOCAL|OFICINA|OF)\b\.?\s*([A-Z0-9\-]+)?", sl, re.IGNORECASE)
-        if m_match:
-            tipo_modulo = m_match.group(1).upper()
-            numero_modulo = m_match.group(2) or ""
-            todos_mod_parts.append(f"{tipo_modulo} {numero_modulo}".strip())
+        m_pattern = re.compile(
+            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|BLOCK|BLQ|LOCAL|OFICINA|OF)\b\.?\s*([A-Z0-9\-]+(?:\s*(?:,|Y|-)\s*[A-Z0-9\-]+)*)",
+            re.IGNORECASE,
+        )
+        for m_match in m_pattern.finditer(sl):
+            t_name = m_match.group(1).upper()
+            raw_val = m_match.group(2).strip()
+            parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_val, flags=re.IGNORECASE) if p.strip()]
+            if len(parts) > 1 and all(len(p) <= 6 for p in parts):
+                for p in parts:
+                    extracted_mods.append((t_name, p))
+            else:
+                extracted_mods.append((t_name, raw_val))
 
+    row_mod_data: Dict[str, Any] = {}
+    limit_mods = max(1, max_modulos, len(extracted_mods))
+    todos_mod_parts = []
+    for m_idx in range(1, limit_mods + 1):
+        if m_idx <= len(extracted_mods):
+            m_t, m_v = extracted_mods[m_idx - 1]
+            row_mod_data[f"Modulo_{m_idx}_Tipo"] = m_t
+            row_mod_data[f"Modulo_{m_idx}_Valor"] = m_v
+            todos_mod_parts.append(f"{m_t} {m_v}".strip())
+        else:
+            row_mod_data[f"Modulo_{m_idx}_Tipo"] = ""
+            row_mod_data[f"Modulo_{m_idx}_Valor"] = ""
+
+    tipo_modulo = row_mod_data.get("Modulo_1_Tipo", "")
+    numero_modulo = row_mod_data.get("Modulo_1_Valor", "")
     todos_los_modulos = ", ".join(todos_mod_parts)
 
     # 25. Referencia Espacial
@@ -1129,19 +1308,11 @@ def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
     if not fecha_hora or fecha_hora == "-":
         fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    return {
+    row = {
         "ID": id_val,
         "ID_Direccion": dire_id_val,
         "Estado": estado,
         "Direccion_Original": dir_orig,
-        "Via_Principal_Tipo": via_1_tipo,
-        "Via_Principal_Nombre": via_1_nombre,
-        "Via_Principal_Numero": via_1_numero,
-        "Via_Principal_ID": via_1_id,
-        "Via_Secundaria_Tipo": via_2_tipo,
-        "Via_Secundaria_Nombre": via_2_nombre,
-        "Via_Secundaria_Numero": via_2_numero,
-        "Via_Secundaria_ID": via_2_id,
         "Todas_Las_Vias": todas_las_vias,
         "Tipo_Zona": tipo_zona,
         "Nombre_Zona": nombre_zona,
@@ -1159,10 +1330,16 @@ def extract_v2_export_row(r: Dict[str, Any]) -> Dict[str, Any]:
         "Diagnostico_Observacion": observacion,
         "Fecha_Hora_Proceso": fecha_hora,
     }
+    row.update(row_vias_data)
+    row.update(row_comp_data)
+    row.update(row_mod_data)
+    return row
 
 
-def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
-    """Genera un libro de Excel (.xlsx) estilizado institucionalmente para la MPCH con las 28 columnas V2."""
+def generate_excel_report(records: List[Dict[str, Any]], headers: Optional[List[str]] = None) -> Any:
+    """Genera un libro de Excel (.xlsx) estilizado institucionalmente para la MPCH
+    con columnas dinámicas adaptadas al conjunto de registros.
+    """
     import io
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -1172,12 +1349,18 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     ws = wb.active
     ws.title = "Normalización Catastral V2"
 
-    ws.append(V2_EXPORT_HEADERS)
+    if headers is None:
+        dynamic_headers, meta = build_dynamic_export_headers(records)
+    else:
+        dynamic_headers = list(headers)
+        meta = {"max_vias": 2, "max_modulos": 1, "max_extra_comps": 0}
+
+    ws.append(dynamic_headers)
 
     header_fill = PatternFill(start_color="0C2340", end_color="0C2340", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 
-    for col_idx in range(1, len(V2_EXPORT_HEADERS) + 1):
+    for col_idx in range(1, len(dynamic_headers) + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
@@ -1202,21 +1385,30 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     font_pen   = Font(name="Calibri", size=11, bold=True, color="475569")
     fill_zebra = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
 
-    center_cols = {1, 2, 3, 7, 8, 11, 12, 16, 17, 18, 19, 20, 23, 28}
+    center_cols = {
+        col_idx for col_idx, col_name in enumerate(dynamic_headers, start=1)
+        if any(kw in col_name for kw in ("ID", "Estado", "Numero", "Piso", "Manzana", "Lote", "Sublote", "Tipo", "Fecha"))
+    }
+    estado_col_idx = dynamic_headers.index("Estado") + 1 if "Estado" in dynamic_headers else 3
 
     for row_idx, r in enumerate(records, start=2):
-        row_dict = extract_v2_export_row(r)
-        estado = row_dict["Estado"]
+        row_dict = extract_v2_export_row(
+            r,
+            max_vias=meta.get("max_vias", 2),
+            max_modulos=meta.get("max_modulos", 1),
+            max_extra_comps=meta.get("max_extra_comps", 0),
+        )
+        estado = row_dict.get("Estado", "")
 
-        row_data = [row_dict[col] for col in V2_EXPORT_HEADERS]
+        row_data = [row_dict.get(col, "") for col in dynamic_headers]
         ws.append(row_data)
 
         is_even = (row_idx % 2 == 0)
-        for col_idx in range(1, len(V2_EXPORT_HEADERS) + 1):
+        for col_idx in range(1, len(dynamic_headers) + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.border = thin_border
 
-            if col_idx == 3:  # Columna Estado
+            if col_idx == estado_col_idx:
                 if estado == "NORMALIZADO":
                     cell.fill = fill_valid
                     cell.font = font_valid
@@ -1250,18 +1442,29 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     return buf
 
 
-def generate_csv_report(records: List[Dict[str, Any]]) -> Any:
-    """Genera un archivo CSV con codificación UTF-8 con BOM para compatibilidad directa con Excel en español (28 columnas V2)."""
+def generate_csv_report(records: List[Dict[str, Any]], headers: Optional[List[str]] = None) -> Any:
+    """Genera un archivo CSV con codificación UTF-8 con BOM para compatibilidad directa con Excel en español."""
     import csv
     import io
 
+    if headers is None:
+        dynamic_headers, meta = build_dynamic_export_headers(records)
+    else:
+        dynamic_headers = list(headers)
+        meta = {"max_vias": 2, "max_modulos": 1, "max_extra_comps": 0}
+
     output = io.StringIO()
     writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(V2_EXPORT_HEADERS)
+    writer.writerow(dynamic_headers)
 
     for r in records:
-        row_dict = extract_v2_export_row(r)
-        writer.writerow([row_dict[h] for h in V2_EXPORT_HEADERS])
+        row_dict = extract_v2_export_row(
+            r,
+            max_vias=meta.get("max_vias", 2),
+            max_modulos=meta.get("max_modulos", 1),
+            max_extra_comps=meta.get("max_extra_comps", 0),
+        )
+        writer.writerow([row_dict.get(h, "") for h in dynamic_headers])
 
     buf = io.BytesIO(output.getvalue().encode("utf-8-sig"))
     buf.seek(0)

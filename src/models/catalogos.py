@@ -9,7 +9,7 @@ class TipoVia(BaseModel):
     tivi_id: int = Field(description="Identificador único del tipo de vía")
     tivi_nombre: str = Field(description="Nombre completo (CALLE, AVENIDA, JIRÓN, etc.)")
     tivi_abreviatura: Optional[str] = Field(default=None, description="Abreviatura oficial (CA., AV., etc.)")
-    tivi_estado: str = Field(default="ACT", description="Estado: ACT, INA")
+    tivi_estado: str = Field(default="A", description="Estado: A (Activo), I (Inactivo), E (Eliminado)")
 
     # Propiedades de compatibilidad con código anterior
     @property
@@ -30,7 +30,7 @@ class Via(BaseModel):
     via_id: int = Field(description="Identificador único de la vía")
     tivi_id: int = Field(description="Clave foránea hacia `tb_tipo_via`")
     via_nombre: str = Field(description="Nombre oficial de la arteria vial")
-    via_estado: str = Field(default="ACT", description="Estado: ACT, INA")
+    via_estado: str = Field(default="A", description="Estado: A (Activo), I (Inactivo), E (Eliminado)")
 
     @property
     def id_via(self) -> int:
@@ -46,7 +46,7 @@ class TipoZona(BaseModel):
     tizo_id: int = Field(description="Identificador único del tipo de zona")
     tizo_nombre: str = Field(description="Nombre completo (URBANIZACIÓN, PUEBLO JOVEN, etc.)")
     tizo_abreviatura: Optional[str] = Field(default=None, description="Abreviatura oficial (URB., P.J., etc.)")
-    tizo_estado: str = Field(default="ACT", description="Estado: ACT, INA")
+    tizo_estado: str = Field(default="A", description="Estado: A (Activo), I (Inactivo), E (Eliminado)")
 
     # Propiedades de compatibilidad con código anterior
     @property
@@ -67,7 +67,7 @@ class Zona(BaseModel):
     zona_id: int = Field(description="Identificador único de la zona")
     tizo_id: int = Field(description="Clave foránea hacia `tb_tipo_zona`")
     zona_nombre: str = Field(description="Nombre oficial de la zona o habilitación")
-    zona_estado: str = Field(default="ACT", description="Estado: ACT, INA")
+    zona_estado: str = Field(default="A", description="Estado: A (Activo), I (Inactivo), E (Eliminado)")
 
 
 class ComponenteDireccion(BaseModel):
@@ -75,11 +75,11 @@ class ComponenteDireccion(BaseModel):
     codi_id: int = Field(description="Identificador único del componente")
     codi_nombre: str = Field(description="Nombre (MANZANA, LOTE, SUBLOTE, PISO, PREDIO, etc.)")
     codi_es_urbano: bool = Field(default=True, description="True para componentes urbanos, False para rurales")
-    codi_estado: str = Field(default="ACT", description="Estado: ACT, INA")
+    codi_estado: str = Field(default="A", description="Estado: A (Activo), I (Inactivo), E (Eliminado)")
 
 
 class TipoModulo(BaseModel):
     """Representa un tipo de módulo o dependencia de `tb_tipo_modulo`."""
     timo_id: int = Field(description="Identificador único del tipo de módulo")
     timo_nombre: str = Field(description="Nombre (INTERIOR, DEPARTAMENTO, PUERTA, STAND, TIENDA, BLOCK, etc.)")
-    timo_estado: str = Field(default="ACT", description="Estado: ACT, INA")
+    timo_estado: str = Field(default="A", description="Estado: A (Activo), I (Inactivo), E (Eliminado)")

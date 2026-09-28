@@ -127,32 +127,32 @@ class CatalogManager:
     def get_default_componentes_tuples(cls) -> List[Tuple[int, str, bool, str]]:
         """Retorna [(codi_id, codi_nombre, codi_es_urbano, codi_estado), ...] para tb_componente_direccion."""
         return [
-            (1, "MANZANA", True, "ACT"),
-            (2, "LOTE", True, "ACT"),
-            (3, "SUBLOTE", True, "ACT"),
-            (4, "PISO", True, "ACT"),
-            (5, "PREDIO", False, "ACT"),
-            (6, "VALLE", False, "ACT"),
-            (7, "SECTOR", False, "ACT"),
-            (8, "UNIDAD CATASTRAL", False, "ACT"),
-            (9, "COORDENADA NORTE", False, "ACT"),
-            (10, "COORDENADA ESTE", False, "ACT"),
+            (1, "MANZANA", True, "A"),
+            (2, "LOTE", True, "A"),
+            (3, "SUBLOTE", True, "A"),
+            (4, "PISO", True, "A"),
+            (5, "PREDIO", False, "A"),
+            (6, "VALLE", False, "A"),
+            (7, "SECTOR", False, "A"),
+            (8, "UNIDAD CATASTRAL", False, "A"),
+            (9, "COORDENADA NORTE", False, "A"),
+            (10, "COORDENADA ESTE", False, "A"),
         ]
 
     @classmethod
     def get_default_tipo_modulo_tuples(cls) -> List[Tuple[int, str, str]]:
         """Retorna [(timo_id, timo_nombre, timo_estado), ...] para tb_tipo_modulo."""
         return [
-            (1, "INTERIOR", "ACT"),
-            (2, "DEPARTAMENTO", "ACT"),
-            (3, "PUERTA", "ACT"),
-            (4, "STAND", "ACT"),
-            (5, "TIENDA", "ACT"),
-            (6, "OFICINA", "ACT"),
-            (7, "BLOCK", "ACT"),
-            (8, "PUESTO", "ACT"),
-            (9, "LOCAL", "ACT"),
-            (10, "COCHERA", "ACT"),
+            (1, "INTERIOR", "A"),
+            (2, "DEPARTAMENTO", "A"),
+            (3, "PUERTA", "A"),
+            (4, "STAND", "A"),
+            (5, "TIENDA", "A"),
+            (6, "OFICINA", "A"),
+            (7, "BLOCK", "A"),
+            (8, "PUESTO", "A"),
+            (9, "LOCAL", "A"),
+            (10, "COCHERA", "A"),
         ]
 
     EXTRA_VIAS_SYNONYMS: Dict[str, str] = {

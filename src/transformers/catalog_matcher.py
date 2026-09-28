@@ -25,6 +25,8 @@ class CatalogMatcher:
     VIAS_NAMES: Dict[int, str] = CatalogManager.get_default_vias_names()
     ZONAS_MAPPING: Dict[str, int] = CatalogManager.get_default_zonas_mapping()
     ZONAS_NAMES: Dict[int, str] = CatalogManager.get_default_zonas_names()
+    _MATCH_VIA_CACHE: Dict[Tuple[str, Optional[int], Optional[str]], Optional[Dict[str, Any]]] = {}
+    _MATCH_ZONA_CACHE: Dict[Tuple[str, Optional[int]], Optional[Dict[str, Any]]] = {}
 
     @classmethod
     def reset_defaults(cls) -> None:
@@ -35,6 +37,8 @@ class CatalogMatcher:
         cls.VIAS_NAMES = CatalogManager.get_default_vias_names()
         cls.ZONAS_MAPPING = CatalogManager.get_default_zonas_mapping()
         cls.ZONAS_NAMES = CatalogManager.get_default_zonas_names()
+        cls._MATCH_VIA_CACHE.clear()
+        cls._MATCH_ZONA_CACHE.clear()
 
 
     @classmethod
@@ -207,6 +211,8 @@ class CatalogMatcher:
                     except Exception as ex_p_zonas:
                         logger.debug("Aviso leyendo zonas en %s.%s: %s", schema, t_p_zona, ex_p_zonas)
 
+            cls._MATCH_VIA_CACHE.clear()
+            cls._MATCH_ZONA_CACHE.clear()
             logger.info("Mapeo de catálogos sincronizado exitosamente con esquema '%s'", schema)
         except Exception as e:
             logger.warning("Aviso al sincronizar catálogos dinámicos con '%s': %s", schema, e)
@@ -563,6 +569,27 @@ class CatalogMatcher:
         clean = TextCleaner.sanitize(text)
         if not clean:
             return None
+
+        cache_key = (clean, tipo_via_hint, sector_hint)
+        if not ollama_service and cache_key in cls._MATCH_VIA_CACHE:
+            return cls._MATCH_VIA_CACHE[cache_key]
+
+        res = cls._match_physical_via_uncached(clean, tipo_via_hint, raw_text, ollama_service, sector_hint)
+        if not ollama_service:
+            if len(cls._MATCH_VIA_CACHE) > 8192:
+                cls._MATCH_VIA_CACHE.clear()
+            cls._MATCH_VIA_CACHE[cache_key] = res
+        return res
+
+    @classmethod
+    def _match_physical_via_uncached(
+        cls,
+        clean: str,
+        tipo_via_hint: Optional[int] = None,
+        raw_text: Optional[str] = None,
+        ollama_service: Optional[Any] = None,
+        sector_hint: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         no_acc = TextCleaner.remove_accents(clean)
 
         multi_lookup = CatalogManager.get_physical_vias_multi_lookup()
@@ -706,6 +733,26 @@ class CatalogMatcher:
         clean = TextCleaner.sanitize(text)
         if not clean:
             return None
+
+        cache_key = (clean, tipo_zona_hint)
+        if not ollama_service and cache_key in cls._MATCH_ZONA_CACHE:
+            return cls._MATCH_ZONA_CACHE[cache_key]
+
+        res = cls._match_physical_zona_uncached(clean, tipo_zona_hint, raw_text, ollama_service)
+        if not ollama_service:
+            if len(cls._MATCH_ZONA_CACHE) > 8192:
+                cls._MATCH_ZONA_CACHE.clear()
+            cls._MATCH_ZONA_CACHE[cache_key] = res
+        return res
+
+    @classmethod
+    def _match_physical_zona_uncached(
+        cls,
+        clean: str,
+        tipo_zona_hint: Optional[int] = None,
+        raw_text: Optional[str] = None,
+        ollama_service: Optional[Any] = None,
+    ) -> Optional[Dict[str, Any]]:
         no_acc = TextCleaner.remove_accents(clean)
 
         lookup = CatalogManager.get_physical_zonas_lookup()

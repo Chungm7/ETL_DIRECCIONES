@@ -322,13 +322,17 @@ class AIAddressParser:
             # Caso 2: Prefijos dinámicos de zona (URB, PJ, etc.)
             if not nom_zona:
                 zona_prefixes = CatalogManager.get_zona_prefix_regex_str()
+                via_prefixes_str = CatalogManager.get_via_prefix_regex_str()
                 match_zona = re.search(
-                    rf"{zona_prefixes}\s+([^,;()\-]+?)(?:\s+(?:MZ|LT|LOTE|MANZANA|REF|\(|$)|,|-|$)",
+                    rf"{zona_prefixes}\s+([^,;()\-]+?)(?:\s+(?:{via_prefixes_str}|MZ|LT|LOTE|MANZANA|REF|\(|$)|,|-|$)",
                     raw_text,
                     re.IGNORECASE,
                 )
                 if match_zona:
                     cand_zona = match_zona.group(1).strip()
+                    m_via_in_zona = re.search(rf"\b(?:{via_prefixes_str})\b", cand_zona, re.IGNORECASE)
+                    if m_via_in_zona:
+                        cand_zona = cand_zona[:m_via_in_zona.start()].strip(" ,.-")
                     cand_zona = re.sub(r"\s+(?:CHICLAYO|LAMBAYEQUE|FERRENAFE)$", "", cand_zona, flags=re.IGNORECASE).strip(" ,.-")
                     if cand_zona:
                         nom_zona = cand_zona
@@ -414,31 +418,36 @@ class AIAddressParser:
                     referencia = f"{referencia} - {block_val}".strip()
                 heuristica_aplicada = True
 
-        # Si nom_via contiene dos vías separadas por guión, 'Y', 'CON', 'ESQ'
+        # Si nom_via contiene dos o tres vías separadas por guión, 'Y', 'CON', 'ESQ'
         if nom_via and not CatalogMatcher.match_physical_via(nom_via) and any(sep in nom_via for sep in (" - ", " Y ", " CON ", " ESQ ", " CRUCE ")):
             parts = re.split(r"\s+(?:-|Y|CON|ESQ\.?|CRUCE)\s+", nom_via, flags=re.IGNORECASE)
             if len(parts) >= 2:
-                p1 = parts[0].strip()
-                p2 = parts[1].strip()
-                m_v1 = CatalogMatcher.match_physical_via(p1)
-                m_z1 = CatalogMatcher.match_physical_zona(p1)
-                m_v2 = CatalogMatcher.match_physical_via(p2)
-                m_z2 = CatalogMatcher.match_physical_zona(p2)
+                matched_parts_v = [CatalogMatcher.match_physical_via(p.strip()) for p in parts]
+                if len(parts) == 2:
+                    p1 = parts[0].strip()
+                    p2 = parts[1].strip()
+                    m_v1 = matched_parts_v[0]
+                    m_z1 = CatalogMatcher.match_physical_zona(p1)
+                    m_v2 = matched_parts_v[1]
+                    m_z2 = CatalogMatcher.match_physical_zona(p2)
 
-                if m_z1 and m_v2 and not m_v1:
-                    nom_zona = p1
-                    nom_via = p2
-                    heuristica_aplicada = True
-                elif m_z2 and m_v1 and not m_v2:
-                    nom_zona = p2
-                    nom_via = p1
-                    heuristica_aplicada = True
-                elif m_v1 and m_v2:
-                    if m_v1.get("id") != m_v2.get("id"):
-                        two_vias_conflict = (p1, p2)
+                    if m_z1 and m_v2 and not m_v1:
+                        nom_zona = p1
+                        nom_via = p2
+                        heuristica_aplicada = True
+                    elif m_z2 and m_v1 and not m_v2:
+                        nom_zona = p2
                         nom_via = p1
-                    else:
-                        nom_via = m_v1.get("nom_via", p1)
+                        heuristica_aplicada = True
+                    elif m_v1 and m_v2:
+                        if m_v1.get("id") != m_v2.get("id"):
+                            two_vias_conflict = (p1, p2)
+                            nom_via = p1
+                        else:
+                            nom_via = m_v1.get("nom_via", p1)
+                elif len(parts) >= 3 and all(mv is not None for mv in matched_parts_v[:3]):
+                    two_vias_conflict = tuple(parts[i].strip() for i in range(min(3, len(parts))))
+                    nom_via = parts[0].strip()
 
         # Limpieza de prefijos de centros comerciales, galerías o edificios en nom_via
         if nom_via:
@@ -734,39 +743,38 @@ class AIAddressParser:
         )
         if extraction and extraction.vias and len(extraction.vias) > 1:
             for ev in extraction.vias:
-                ev_matched = CatalogMatcher.match_physical_via(ev.nombre)
+                ev_t_id = CatalogMatcher.match_tipo_via(ev.tipo_via) if ev.tipo_via else None
+                ev_matched = CatalogMatcher.match_physical_via(
+                    ev.nombre,
+                    tipo_via_hint=ev_t_id,
+                    sector_hint=zona_sector,
+                )
                 if ev_matched:
                     vias_result.append({
                         "via_id": ev_matched["id"],
                         "divi_numero": ev.numero or num_via or "S/N",
-                        "divi_orden": ev.orden,
+                        "divi_orden": ev.orden or (len(vias_result) + 1),
                         "via_nombre": ev_matched["nom_via"],
-                        "tipo_via": ev_matched.get("id_tipo_via") or id_tipo_via,
+                        "tipo_via": ev_matched.get("id_tipo_via") or ev_t_id or id_tipo_via,
                     })
             if vias_result:
                 matched_via = {"id": vias_result[0]["via_id"], "nom_via": vias_result[0]["via_nombre"], "id_tipo_via": vias_result[0]["tipo_via"]}
                 two_vias_conflict = None
 
         if not vias_result and two_vias_conflict and is_explicit_corner:
-            # Evaluar si corresponde a esquina / intersección oficial
-            m_v1_c = CatalogMatcher.match_physical_via(two_vias_conflict[0])
-            m_v2_c = CatalogMatcher.match_physical_via(two_vias_conflict[1])
-            if m_v1_c and m_v2_c:
-                vias_result.append({
-                    "via_id": m_v1_c["id"],
-                    "divi_numero": num_via or "S/N",
-                    "divi_orden": 1,
-                    "via_nombre": m_v1_c["nom_via"],
-                    "tipo_via": m_v1_c.get("id_tipo_via") or id_tipo_via,
-                })
-                vias_result.append({
-                    "via_id": m_v2_c["id"],
-                    "divi_numero": "S/N",
-                    "divi_orden": 2,
-                    "via_nombre": m_v2_c["nom_via"],
-                    "tipo_via": m_v2_c.get("id_tipo_via"),
-                })
-                matched_via = m_v1_c
+            # Evaluar si corresponde a esquina / intersección oficial (2 o 3 vías)
+            for ord_idx, via_text in enumerate(two_vias_conflict, start=1):
+                mv = CatalogMatcher.match_physical_via(via_text, sector_hint=zona_sector)
+                if mv:
+                    vias_result.append({
+                        "via_id": mv["id"],
+                        "divi_numero": num_via if ord_idx == 1 else "S/N",
+                        "divi_orden": ord_idx,
+                        "via_nombre": mv["nom_via"],
+                        "tipo_via": mv.get("id_tipo_via") or id_tipo_via,
+                    })
+            if vias_result:
+                matched_via = {"id": vias_result[0]["via_id"], "nom_via": vias_result[0]["via_nombre"], "id_tipo_via": vias_result[0]["tipo_via"]}
                 two_vias_conflict = None
 
         if not vias_result and matched_via:
@@ -777,6 +785,55 @@ class AIAddressParser:
                 "via_nombre": matched_via["nom_via"],
                 "tipo_via": matched_via.get("id_tipo_via") or id_tipo_via,
             })
+
+        # Detección heurística de vías adicionales en esquinas / intersecciones (CON, ESQ, CRUCE)
+        if len(vias_result) >= 1 and len(vias_result) < 3:
+            via_prefixes_str = CatalogManager.get_via_prefix_regex_str()
+            corner_pattern = re.compile(
+                rf"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\s+(?:({via_prefixes_str})\s+)?([A-ZÁÉÍÓÚÑ0-9\s\.\-]+)",
+                re.IGNORECASE,
+            )
+            for m_corn in corner_pattern.finditer(raw_text):
+                if len(vias_result) >= 3:
+                    break
+                extra_tipo_prefix = m_corn.group(1)
+                extra_via_raw = m_corn.group(2).strip()
+
+                extra_num = "S/N"
+                m_num_extra = re.search(r"\b(?:N°?|NUM°?|NRO\.?|N\s*)?(\d+)\b", extra_via_raw, re.IGNORECASE)
+                if m_num_extra:
+                    extra_num = m_num_extra.group(1).lstrip("0") or "S/N"
+                    extra_via_candidate = extra_via_raw[:m_num_extra.start()].strip(" ,.-")
+                else:
+                    extra_via_candidate = re.sub(
+                        r"\b(?:INT|DPTO|STAND|TIENDA|MZ|LT|LOTE|PISO|REF)\b.*$",
+                        "",
+                        extra_via_raw,
+                        flags=re.IGNORECASE,
+                    ).strip(" ,.-")
+
+                m_sub_sep = re.search(r"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\b", extra_via_candidate, re.IGNORECASE)
+                if m_sub_sep:
+                    extra_via_candidate = extra_via_candidate[:m_sub_sep.start()].strip(" ,.-")
+
+                if extra_via_candidate:
+                    extra_t_id = CatalogMatcher.match_tipo_via(extra_tipo_prefix) if extra_tipo_prefix else None
+                    mv_extra = CatalogMatcher.match_physical_via(
+                        extra_via_candidate,
+                        tipo_via_hint=extra_t_id,
+                        sector_hint=zona_sector,
+                    )
+                    if mv_extra:
+                        existing_ids = {v["via_id"] for v in vias_result}
+                        if mv_extra["id"] not in existing_ids:
+                            vias_result.append({
+                                "via_id": mv_extra["id"],
+                                "divi_numero": extra_num,
+                                "divi_orden": len(vias_result) + 1,
+                                "via_nombre": mv_extra["nom_via"],
+                                "tipo_via": mv_extra.get("id_tipo_via") or extra_t_id or id_tipo_via,
+                            })
+                            two_vias_conflict = None
 
         # Construcción relacional V2 de Componentes
         componentes_result = []
@@ -800,21 +857,48 @@ class AIAddressParser:
             for m in extraction.modulos:
                 mm = CatalogMatcher.match_tipo_modulo(m.tipo_modulo)
                 if mm:
-                    modulos_result.append({
-                        "timo_id": mm[0],
-                        "timo_nombre": mm[1],
-                        "ditm_nombre": str(m.valor).strip(),
-                    })
+                    val_str = str(m.valor).strip()
+                    # Desglosar si el valor agrupa múltiples interiores (ej. "1, 2 Y 3" o "I, II, III")
+                    split_parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", val_str, flags=re.IGNORECASE) if p.strip()]
+                    if len(split_parts) > 1 and all(len(p) <= 6 for p in split_parts):
+                        for sp in split_parts:
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == sp for mr in modulos_result):
+                                modulos_result.append({
+                                    "timo_id": mm[0],
+                                    "timo_nombre": mm[1],
+                                    "ditm_nombre": sp,
+                                })
+                    else:
+                        if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == val_str for mr in modulos_result):
+                            modulos_result.append({
+                                "timo_id": mm[0],
+                                "timo_nombre": mm[1],
+                                "ditm_nombre": val_str,
+                            })
+
         if not modulos_result:
-            source_mod = f"{slote or ''} {referencia or ''}"
-            m_sl = re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|PUERTA|PTA|STAND|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)", source_mod, re.IGNORECASE)
-            if m_sl:
-                tname = m_sl.group(1).upper()
-                mval = m_sl.group(2).strip()
+            source_mod = f"{slote or ''} {referencia or ''} {raw_text or ''}"
+            mod_pattern = re.compile(
+                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|LOCAL)\b\.?\s*[:\-]?\s*([A-Z0-9]+(?:\s*(?:,|Y|-)\s*[A-Z0-9]+)*)",
+                re.IGNORECASE,
+            )
+            for m_match in mod_pattern.finditer(source_mod):
+                tname = m_match.group(1).upper()
+                raw_vals = m_match.group(2).strip()
+                if tname in ("BLOCK", "BLQ") and "HAYA DE LA TORRE" in source_mod:
+                    continue
                 mm = CatalogMatcher.match_tipo_modulo(tname)
                 if mm:
-                    modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": mval})
-            elif slote:
+                    parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_vals, flags=re.IGNORECASE) if p.strip()]
+                    if len(parts) > 1 and all(len(p) <= 6 for p in parts):
+                        for p in parts:
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p for mr in modulos_result):
+                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": p})
+                    else:
+                        if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == raw_vals for mr in modulos_result):
+                            modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": raw_vals})
+
+            if not modulos_result and slote:
                 modulos_result.append({"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": str(slote).strip()})
 
         # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
@@ -842,6 +926,13 @@ class AIAddressParser:
                 clean_referencia,
                 flags=re.IGNORECASE,
             )
+            # Eliminar menciones de vías identificadas para no duplicar en referencia
+            if vias_result:
+                for vr in vias_result:
+                    v_name = vr.get("via_nombre")
+                    if v_name:
+                        clean_referencia = re.sub(rf"\b(?:ESQ(?:UINA)?\.?|CON|CRUCE\s+(?:CON)?)\s+(?:{re.escape(v_name)})\b", "", clean_referencia, flags=re.IGNORECASE)
+                        clean_referencia = re.sub(rf"\b{re.escape(v_name)}\b", "", clean_referencia, flags=re.IGNORECASE)
             # Remover residuos de puntuación y espacios
             clean_referencia = re.sub(r"\s+", " ", clean_referencia).strip(" -/,.:;")
             if not clean_referencia:

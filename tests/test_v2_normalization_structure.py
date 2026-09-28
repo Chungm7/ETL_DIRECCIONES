@@ -38,36 +38,41 @@ from src.ui.server import generate_json_report
 
 
 class TestV2CatalogModels:
-    """Valida los modelos de catálogo institucional con nomenclatura tb_."""
+    """Valida los modelos de catálogo institucional con nomenclatura tb_ y estados discretos A/I/E."""
 
     def test_tipo_via_model(self):
-        tv = TipoVia(tivi_id=1, tivi_nombre="AVENIDA", tivi_abreviatura="AV.", tivi_estado="ACT")
+        tv = TipoVia(tivi_id=1, tivi_nombre="AVENIDA", tivi_abreviatura="AV.", tivi_estado="A")
         assert tv.tivi_id == 1
         assert tv.id_tipo_via == 1
         assert tv.nombre_tipo_via == "AVENIDA"
+        assert tv.tivi_estado == "A"
 
     def test_via_model(self):
-        v = Via(via_id=10, tivi_id=1, via_nombre="BALTA", via_estado="ACT")
+        v = Via(via_id=10, tivi_id=1, via_nombre="BALTA", via_estado="A")
         assert v.via_id == 10
         assert v.id_via == 10
         assert v.nom_via == "BALTA"
+        assert v.via_estado == "A"
 
     def test_tipo_zona_model(self):
-        tz = TipoZona(tizo_id=6, tizo_nombre="URBANIZACION", tizo_abreviatura="URB.", tizo_estado="ACT")
+        tz = TipoZona(tizo_id=6, tizo_nombre="URBANIZACION", tizo_abreviatura="URB.", tizo_estado="A")
         assert tz.tizo_id == 6
         assert tz.id_tipo_zona == 6
         assert tz.nombre_tipo_zona == "URBANIZACION"
+        assert tz.tizo_estado == "A"
 
     def test_componente_direccion_model(self):
-        cd = ComponenteDireccion(codi_id=1, codi_nombre="MANZANA", codi_es_urbano=True, codi_estado="ACT")
+        cd = ComponenteDireccion(codi_id=1, codi_nombre="MANZANA", codi_es_urbano=True, codi_estado="A")
         assert cd.codi_id == 1
         assert cd.codi_nombre == "MANZANA"
         assert cd.codi_es_urbano is True
+        assert cd.codi_estado == "A"
 
     def test_tipo_modulo_model(self):
-        tm = TipoModulo(timo_id=1, timo_nombre="INTERIOR", timo_estado="ACT")
+        tm = TipoModulo(timo_id=1, timo_nombre="INTERIOR", timo_estado="A")
         assert tm.timo_id == 1
         assert tm.timo_nombre == "INTERIOR"
+        assert tm.timo_estado == "A"
 
 
 class TestV2CatalogMatcher:
@@ -317,3 +322,74 @@ class TestV2DatabaseLoader:
         match_zona = CatalogMatcher.match_physical_zona("URB NUEVA TEST")
         assert match_zona is not None
         assert match_zona["id"] == 8888
+
+    def test_multi_module_splitting_in_parser(self):
+        """Verifica que direcciones con múltiples interiores (ej. INT. 1, 2 Y 3) se desglosen en registros independientes de modulos."""
+        mock_ollama = MagicMock()
+        mock_ollama.parse_address_with_ai.return_value = None
+        parser = AIAddressParser(mock_ollama)
+
+        orig = DireccionOrigen(
+            id_licencia=888,
+            emp_direccion="URB. SANTA VICTORIA CA. PACASMAYO 147 - INT. 1, 2 Y 3",
+        )
+        dest = parser.parse(orig)
+        assert dest.es_procesado is True
+        assert len(dest.modulos) == 3
+        assert [m["ditm_nombre"] for m in dest.modulos] == ["1", "2", "3"]
+        assert all(m["timo_nombre"] == "INTERIOR" for m in dest.modulos)
+
+    def test_multi_via_corner_parsing(self):
+        """Verifica que intersecciones de vías se asocien en la lista vias con orden 1 y 2."""
+        mock_ollama = MagicMock()
+        mock_ollama.parse_address_with_ai.return_value = None
+        parser = AIAddressParser(mock_ollama)
+
+        orig = DireccionOrigen(
+            id_licencia=889,
+            emp_direccion="CALLE SAN JOSE 102 CON AV. LUIS GONZALES 801",
+        )
+        dest = parser.parse(orig)
+        assert dest.es_procesado is True
+        assert len(dest.vias) == 2
+        assert dest.vias[0]["via_nombre"] == "SAN JOSE"
+        assert dest.vias[0]["divi_orden"] == 1
+        assert dest.vias[1]["via_nombre"] == "LUIS GONZALES"
+        assert dest.vias[1]["divi_orden"] == 2
+
+    def test_db_loader_supports_multiple_interiors_same_timo_id(self):
+        """Verifica que DatabaseLoader persista múltiples módulos con el mismo timo_id (ej. Interior 1 e Interior 2) gracias a la PK compuesta (dire_id, timo_id, ditm_nombre)."""
+        mock_db = MagicMock()
+        mock_session = MagicMock()
+        mock_db.get_session.return_value.__enter__.return_value = mock_session
+        mock_db._engine = True
+        mock_session.execute.return_value.scalar.return_value = 999
+
+        loader = DatabaseLoader(db_service=mock_db, schema="public", table="tb_xxx")
+        loader._has_tb_direccion = True
+        loader._target_cols = {"xxxx_id", "dire_id", "xxxx_es_procesado", "xxxx_observacion_ia"}
+        loader.col_id = "xxxx_id"
+        loader.col_es_procesado = "xxxx_es_procesado"
+        loader.col_observacion = "xxxx_observacion_ia"
+
+        dest = DireccionDestino(
+            id_licencia=999,
+            zona_id=60,
+            vias=[{"via_id": 101, "divi_numero": "200", "divi_orden": 1}],
+            modulos=[
+                {"timo_id": 1, "ditm_nombre": "1"},
+                {"timo_id": 1, "ditm_nombre": "2"},
+                {"timo_id": 1, "ditm_nombre": "3"},
+            ],
+            es_procesado=True,
+        )
+        loaded = loader._load_v2([dest])
+        assert loaded == 1
+        modulo_sql_calls = [
+            call for call in mock_session.execute.call_args_list
+            if len(call.args) > 0 and "tb_direccion_tipo_modulo" in str(call.args[0])
+        ]
+        assert len(modulo_sql_calls) == 3
+        ditm_nombres = [call.args[1]["ditm_nombre"] for call in modulo_sql_calls]
+        assert ditm_nombres == ["1", "2", "3"]
+        assert all(call.args[1]["ditm_estado"] == "A" for call in modulo_sql_calls)

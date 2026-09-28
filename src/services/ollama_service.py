@@ -287,7 +287,9 @@ class OllamaService:
         """Ejecuta una llamada estructurada de chat con mensajes arbitrarios hacia Ollama."""
         call_options = {
             "temperature": temperature,
-            "num_ctx": getattr(self.settings, "num_ctx", 16384),
+            "num_predict": 256,
+            "num_ctx": 2048,
+            "top_p": 0.9,
         }
 
         # Prioridad 1: Cliente oficial si está disponible

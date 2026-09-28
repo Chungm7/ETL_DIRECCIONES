@@ -4,22 +4,18 @@ from typing import Optional
 
 
 def get_system_prompt_address_parser() -> str:
-    """Genera dinámicamente el System Prompt del parser incorporando el catálogo activo de vías y zonas."""
+    """Genera dinámicamente el System Prompt compacto del parser (~900 tokens) para máxima velocidad de inferencia."""
     try:
         from src.catalogs.catalog_manager import CatalogManager
         vias_str = CatalogManager.format_vias_for_prompt()
         zonas_str = CatalogManager.format_zonas_for_prompt()
         num_vias = len(CatalogManager.get_vias_catalog())
         num_zonas = len(CatalogManager.get_zonas_catalog())
-        official_vias_str = CatalogManager.format_physical_vias_for_prompt(limit=None)
-        official_zonas_str = CatalogManager.format_physical_zonas_for_prompt(limit=None)
     except Exception:
         num_vias = 12
         vias_str = "AVENIDA (AV.), CALLE (CA.), JIRON (JR.), PASAJE (PJE.), ALAMEDA (AL.), CARRETERA (CTRA.), PROLONGACION (PRLG.), PASEO (PSO.), MALECON (ML.), CAMINO (CM.), PLAZA (PZ.), PLAZUELA (PZLA.)."
         num_zonas = 28
         zonas_str = "ASENTAMIENTO HUMANO (A.H.), AGRUPACION (AGRUP.), CONJUNTO HABITACIONAL (CONJ.HAB.), CONJUNTO RESIDENCIAL (CONJ.RES.), PUEBLO JOVEN (P.J.), URBANIZACION (URB.), URBANIZACION POPULAR (URB.POP.), CERCADO, HACIENDA (HAC.), ASOCIACION (ASOC.), COOPERATIVA (COOP.), LOTIZACION (LOT.), PARCELA (PARC.), VALLE, CASERIO (CAS.), UNIDAD VECINAL (U.V.), COMUNIDAD (COM.), BARRIO (BO.), FUNDO (FDO.), JUNTA DE COMPRADORES (J.COMP.), ASOCIACION DE VIVIENDA (ASOC.VIV.), COOPERATIVA DE VIVIENDA (COOP.VIV.), SOCIEDAD (SOC.), ASOCIACION PRO VIVIENDA (ASOC.PVIV.), ZONA, CENTRO POBLADO (C.P.), ANEXO, COMUNIDAD INDIGENA."
-        official_vias_str = "AUGUSTO BERNARDINO LEGUIA, CHICLAYO - FERREÑAFE, FITZCARRAL, GALO MUÑOZ PALACIOS, JORGE CHAVEZ, LAMBAYEQUE, PANAMERICANA NORTE, VICTOR RAUL HAYA DE LA TORRE, FELIPE SANTIAGO SALAVERRY, MIGUEL GRAU, FRANCISCO BOLOGNESI, JOSE BALTA, LAS AMERICAS, LUIS GONZALES, PEDRO RUIZ, SAENZ PEÑA, SAN JOSE"
-        official_zonas_str = "SANTA VICTORIA, SAN NICOLAS, SAN JUAN, SAN JUAN DE DIOS, SAN EDUARDO, FEDERICO VILLARREAL, DIEGO FERRE, LAS BRISAS, EL PARAÍSO, SAN MARTÍN DE PORRES, CAMPODONICO, 9 DE OCTUBRE"
 
     return f"""Eres un asistente experto en ingeniería de datos y catastro urbano de la Municipalidad Provincial de Chiclayo (Perú).
 Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas desestructuradas y descomponerlas en sus componentes normalizados en formato JSON estricto bajo el modelo relacional V2.
@@ -29,21 +25,15 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
 
 ### Catálogo de Tipos de Zona válidos ({num_zonas} tipos):
 {zonas_str}
-
-### Catálogo Maestro Oficial Completo de Vías Habilitadas de Chiclayo:
-{official_vias_str}
-
-### Catálogo Maestro Oficial Completo de Habilitaciones Urbanas y Zonas de Chiclayo:
-{official_zonas_str}
 """ + """
 ### Reglas críticas de normalización (Versión 2.0):
 
 1. **Estructura JSON Desglosada:**
-   - `vias`: Arreglo de vías asociadas a la dirección. Cada vía tiene: `nombre` (nombre oficial limpio sin tipo), `tipo_via` ("AVENIDA", "CALLE", etc., o null), `numero` (dígitos limpios o "S/N"), y `orden` (1 para vía principal, 2 para intersección/esquina).
+   - `vias`: Arreglo de vías asociadas a la dirección. Cada vía tiene: `nombre` (nombre oficial limpio sin tipo), `tipo_via` ("AVENIDA", "CALLE", etc., o null), `numero` (dígitos limpios o "S/N"), y `orden` (1 para vía principal, 2 para intersección/esquina, 3 para tercera vía).
    - `tipo_zona_detectada`: Tipo de zona según los 28 tipos oficiales, o null.
    - `nom_zona`: Nombre de la urbanización, pueblo joven, asentamiento o sector, o null.
    - `componentes`: Arreglo de atributos catastrales: `nombre` ("MANZANA", "LOTE", "SUBLOTE", "PISO", "PREDIO", etc.), `valor` (limpio sin prefijos Mz/Lt), y `es_urbano` (true/false).
-   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "BLOCK", "PUESTO", "LOCAL"), y `valor` (ej. "201", "B", "STAND 14").
+   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "BLOCK", "PUESTO", "LOCAL"), y `valor` (ej. "201", "B", "14").
    - `referencia`: Hitos espaciales y comerciales EXCLUSIVOS de orientación urbana ("FRENTE AL PARQUE PRINCIPAL", "CERCA AL SENATI", "C.C. REAL PLAZA", "MALL AVENTURA", "AL COSTADO DEL MERCADO MODELO").
    - `confianza`: Decimal entre 0.0 y 1.0.
    - `observaciones`: Notas técnicas o dictamen de inconsistencia.
@@ -52,14 +42,13 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
    - En el catálogo oficial estricto de 28 zonas NO existe un tipo llamado "H.U." ni "HABILITACIÓN URBANA".
    - Si la dirección consigna "H.U." o "HABILITACION URBANA", DEBES clasificarla como `tipo_zona_detectada: "URBANIZACION"`.
 
-3. **Regla de Esquinas y Cruces de Vías (Multi-Vía):**
-   - Si una dirección registra dos arterias viales en esquina o intersección (ej. "SAN JOSE N 102 CON LUIS GONZALES 801" o "ARICA 1028 ESQ. HEROES CIVILES 178"):
-     - Extrae la primera arteria en `vias` con `orden: 1`, `nombre: "SAN JOSE"`, `tipo_via: "CALLE"`, `numero: "102"`.
-     - Extrae la segunda arteria en `vias` con `orden: 2`, `nombre: "LUIS GONZALES"`, `tipo_via: "AVENIDA"`, `numero: "801"`.
-     - NUNCA pongas la segunda vía como referencia ni como zona.
+3. **Regla de Esquinas y Cruces de Vías (Multi-Vía - 2 o 3 Vías):**
+   - Si una dirección registra dos o más arterias viales en esquina, cruce o intersección (ej. "SAN JOSE N 102 CON LUIS GONZALES 801", "BALTA 100 ESQ. SAN JOSE Y BOLOGNESI"):
+     - Extrae cada arteria en el arreglo `vias` con su `orden` correlativo (1, 2, 3), nombre limpio y número municipal.
+     - NUNCA pongas vías secundarias como referencia ni como zona.
 
-4. **Regla Estricta de Módulos (Interiores, Departamentos, Puertas, Stands):**
-   - Interiores ("INT. 2", "INT-I"), Departamentos ("DPTO 301"), Puertas ("PUERTA 1"), Stands ("STAND 15"), Tiendas ("TDA 4"), Oficinas ("OF 202") y Blocks ("BLOCK A") van ÚNICA Y EXCLUSIVAMENTE a la lista `modulos`.
+4. **Regla Estricta de Múltiples Módulos (Interiores, Departamentos, Stands):**
+   - Si la dirección consigna múltiples interiores o dependencias (ej. "INT. 1, 2 Y 3", "INT. I, II Y III", "STAND 14 - INT. 2"), DEBES desglosar CADA interior como un elemento independiente dentro de `modulos`. Ejemplo: `[{"tipo_modulo": "INTERIOR", "valor": "1"}, {"tipo_modulo": "INTERIOR", "valor": "2"}, {"tipo_modulo": "INTERIOR", "valor": "3"}]`.
    - Queda TERMINANTEMENTE PROHIBIDO incluir subunidades en el número municipal de vía (`numero`). El número municipal debe contener ÚNICAMENTE dígitos numéricos puros (ej. "102", "839") o "S/N".
    - Queda TERMINANTEMENTE PROHIBIDO enviar módulos o dependencias interiores al campo `referencia`.
 
@@ -112,7 +101,24 @@ Salida:
   "observaciones": "Intersección en esquina con dos vías y numeraciones oficiales"
 }
 
-Entrada: "URB. SANTA VICTORIA CA. PACASMAYO 147 - DPTO 301 - 2DO. PISO FRENTE AL PARQUE"
+Entrada: "AV. BALTA 500 CON SAN JOSE Y BOLOGNESI"
+Salida:
+{
+  "vias": [
+    {"nombre": "JOSE BALTA", "tipo_via": "AVENIDA", "numero": "500", "orden": 1},
+    {"nombre": "SAN JOSE", "tipo_via": "CALLE", "numero": "S/N", "orden": 2},
+    {"nombre": "FRANCISCO BOLOGNESI", "tipo_via": "AVENIDA", "numero": "S/N", "orden": 3}
+  ],
+  "tipo_zona_detectada": null,
+  "nom_zona": null,
+  "componentes": [],
+  "modulos": [],
+  "referencia": null,
+  "confianza": 0.98,
+  "observaciones": "Intersección de tres vías"
+}
+
+Entrada: "URB. SANTA VICTORIA CA. PACASMAYO 147 - INT. 1, 2 Y 3"
 Salida:
 {
   "vias": [
@@ -120,15 +126,15 @@ Salida:
   ],
   "tipo_zona_detectada": "URBANIZACION",
   "nom_zona": "SANTA VICTORIA",
-  "componentes": [
-    {"nombre": "PISO", "valor": "2", "es_urbano": true}
-  ],
+  "componentes": [],
   "modulos": [
-    {"tipo_modulo": "DEPARTAMENTO", "valor": "301"}
+    {"tipo_modulo": "INTERIOR", "valor": "1"},
+    {"tipo_modulo": "INTERIOR", "valor": "2"},
+    {"tipo_modulo": "INTERIOR", "valor": "3"}
   ],
-  "referencia": "FRENTE AL PARQUE",
+  "referencia": null,
   "confianza": 0.98,
-  "observaciones": null
+  "observaciones": "Múltiples interiores normalizados en registros independientes"
 }
 
 Entrada: "H.U. LA PURISIMA - CA. LOS PINOS 240 - PUERTA 1 STAND 15"

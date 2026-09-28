@@ -134,7 +134,7 @@ class DatabaseLoader(BaseLoader):
                         dire_id = session.execute(ins_dir_sql, {
                             "zona_id": rec.zona_id,
                             "dire_referencia": rec.dire_referencia,
-                            "dire_estado": rec.dire_estado or "ACT",
+                            "dire_estado": rec.dire_estado or "A",
                         }).scalar()
                         rec.dire_id = dire_id
 
@@ -158,7 +158,7 @@ class DatabaseLoader(BaseLoader):
                                         "via_id": via_id,
                                         "divi_numero": str(v.get("divi_numero") or "").strip() or None,
                                         "divi_orden": v.get("divi_orden", idx),
-                                        "divi_estado": "ACT",
+                                        "divi_estado": "A",
                                     })
 
                         # 3. Insertar componentes catastrales en tb_contenido_componente_direccion
@@ -180,7 +180,7 @@ class DatabaseLoader(BaseLoader):
                                         "dire_id": dire_id,
                                         "codi_id": codi_id,
                                         "diti_nombre": str(diti_nombre).strip().upper(),
-                                        "diti_estado": "ACT",
+                                        "diti_estado": "A",
                                     })
 
                         # 4. Insertar módulos inmobiliarios en tb_direccion_tipo_modulo
@@ -191,8 +191,8 @@ class DatabaseLoader(BaseLoader):
                                 ) VALUES (
                                     :dire_id, :timo_id, :ditm_nombre, :ditm_estado
                                 )
-                                ON CONFLICT (dire_id, timo_id) DO UPDATE SET
-                                    ditm_nombre = EXCLUDED.ditm_nombre;
+                                ON CONFLICT (dire_id, timo_id, ditm_nombre) DO UPDATE SET
+                                    ditm_estado = EXCLUDED.ditm_estado;
                             """)
                             for m in rec.modulos:
                                 timo_id = m.get("timo_id")
@@ -202,7 +202,7 @@ class DatabaseLoader(BaseLoader):
                                         "dire_id": dire_id,
                                         "timo_id": timo_id,
                                         "ditm_nombre": str(ditm_nombre).strip().upper(),
-                                        "ditm_estado": "ACT",
+                                        "ditm_estado": "A",
                                     })
 
                         # 5. Actualizar la tabla origen vinculando dire_id

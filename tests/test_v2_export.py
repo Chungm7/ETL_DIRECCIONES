@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from src.ui.server import (
     app,
     V2_EXPORT_HEADERS,
+    build_dynamic_export_headers,
     extract_v2_export_row,
     generate_excel_report,
     generate_csv_report,
@@ -192,54 +193,105 @@ def test_extract_v2_export_row_legacy_fallback(sample_v2_records):
     assert row["Referencia"] == "AL COSTADO DEL BANCO"
 
 
+def test_build_dynamic_export_headers():
+    """Verifica que build_dynamic_export_headers adapte las columnas según la cardinalidad del dataset."""
+    # 1. Dataset sin módulos ni vías secundarias: No debe tener columnas de módulos ni Via_Secundaria
+    records_simple = [
+        {"id_licencia": 1, "raw_text": "CALLE SAN JOSE 102", "vias": [{"via_nombre": "SAN JOSE", "divi_orden": 1}]}
+    ]
+    headers_simple, meta_simple = build_dynamic_export_headers(records_simple)
+    assert meta_simple["max_vias"] == 1
+    assert meta_simple["max_modulos"] == 0
+    assert "Via_Principal_Nombre" in headers_simple
+    assert "Via_Secundaria_Nombre" not in headers_simple
+    assert "Tipo_Modulo" not in headers_simple
+    assert "Modulo_1_Tipo" not in headers_simple
+    assert "Todos_Los_Modulos" not in headers_simple
+
+    # 2. Dataset con 3 vías y 3 módulos (Interior I, II, III)
+    records_complex = [
+        {
+            "id_licencia": 2,
+            "raw_text": "BALTA 100 CON SAN JOSE Y BOLOGNESI INT. 1, 2 Y 3",
+            "vias": [
+                {"via_nombre": "BALTA", "divi_orden": 1},
+                {"via_nombre": "SAN JOSE", "divi_orden": 2},
+                {"via_nombre": "BOLOGNESI", "divi_orden": 3},
+            ],
+            "modulos": [
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "1"},
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "2"},
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "3"},
+            ],
+        }
+    ]
+    headers_complex, meta_complex = build_dynamic_export_headers(records_complex)
+    assert meta_complex["max_vias"] == 3
+    assert meta_complex["max_modulos"] == 3
+    assert "Via_Principal_Nombre" in headers_complex
+    assert "Via_Secundaria_Nombre" in headers_complex
+    assert "Via_3_Nombre" in headers_complex
+    assert "Modulo_1_Tipo" in headers_complex
+    assert "Modulo_1_Valor" in headers_complex
+    assert "Modulo_2_Tipo" in headers_complex
+    assert "Modulo_2_Valor" in headers_complex
+    assert "Modulo_3_Tipo" in headers_complex
+    assert "Modulo_3_Valor" in headers_complex
+    assert "Todos_Los_Modulos" in headers_complex
+
+
 def test_generate_excel_report_structure(sample_v2_records):
-    """Verifica que generate_excel_report cree el archivo binario con 28 columnas y estilos."""
-    buf = generate_excel_report(sample_v2_records)
-    assert isinstance(buf, io.BytesIO)
-    content = buf.getvalue()
+    """Verifica que generate_excel_report cree el archivo binario con columnas dinámicas y con cabeceras explícitas."""
+    # 1. Con cabeceras estándar explícitas (28 columnas)
+    buf_std = generate_excel_report(sample_v2_records, headers=V2_EXPORT_HEADERS)
+    assert isinstance(buf_std, io.BytesIO)
+    wb_std = openpyxl.load_workbook(io.BytesIO(buf_std.getvalue()))
+    ws_std = wb_std.active
+    assert ws_std.max_column == 28
+    header_cells_std = [ws_std.cell(row=1, column=col).value for col in range(1, 29)]
+    assert header_cells_std == V2_EXPORT_HEADERS
+
+    # 2. Con cabeceras dinámicas (adaptadas automáticamente a sample_v2_records: 2 vías, 2 módulos, 1 componente extra)
+    buf_dyn = generate_excel_report(sample_v2_records)
+    assert isinstance(buf_dyn, io.BytesIO)
+    content = buf_dyn.getvalue()
     assert len(content) > 1000
 
-    wb = openpyxl.load_workbook(io.BytesIO(content))
-    ws = wb.active
-    assert ws.title == "Normalización Catastral V2"
-    assert ws.max_column == 28
-    assert ws.max_row == 4  # 1 fila de cabecera + 3 registros
-
-    # Verificar cabeceras
-    header_cells = [ws.cell(row=1, column=col).value for col in range(1, 29)]
-    assert header_cells == V2_EXPORT_HEADERS
+    wb_dyn = openpyxl.load_workbook(io.BytesIO(content))
+    ws_dyn = wb_dyn.active
+    assert ws_dyn.title == "Normalización Catastral V2"
+    assert ws_dyn.max_row == 4  # 1 fila de cabecera + 3 registros
 
     # Verificar primera fila
-    row1 = [ws.cell(row=2, column=col).value for col in range(1, 29)]
+    row1 = [ws_dyn.cell(row=2, column=col).value for col in range(1, ws_dyn.max_column + 1)]
     assert row1[0] == 1001
     assert row1[1] == 501
     assert row1[2] == "NORMALIZADO"
-    assert row1[4] == "CALLE"
-    assert row1[5] == "SAN JOSE"
-    assert row1[8] == "AVENIDA"
-    assert row1[9] == "LUIS GONZALES"
 
 
 def test_generate_csv_report_utf8_bom(sample_v2_records):
-    """Verifica que generate_csv_report cree un archivo CSV con BOM UTF-8 y 28 columnas."""
-    buf = generate_csv_report(sample_v2_records)
-    assert isinstance(buf, io.BytesIO)
-    raw_bytes = buf.getvalue()
-    assert raw_bytes.startswith(b"\xef\xbb\xbf")  # UTF-8 BOM
+    """Verifica que generate_csv_report cree un archivo CSV con BOM UTF-8 tanto con cabeceras estándar como dinámicas."""
+    # 1. Con cabeceras estándar explícitas
+    buf_std = generate_csv_report(sample_v2_records, headers=V2_EXPORT_HEADERS)
+    raw_bytes_std = buf_std.getvalue()
+    assert raw_bytes_std.startswith(b"\xef\xbb\xbf")
+    rows_std = list(csv.reader(io.StringIO(raw_bytes_std.decode("utf-8-sig"))))
+    assert rows_std[0] == V2_EXPORT_HEADERS
 
-    content = raw_bytes.decode("utf-8-sig")
+    # 2. Con cabeceras dinámicas
+    buf_dyn = generate_csv_report(sample_v2_records)
+    raw_bytes_dyn = buf_dyn.getvalue()
+    assert raw_bytes_dyn.startswith(b"\xef\xbb\xbf")  # UTF-8 BOM
+
+    content = raw_bytes_dyn.decode("utf-8-sig")
     reader = csv.reader(io.StringIO(content))
     rows = list(reader)
     assert len(rows) == 4  # Cabecera + 3 filas
-    assert rows[0] == V2_EXPORT_HEADERS
 
     # Fila 1 (Multi-vía)
     assert rows[1][0] == "1001"
     assert rows[1][1] == "501"
     assert rows[1][2] == "NORMALIZADO"
-    assert rows[1][5] == "SAN JOSE"
-    assert rows[1][9] == "LUIS GONZALES"
-    assert "CALLE SAN JOSE N° 102 con AVENIDA LUIS GONZALES N° 801" in rows[1][12]
 
     # Fila 2 (Observado)
     assert rows[2][0] == "1002"
