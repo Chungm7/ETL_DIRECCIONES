@@ -879,14 +879,14 @@ class DatabaseService:
                     ADD CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre);
                 """))
 
-                # 6. Asegurar que ditm_estado sea VARCHAR(1)
+                # 6. Asegurar que ditm_estado sea VARCHAR(3)
                 try:
                     session.execute(text(f"""
                         ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo"
-                        ALTER COLUMN ditm_estado TYPE VARCHAR(1);
+                        ALTER COLUMN ditm_estado TYPE VARCHAR(3);
                     """))
                 except Exception as ex_col:
-                    logger.debug("Aviso al asegurar VARCHAR(1) en ditm_estado: %s", ex_col)
+                    logger.debug("Aviso al asegurar VARCHAR(3) en ditm_estado: %s", ex_col)
 
                 # 7. Crear índice único de respaldo para ON CONFLICT
                 session.execute(text(f"""
@@ -898,6 +898,79 @@ class DatabaseService:
                 return True
         except Exception as e:
             logger.error("Error al asegurar restricción PK en %s.tb_direccion_tipo_modulo: %s", target_schema, e)
+            return False
+
+    def ensure_estado_columns_varchar3(self, schema: Optional[str] = None) -> bool:
+        """Asegura que todas las columnas de estado (*_estado) de las 10 tablas relacionales V2
+        tengan tipo VARCHAR(3) y admitan los estados A, I, E, ACT, INA, ELI sin errores de truncamiento.
+        """
+        target_schema = schema or self.settings.schema
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return False
+
+        tables_and_cols = [
+            ("tb_tipo_via", "tivi_estado"),
+            ("tb_via", "via_estado"),
+            ("tb_tipo_zona", "tizo_estado"),
+            ("tb_zona", "zona_estado"),
+            ("tb_direccion", "dire_estado"),
+            ("tb_direccion_via", "divi_estado"),
+            ("tb_componente_direccion", "codi_estado"),
+            ("tb_contenido_componente_direccion", "diti_estado"),
+            ("tb_tipo_modulo", "timo_estado"),
+            ("tb_direccion_tipo_modulo", "ditm_estado"),
+        ]
+
+        try:
+            with self.get_session() as session:
+                for tbl, col in tables_and_cols:
+                    if not self.table_exists(tbl, target_schema):
+                        continue
+                    try:
+                        col_len = session.execute(text("""
+                            SELECT character_maximum_length
+                            FROM information_schema.columns
+                            WHERE table_schema = :schema AND table_name = :tbl AND column_name = :col;
+                        """), {"schema": target_schema, "tbl": tbl, "col": col}).scalar()
+
+                        if col_len is not None and col_len < 3:
+                            logger.info(
+                                "Ampliando columna %s.%s.%s de VARCHAR(%s) a VARCHAR(3)...",
+                                target_schema, tbl, col, col_len
+                            )
+                            # Eliminar constraints CHECK antiguos sobre la columna si existieran
+                            old_cons = session.execute(text("""
+                                SELECT c.conname
+                                FROM pg_constraint c
+                                JOIN pg_namespace n ON n.oid = c.connamespace
+                                JOIN pg_class cl ON cl.oid = c.conrelid
+                                WHERE n.nspname = :schema
+                                  AND cl.relname = :tbl
+                                  AND c.contype = 'c'
+                                  AND pg_get_constraintdef(c.oid) ILIKE :col_pattern;
+                            """), {"schema": target_schema, "tbl": tbl, "col_pattern": f"%{col}%"}).fetchall()
+
+                            for c_row in old_cons:
+                                session.execute(text(f"""
+                                    ALTER TABLE "{target_schema}"."{tbl}"
+                                    DROP CONSTRAINT IF EXISTS "{c_row[0]}";
+                                """))
+
+                            session.execute(text(f"""
+                                ALTER TABLE "{target_schema}"."{tbl}"
+                                ALTER COLUMN "{col}" TYPE VARCHAR(3);
+                            """))
+
+                            session.execute(text(f"""
+                                ALTER TABLE "{target_schema}"."{tbl}"
+                                ADD CONSTRAINT "{tbl}_{col}_check"
+                                CHECK ("{col}" IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI'));
+                            """))
+                    except Exception as ex_col:
+                        logger.debug("Aviso al asegurar VARCHAR(3) en %s.%s: %s", tbl, col, ex_col)
+            return True
+        except Exception as e:
+            logger.debug("Aviso al verificar columnas de estado en %s: %s", target_schema, e)
             return False
 
     def ensure_v2_tables_exist(self, schema: Optional[str] = None) -> Dict[str, Any]:
@@ -945,6 +1018,9 @@ class DatabaseService:
 
         # Asegurar restricción PK compuesta en tb_direccion_tipo_modulo
         self.ensure_modulo_pk_constraint(target_schema)
+
+        # Asegurar que todas las columnas *_estado sean VARCHAR(3)
+        self.ensure_estado_columns_varchar3(target_schema)
 
         try:
             with self.get_session() as session:

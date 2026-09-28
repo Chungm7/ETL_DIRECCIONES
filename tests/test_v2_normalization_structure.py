@@ -477,3 +477,41 @@ class TestV2DatabaseLoader:
         executed_sqls = [str(call.args[0]) for call in mock_session.execute.call_args_list if len(call.args) > 0]
         assert any("DROP CONSTRAINT IF EXISTS \"pk_tb_direccion_tipo_modulo\"" in s for s in executed_sqls)
         assert any("ADD CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre)" in s for s in executed_sqls)
+
+    def test_direccion_destino_estado_varchar3(self):
+        """Verifica que DireccionDestino acepte 'A' y 'ACT' sin exceder max_length=3."""
+        d1 = DireccionDestino(id_licencia=1)
+        assert d1.dire_estado == "A"
+
+        d2 = DireccionDestino(id_licencia=2, dire_estado="ACT")
+        assert d2.dire_estado == "ACT"
+
+        # Validar rechazo de más de 3 caracteres
+        with pytest.raises(Exception):
+            DireccionDestino(id_licencia=3, dire_estado="ACTIVO")
+
+    def test_db_service_ensure_estado_columns_varchar3(self):
+        """Verifica que ensure_estado_columns_varchar3 amplíe columnas con longitud < 3."""
+        from src.services.db_service import DatabaseService
+
+        mock_db = DatabaseService()
+        mock_session = MagicMock()
+        mock_db.get_session = MagicMock()
+        mock_db.get_session.return_value.__enter__.return_value = mock_session
+        mock_db._engine = True
+        mock_db.table_exists = MagicMock(return_value=True)
+
+        # Simular que la primera tabla tiene longitud 1, las demás 3
+        mock_session.execute.side_effect = [
+            MagicMock(scalar=MagicMock(return_value=1)),  # length for tb_tipo_via.tivi_estado < 3
+            MagicMock(fetchall=MagicMock(return_value=[("tb_tipo_via_tivi_estado_check",)])),  # old constraint
+            MagicMock(),  # DROP CONSTRAINT
+            MagicMock(),  # ALTER COLUMN TYPE VARCHAR(3)
+            MagicMock(),  # ADD CONSTRAINT
+        ] + [MagicMock(scalar=MagicMock(return_value=3)) for _ in range(9)]  # other 9 tables already 3
+
+        result = mock_db.ensure_estado_columns_varchar3("sc_migracion_direcciones")
+        assert result is True
+        executed_sqls = [str(call.args[0]) for call in mock_session.execute.call_args_list if len(call.args) > 0]
+        assert any("ALTER COLUMN \"tivi_estado\" TYPE VARCHAR(3)" in s for s in executed_sqls)
+

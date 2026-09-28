@@ -25,8 +25,9 @@ class DireccionDestino(BaseModel):
         description="Hito espacial o comercial exclusivo de orientación urbana (ej. CERCA AL SENATI, FRENTE AL PARQUE)",
     )
     dire_estado: str = Field(
-        default="ACT",
-        description="Estado de la dirección: ACT (Activo), INA (Inactivo)",
+        default="A",
+        max_length=3,
+        description="Estado de la dirección: A (Activo), I (Inactivo), E (Eliminado)",
     )
 
     # Relación de Vías (soporta 1 vía o múltiples en esquina/intersección)

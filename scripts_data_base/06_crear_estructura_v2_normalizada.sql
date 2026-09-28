@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS tb_tipo_via (
     tivi_id             BIGSERIAL NOT NULL,
     tivi_nombre         VARCHAR(50) NOT NULL,
     tivi_abreviatura    VARCHAR(10) NOT NULL,
-    tivi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I', 'E')),
+    tivi_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_tipo_via PRIMARY KEY (tivi_id),
     CONSTRAINT uq_tb_tipo_via_nombre UNIQUE (tivi_nombre)
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS tb_via (
     via_id              BIGSERIAL NOT NULL,
     tivi_id             BIGINT NOT NULL,
     via_nombre          VARCHAR(255) NOT NULL,
-    via_estado          VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (via_estado IN ('A', 'I', 'E')),
+    via_estado          VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (via_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_via PRIMARY KEY (via_id),
     CONSTRAINT fk_tb_via_tipo_via 
@@ -69,7 +69,7 @@ CREATE TABLE IF NOT EXISTS tb_tipo_zona (
     tizo_id             BIGSERIAL NOT NULL,
     tizo_nombre         VARCHAR(100) NOT NULL,
     tizo_abreviatura    VARCHAR(10) NOT NULL,
-    tizo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I', 'E')),
+    tizo_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_tipo_zona PRIMARY KEY (tizo_id),
     CONSTRAINT uq_tb_tipo_zona_nombre UNIQUE (tizo_nombre)
@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS tb_zona (
     zona_id             BIGSERIAL NOT NULL,
     tizo_id             BIGINT NOT NULL,
     zona_nombre         VARCHAR(255) NOT NULL,
-    zona_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (zona_estado IN ('A', 'I', 'E')),
+    zona_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (zona_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_zona PRIMARY KEY (zona_id),
     CONSTRAINT fk_tb_zona_tipo_zona 
@@ -114,7 +114,7 @@ CREATE TABLE IF NOT EXISTS tb_direccion (
     dire_id             BIGSERIAL NOT NULL,
     zona_id             BIGINT,
     dire_referencia     VARCHAR(500),
-    dire_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (dire_estado IN ('A', 'I', 'E')),
+    dire_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_direccion PRIMARY KEY (dire_id),
     CONSTRAINT fk_tb_direccion_zona 
@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS tb_direccion_via (
     via_id              BIGINT NOT NULL,
     divi_numero         VARCHAR(20),
     divi_orden          INT DEFAULT 1,
-    divi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I', 'E')),
+    divi_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_direccion_via PRIMARY KEY (dire_id, via_id),
     CONSTRAINT fk_tb_direccion_via_dir 
@@ -171,7 +171,7 @@ CREATE TABLE IF NOT EXISTS tb_componente_direccion (
     codi_id             BIGSERIAL NOT NULL,
     codi_nombre         VARCHAR(100) NOT NULL,
     codi_es_urbano      BOOLEAN DEFAULT TRUE,
-    codi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (codi_estado IN ('A', 'I', 'E')),
+    codi_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (codi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_componente_direccion PRIMARY KEY (codi_id),
     CONSTRAINT uq_tb_componente_direccion_nombre UNIQUE (codi_nombre)
@@ -190,7 +190,7 @@ CREATE TABLE IF NOT EXISTS tb_contenido_componente_direccion (
     dire_id             BIGINT NOT NULL,
     codi_id             BIGINT NOT NULL,
     diti_nombre         VARCHAR(100) NOT NULL,
-    diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I', 'E')),
+    diti_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (dire_id, codi_id),
     CONSTRAINT fk_tb_contenido_componente_dir 
@@ -217,7 +217,7 @@ COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado: A (A
 CREATE TABLE IF NOT EXISTS tb_tipo_modulo (
     timo_id             BIGSERIAL NOT NULL,
     timo_nombre         VARCHAR(100) NOT NULL,
-    timo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (timo_estado IN ('A', 'I', 'E')),
+    timo_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (timo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_tipo_modulo PRIMARY KEY (timo_id),
     CONSTRAINT uq_tb_tipo_modulo_nombre UNIQUE (timo_nombre)
@@ -235,7 +235,7 @@ CREATE TABLE IF NOT EXISTS tb_direccion_tipo_modulo (
     dire_id             BIGINT NOT NULL,
     timo_id             BIGINT NOT NULL,
     ditm_nombre         VARCHAR(100) NOT NULL,
-    ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I', 'E')),
+    ditm_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre),
     CONSTRAINT fk_tb_direccion_modulo_dir 

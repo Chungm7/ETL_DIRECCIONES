@@ -136,10 +136,11 @@ class DatabaseLoader(BaseLoader):
                                 :zona_id, :dire_referencia, :dire_estado
                             ) RETURNING dire_id;
                         """)
+                        clean_estado = "A" if (rec.dire_estado in ("A", "ACT") or not rec.dire_estado) else str(rec.dire_estado)[:3]
                         dire_id = session.execute(ins_dir_sql, {
                             "zona_id": rec.zona_id,
                             "dire_referencia": rec.dire_referencia,
-                            "dire_estado": rec.dire_estado or "A",
+                            "dire_estado": clean_estado,
                         }).scalar()
                         rec.dire_id = dire_id
 
