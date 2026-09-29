@@ -76,7 +76,7 @@ class DireccionDestino(BaseModel):
 
     manzana: Optional[str] = Field(default=None, max_length=20, description="Identificador de Manzana (Mz)")
     lote: Optional[str] = Field(default=None, max_length=20, description="Identificador de Lote (Lt)")
-    slote: Optional[str] = Field(default=None, max_length=20, description="Sublote o división interna")
+    slote: Optional[str] = Field(default=None, max_length=100, description="Sublote o resumen de módulos interiores")
     referencia: Optional[str] = Field(default=None, max_length=255, description="Punto de referencia")
 
     @model_validator(mode="before")
@@ -85,24 +85,25 @@ class DireccionDestino(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        # 1. Sanitizar slote: si contiene 'PISO', 'ESQ', 'ESQUINA', etc. o supera 20 caracteres,
-        # reasignar a referencia para evitar ValidationError y truncamiento indebido
+        # 1. Sanitizar slote: si contiene 'PISO', 'ESQ', 'ESQUINA', etc., reasignar a referencia
         slote_val = data.get("slote")
         if slote_val and isinstance(slote_val, str):
             slote_clean = slote_val.strip()
-            is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ENTRE|CRUCE)\b", slote_clean, re.IGNORECASE))
-            if is_ref_like or len(slote_clean) > 20:
+            is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ENTRE|CRUCE|ALTURA|CUADRA)\b", slote_clean, re.IGNORECASE))
+            if is_ref_like:
                 current_ref = data.get("referencia") or data.get("dire_referencia") or ""
                 data["referencia"] = f"{current_ref} {slote_clean}".strip() if current_ref else slote_clean
                 data["dire_referencia"] = data["referencia"]
                 data["slote"] = None
+            elif len(slote_clean) > 100:
+                data["slote"] = slote_clean[:100].strip()
 
-        # 2. Límites de longitud seguros
+        # 2. Límites de longitud seguros iniciales
         limits = {
             "num_via": 50,
             "manzana": 20,
             "lote": 20,
-            "slote": 20,
+            "slote": 100,
             "referencia": 255,
             "dire_referencia": 500,
             "nom_via": 150,
@@ -167,7 +168,8 @@ class DireccionDestino(BaseModel):
         # 7. Sincronización Módulos y Slote
         mods = data.get("modulos") or []
         if not data.get("slote") and mods:
-            data["slote"] = ", ".join(f"{m.get('timo_nombre', '')} {m.get('ditm_nombre', '')}".strip() for m in mods)
+            summary_slote = ", ".join(f"{m.get('timo_nombre', '')} {m.get('ditm_nombre', '')}".strip() for m in mods)
+            data["slote"] = summary_slote[:100].strip()
         elif data.get("slote") and not mods:
             s_val = str(data["slote"]).strip()
             m_match = re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|PUERTA|STAND|TIENDA|BLOCK|OFICINA)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)", s_val, re.IGNORECASE)
@@ -176,5 +178,21 @@ class DireccionDestino(BaseModel):
                 mm = CatalogMatcher.match_tipo_modulo(m_match.group(1).upper())
                 if mm:
                     data["modulos"] = [{"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": m_match.group(2).strip()}]
+
+        # 8. Salvaguarda final defensiva contra ValidationError por longitud
+        final_limits = {
+            "num_via": 50,
+            "manzana": 20,
+            "lote": 20,
+            "slote": 100,
+            "referencia": 255,
+            "dire_referencia": 500,
+            "nom_via": 150,
+            "nom_zona": 150,
+        }
+        for field, max_len in final_limits.items():
+            val = data.get(field)
+            if val and isinstance(val, str) and len(val) > max_len:
+                data[field] = val[:max_len].strip()
 
         return data

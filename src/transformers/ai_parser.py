@@ -629,22 +629,22 @@ class AIAddressParser:
                 nom_zona = None
                 heuristica_aplicada = True
 
-        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.) o excede 20 chars, reubicar a referencia
+        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.), reubicar a referencia
         if slote:
             slote_clean = str(slote).strip()
-            if len(slote_clean) > 20 or re.search(
-                r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|BLOCK|EDIFICIO)\b",
-                slote_clean,
-                re.IGNORECASE,
-            ):
+            # Identificar si es exclusivamente una referencia urbana (PISO, ESQUINA, FRENTE, etc.)
+            # y NO un módulo oficial (BLOCK, INT, DPTO, TIENDA, STAND, OFICINA)
+            is_module_like = bool(re.search(r"\b(?:BLOCK|BLQ|INT(?:ERIOR)?|DPTO|DEP|TIENDA|TDA|STAND|OF(?:ICINA)?|PTA|PUERTA|PUESTO|LOCAL)\b", slote_clean, re.IGNORECASE))
+            is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", slote_clean, re.IGNORECASE))
+            if is_ref_like and not is_module_like:
                 if not referencia:
                     referencia = slote_clean
                 elif slote_clean.upper() not in referencia.upper():
                     referencia = f"{referencia} - {slote_clean}".strip(" -")
                 slote = None
                 heuristica_aplicada = True
-            elif len(slote_clean) > 20:
-                slote = slote_clean[:20].strip()
+            elif len(slote_clean) > 100:
+                slote = slote_clean[:100].strip()
             else:
                 slote = slote_clean
 

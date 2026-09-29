@@ -263,7 +263,7 @@ class DatabaseLoader(BaseLoader):
                                 upd_params["lote"] = rec.lote
                             if self.col_slt.lower() in self._target_cols:
                                 set_parts.append(f'"{self.col_slt}" = :slote')
-                                upd_params["slote"] = rec.slote
+                                upd_params["slote"] = str(rec.slote)[:100].strip() if rec.slote else None
                             if self.col_referencia.lower() in self._target_cols:
                                 set_parts.append(f'"{self.col_referencia}" = :referencia')
                                 upd_params["referencia"] = rec.dire_referencia
@@ -340,7 +340,7 @@ class DatabaseLoader(BaseLoader):
                 "id_zona": rec.id_zona,
                 "manzana": rec.manzana,
                 "lote": rec.lote,
-                "slote": rec.slote,
+                "slote": str(rec.slote)[:100].strip() if rec.slote else None,
                 "referencia": rec.dire_referencia,
                 "es_procesado": rec.es_procesado,
                 "observacion": rec.observacion,

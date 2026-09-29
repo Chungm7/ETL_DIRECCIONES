@@ -618,10 +618,14 @@ class DatabaseService:
             ADD COLUMN IF NOT EXISTS "{cols['id_zona']}" INTEGER,
             ADD COLUMN IF NOT EXISTS "{cols['manzana']}" VARCHAR(20),
             ADD COLUMN IF NOT EXISTS "{cols['lote']}" VARCHAR(20),
-            ADD COLUMN IF NOT EXISTS "{cols['slote']}" VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS "{cols['slote']}" VARCHAR(100),
             ADD COLUMN IF NOT EXISTS "{cols['referencia']}" VARCHAR(255),
             ADD COLUMN IF NOT EXISTS "{cols['es_procesado']}" BOOLEAN DEFAULT NULL,
             ADD COLUMN IF NOT EXISTS "{cols['observacion']}" TEXT;
+
+        -- Ampliar slote a VARCHAR(100) si existía previamente como VARCHAR(20)
+        ALTER TABLE "{schema}"."{table}"
+            ALTER COLUMN "{cols['slote']}" TYPE VARCHAR(100);
 
         -- Asegurar que es_procesado arranque como NULL (Pendiente) para registros no evaluados
         ALTER TABLE "{schema}"."{table}"
@@ -755,6 +759,17 @@ class DatabaseService:
         try:
             with self.get_session() as session:
                 session.execute(text(ddl))
+
+                # Si la tabla origen posee columna slote/sublote, asegurar que soporte hasta 100 caracteres
+                col_slt = next((c for c in existing_cols if c in ("slote", "sublote", "xxxx_slote")), None)
+                if col_slt:
+                    try:
+                        session.execute(text(f"""
+                            ALTER TABLE "{schema}"."{table}"
+                            ALTER COLUMN "{col_slt}" TYPE VARCHAR(100);
+                        """))
+                    except Exception as ex_slt:
+                        logger.debug("Aviso al ampliar columna %s en %s.%s: %s", col_slt, schema, table, ex_slt)
 
                 # Crear vista relacional dinámica para la tabla seleccionada por el usuario
                 try:

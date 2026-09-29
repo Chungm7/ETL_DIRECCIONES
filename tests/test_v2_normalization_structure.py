@@ -515,3 +515,53 @@ class TestV2DatabaseLoader:
         executed_sqls = [str(call.args[0]) for call in mock_session.execute.call_args_list if len(call.args) > 0]
         assert any("ALTER COLUMN \"tivi_estado\" TYPE VARCHAR(3)" in s for s in executed_sqls)
 
+    def test_multiple_modules_slote_summary_exceeds_20_chars_without_validation_error(self):
+        """Valida que direcciones con múltiples dependencias (como los 9 casos fallidos) no disparen ValidationError."""
+        # 1. Caso ID 261: 2 Tiendas (27 caracteres)
+        d_tiendas = DireccionDestino(
+            id_licencia=261,
+            modulos=[
+                {"timo_id": 5, "timo_nombre": "TIENDA", "ditm_nombre": "METRO"},
+                {"timo_id": 5, "timo_nombre": "TIENDA", "ditm_nombre": "LOCAL"},
+            ],
+        )
+        assert d_tiendas.slote == "TIENDA METRO, TIENDA LOCAL"
+        assert len(d_tiendas.slote) == 26
+        assert len(d_tiendas.slote) > 20
+
+        # 2. Caso ID 359: 2 Interiores (24 caracteres)
+        d_interiores = DireccionDestino(
+            id_licencia=359,
+            modulos=[
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "308"},
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "A"},
+            ],
+        )
+        assert d_interiores.slote == "INTERIOR 308, INTERIOR A"
+        assert len(d_interiores.slote) == 24
+
+        # 3. Caso ID 1013: 6 Oficinas (76 caracteres)
+        d_oficinas = DireccionDestino(
+            id_licencia=1013,
+            modulos=[
+                {"timo_id": 6, "timo_nombre": "OFICINA", "ditm_nombre": str(i)}
+                for i in range(204, 210)
+            ],
+        )
+        assert "OFICINA 204" in d_oficinas.slote
+        assert "OFICINA 209" in d_oficinas.slote
+        assert len(d_oficinas.slote) == 76
+
+    def test_slote_capped_safely_at_100_chars(self):
+        """Valida que módulos excesivos que superen 100 caracteres se trunquen limpiamente sin error de validación."""
+        d_extremo = DireccionDestino(
+            id_licencia=9999,
+            modulos=[
+                {"timo_id": 6, "timo_nombre": "OFICINA", "ditm_nombre": str(i)}
+                for i in range(100, 120)
+            ],
+        )
+        assert len(d_extremo.slote) <= 100
+        assert d_extremo.slote.startswith("OFICINA 100")
+
+
