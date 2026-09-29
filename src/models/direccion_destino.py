@@ -165,19 +165,27 @@ class DireccionDestino(BaseModel):
             if new_comps:
                 data["componentes"] = new_comps
 
-        # 7. Sincronización Módulos y Slote
+        # 7. Sincronización Módulos y Slote (Aislamiento Estricto para persistencia relacional V2)
         mods = data.get("modulos") or []
-        if not data.get("slote") and mods:
-            summary_slote = ", ".join(f"{m.get('timo_nombre', '')} {m.get('ditm_nombre', '')}".strip() for m in mods)
-            data["slote"] = summary_slote[:100].strip()
-        elif data.get("slote") and not mods:
-            s_val = str(data["slote"]).strip()
-            m_match = re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|PUERTA|STAND|TIENDA|BLOCK|OFICINA)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)", s_val, re.IGNORECASE)
+        sl_val = data.get("slote")
+        if sl_val and not mods:
+            s_val = str(sl_val).strip()
+            kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
+            m_match = re.search(rf"\b({kw})\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)", s_val, re.IGNORECASE)
             if m_match:
                 from src.transformers.catalog_matcher import CatalogMatcher
                 mm = CatalogMatcher.match_tipo_modulo(m_match.group(1).upper())
                 if mm:
                     data["modulos"] = [{"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": m_match.group(2).strip()}]
+        elif not sl_val and mods:
+            # Mantener resumen plano en slote para visualización GUI / compatibilidad V1 (máx 100 caracteres)
+            summary_slote = ", ".join(
+                f"{m.get('timo_nombre') or 'MODULO'} {m.get('ditm_nombre')}".strip()
+                for m in mods
+                if m.get("ditm_nombre")
+            )
+            if summary_slote:
+                data["slote"] = summary_slote[:100]
 
         # 8. Salvaguarda final defensiva contra ValidationError por longitud
         final_limits = {

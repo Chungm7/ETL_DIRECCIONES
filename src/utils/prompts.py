@@ -48,9 +48,14 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
      - NUNCA pongas vías secundarias como referencia ni como zona.
 
 4. **Regla Estricta de Múltiples Módulos (Interiores, Departamentos, Stands):**
-   - Si la dirección consigna múltiples interiores o dependencias (ej. "INT. 1, 2 Y 3", "INT. I, II Y III", "STAND 14 - INT. 2"), DEBES desglosar CADA interior como un elemento independiente dentro de `modulos`. Ejemplo: `[{"tipo_modulo": "INTERIOR", "valor": "1"}, {"tipo_modulo": "INTERIOR", "valor": "2"}, {"tipo_modulo": "INTERIOR", "valor": "3"}]`.
+   - Si la dirección consigna múltiples interiores o dependencias agrupadas o en rango (ej. "INT. B-C", "INT. 17-19", "INT. 1, 2 Y 3", "STAND 14 - INT. 2"), DEBES desglosar CADA interior como un elemento independiente dentro de `modulos`.
+     Ejemplos:
+     - "INT. B-C" -> `[{"tipo_modulo": "INTERIOR", "valor": "B"}, {"tipo_modulo": "INTERIOR", "valor": "C"}]`
+     - "INT. 17-19" -> `[{"tipo_modulo": "INTERIOR", "valor": "17"}, {"tipo_modulo": "INTERIOR", "valor": "19"}]`
+     - "INT. 1, 2 Y 3" -> `[{"tipo_modulo": "INTERIOR", "valor": "1"}, {"tipo_modulo": "INTERIOR", "valor": "2"}, {"tipo_modulo": "INTERIOR", "valor": "3"}]`
    - Queda TERMINANTEMENTE PROHIBIDO incluir subunidades en el número municipal de vía (`numero`). El número municipal debe contener ÚNICAMENTE dígitos numéricos puros (ej. "102", "839") o "S/N".
    - Queda TERMINANTEMENTE PROHIBIDO enviar módulos o dependencias interiores al campo `referencia`.
+   - Queda TERMINANTEMENTE PROHIBIDO clasificar un interior, departamento, tienda, stand, puerta o piso como "SUBLOTE" en `componentes`. El SUBLOTE es exclusivamente una subdivisión física de lote/terreno (ej. Mz. A Lt. 1 Slt. 2). Los interiores pertenecen ÚNICAMENTE al arreglo `modulos`.
 
 5. **Regla Estricta de Referencias:**
    - El campo `referencia` se reserva EXCLUSIVAMENTE para hitos de ubicación espacial y complejos comerciales ("FRENTE AL PARQUE", "CERCA AL SENATI", "A MEDIA CUADRA DEL MERCADO", "C.C. REAL PLAZA", "MALL AVENTURA", "BOULEVARD").
@@ -216,18 +221,32 @@ SYSTEM_PROMPT_ADDRESS_PARSER = get_system_prompt_address_parser()
 def build_user_prompt_for_address(address_text: str) -> str:
     """Construye el prompt de usuario para una dirección individual con inyección dinámica de candidatos oficiales."""
     try:
+        import re
         from src.transformers.catalog_matcher import CatalogMatcher
 
         clean_addr = address_text.strip()
         cands_via = CatalogMatcher.find_via_candidates(clean_addr, top_k=3, min_score=0.45)
         cands_zona = CatalogMatcher.find_zona_candidates(clean_addr, top_k=3, min_score=0.45)
 
+        # Si no hubo candidatos suficientes y la dirección contiene guiones o comas, buscar por segmentos
+        if (len(cands_via) < 2 or len(cands_zona) < 2) and any(sep in clean_addr for sep in ("-", "–", "—", ",", "/")):
+            parts = [p.strip() for p in re.split(r"[-–—,/]", clean_addr) if len(p.strip()) >= 3]
+            for p in parts:
+                p_vias = CatalogMatcher.find_via_candidates(p, top_k=2, min_score=0.50)
+                for pv, sc in p_vias:
+                    if not any(v['id'] == pv['id'] for v, _ in cands_via):
+                        cands_via.append((pv, sc))
+                p_zonas = CatalogMatcher.find_zona_candidates(p, top_k=2, min_score=0.50)
+                for pz, sc in p_zonas:
+                    if not any(z['id'] == pz['id'] for z, _ in cands_zona):
+                        cands_zona.append((pz, sc))
+
         hint_lines = []
         if cands_via:
-            v_list = [f"'{c['nom_via']}'" for c, _ in cands_via]
+            v_list = [f"'{c['nom_via']}'" for c, _ in cands_via[:4]]
             hint_lines.append(f"Vías candidatas del catálogo oficial: {', '.join(v_list)}")
         if cands_zona:
-            z_list = [f"'{c['nom_zona']}'" for c, _ in cands_zona]
+            z_list = [f"'{c['nom_zona']}'" for c, _ in cands_zona[:4]]
             hint_lines.append(f"Zonas candidatas del catálogo oficial: {', '.join(z_list)}")
 
         hints_str = f"[Candidatos Oficiales de Chiclayo Identificados:\n - " + "\n - ".join(hint_lines) + "]\n\n" if hint_lines else ""

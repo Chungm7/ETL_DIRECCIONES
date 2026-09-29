@@ -536,21 +536,26 @@ class AIAddressParser:
 
             can_swap = not (via_has_via_prefix and zona_has_zone_prefix)
 
-            # Caso 1: Inversión Semántica de Entidades de Doble Rol
-            # Si nom_via corresponde a una zona oficial (ej. DIEGO FERRE, JOSE OLAYA, REMIGIO SILVA, SANTA VICTORIA)
-            # y nom_zona corresponde EXCLUSIVAMENTE a una vía oficial (ej. BAQUIJANO, MANUEL ARTEAGA, CERVANTES)
-            # y nom_via no tiene prefijo explícito de vía (CALLE, AV), los roles fueron invertidos:
-            if can_swap and v_as_zona and z_as_via and not z_as_zona and not via_has_via_prefix:
+            # Caso 1: Inversión Semántica de Entidades
+            # Si nom_via corresponde a una zona oficial y nom_zona corresponde a una vía oficial,
+            # o si mantenerlos causaría conflicto (ej. not v_as_via o not z_as_zona):
+            if can_swap and v_as_zona and z_as_via and (not v_as_via or not z_as_zona) and not via_has_via_prefix:
                 nom_via, nom_zona = nom_zona, nom_via
                 heuristica_aplicada = True
                 if not num_via:
-                    m_num_swap = re.search(rf"\b{re.escape(nom_via)}\s*(?:N°?\s*)?(\d+)\b", raw_text, re.IGNORECASE)
+                    m_num_swap = re.search(r"(\d+)\s*$", raw_text)
+                    if m_num_swap:
+                        num_via = m_num_swap.group(1).lstrip("0") or "S/N"
+            elif can_swap and not v_as_via and v_as_zona and z_as_via:
+                nom_via, nom_zona = nom_zona, nom_via
+                heuristica_aplicada = True
+                if not num_via:
+                    m_num_swap = re.search(r"(\d+)\s*$", raw_text)
                     if m_num_swap:
                         num_via = m_num_swap.group(1).lstrip("0") or "S/N"
             # Caso 2: Cruzada de vías (Intersección en esquina asignada a zona, ej: CA. ARICA N 1028 - HEROES CIVILES N 178)
             # Solo aplica si NINGUNA de las dos entidades corresponde a una zona oficial
             elif v_as_via and z_as_via and not v_as_zona and not z_as_zona and not zona_has_zone_prefix:
-                # nom_zona es en realidad una segunda vía (calle transversal / esquina)
                 cross_ref = f"ESQ. {z_as_via.get('nom_via', nom_zona)}"
                 if not referencia:
                     referencia = cross_ref
@@ -559,11 +564,7 @@ class AIAddressParser:
                 nom_zona = None
                 heuristica_aplicada = True
             elif can_swap:
-                if not v_as_via and v_as_zona and z_as_via and not z_as_zona:
-                    nom_via, nom_zona = nom_zona, nom_via
-                    heuristica_aplicada = True
-                elif not v_as_via and v_as_zona and not z_as_zona and not via_has_via_prefix:
-                    # nom_via es definitivamente una zona oficial y nom_zona no lo es -> invertir roles
+                if not v_as_via and v_as_zona and not z_as_zona and not via_has_via_prefix:
                     nom_via, nom_zona = nom_zona, nom_via
                     heuristica_aplicada = True
 
@@ -841,10 +842,20 @@ class AIAddressParser:
             for c in extraction.componentes:
                 mc = CatalogMatcher.match_componente(c.nombre)
                 if mc:
+                    c_val_str = str(c.valor).strip()
+                    # Aislamiento estricto: Si el componente es SUBLOTE pero contiene módulos o pisos, NUNCA ingresarlo
+                    if mc[1] == "SUBLOTE":
+                        has_mod = bool(re.search(
+                            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                            c_val_str,
+                            re.IGNORECASE,
+                        ))
+                        if has_mod or "PISO" in c_val_str.upper():
+                            continue
                     componentes_result.append({
                         "codi_id": mc[0],
                         "codi_nombre": mc[1],
-                        "diti_nombre": str(c.valor).strip(),
+                        "diti_nombre": c_val_str,
                     })
         if manzana and not any(cr["codi_nombre"] == "MANZANA" for cr in componentes_result):
             componentes_result.append({"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": str(manzana).strip()})
@@ -922,7 +933,15 @@ class AIAddressParser:
                         for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_vals, flags=re.IGNORECASE)
                         if p.strip()
                     ]
-                    parts = [p for p in parts if p and p.upper() not in ("N", "NRO", "NUM")]
+                    noise_tokens = {
+                        "N", "NRO", "NUM", "PISO", "PISOS", "NIVEL", "CHICLAYO", "LAMBAYEQUE",
+                        "FERRENAFE", "PIMENTEL", "LA VICTORIA", "VICTORIA", "JLO", "REQUE",
+                        "MONSEFU", "LIMA", "PERU", "PERÚ"
+                    }
+                    parts = [
+                        p for p in parts
+                        if p and p.upper() not in noise_tokens and not (len(p) > 5 and not p.isdigit())
+                    ]
                     if len(parts) > 1 and all(len(p) <= 6 for p in parts):
                         for p in parts:
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p for mr in modulos_result):
@@ -962,13 +981,6 @@ class AIAddressParser:
                 clean_referencia,
                 flags=re.IGNORECASE,
             )
-            # Eliminar menciones de vías identificadas para no duplicar en referencia
-            if vias_result:
-                for vr in vias_result:
-                    v_name = vr.get("via_nombre")
-                    if v_name:
-                        clean_referencia = re.sub(rf"\b(?:ESQ(?:UINA)?\.?|CON|CRUCE\s+(?:CON)?)\s+(?:{re.escape(v_name)})\b", "", clean_referencia, flags=re.IGNORECASE)
-                        clean_referencia = re.sub(rf"\b{re.escape(v_name)}\b", "", clean_referencia, flags=re.IGNORECASE)
             # Remover residuos de puntuación y espacios
             clean_referencia = re.sub(r"\s+", " ", clean_referencia).strip(" -/,.:;")
             if not clean_referencia:
@@ -977,8 +989,8 @@ class AIAddressParser:
         if two_vias_conflict:
             observaciones.append(
                 f"Conflicto de vías: Se detectaron dos vías oficiales juntas ('{two_vias_conflict[0]}' y '{two_vias_conflict[1]}'). "
-                "Verifique si corresponde a una intersección o confirme cuál es la vía principal."
-            )
+                    "Verifique si corresponde a una intersección o confirme cuál es la vía principal."
+                )
 
         if via_detectada_en_texto and not matched_via:
             det_via = f"Vía '{nom_via}' no figura en el catálogo maestro de vías de Chiclayo."
@@ -987,10 +999,28 @@ class AIAddressParser:
             observaciones.append(det_via)
 
         if zona_detectada_en_texto and not matched_zona:
-            det_zona = f"Zona/Habilitación '{nom_zona}' no figura en el catálogo maestro de zonas de Chiclayo."
-            if matched_via:
-                det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})."
-            observaciones.append(det_zona)
+            # Depurar zonas falsas generadas por números, módulos o centros comerciales
+            is_digit_noise = bool(nom_zona and str(nom_zona).strip().isdigit())
+            is_module_noise = bool(re.search(r"\b(TIENDA|TDA|STAND|STD|INT(?:ERIOR)?|DPTO|DEP|EDIF|EDIFICIO|XXV|XXVI|PLANTA|PISO|PLAZA)\b", str(nom_zona), re.IGNORECASE))
+            is_mall_noise = bool(re.search(r"\b(GRAN\s+PLAZA|REAL\s+PLAZA|AEROPUERTO|MERCADO|MDO|OPEN\s+PLAZA|MALL|GALERIA)\b", str(nom_zona), re.IGNORECASE))
+            if is_digit_noise or is_module_noise or is_mall_noise:
+                if is_mall_noise:
+                    mall_ref = f"C.C. {nom_zona}"
+                    clean_referencia = f"{clean_referencia} - {mall_ref}".strip(" -") if clean_referencia else mall_ref
+                nom_zona = None
+                zona_detectada_en_texto = False
+            elif matched_via and (num_via or vias_result or is_explicit_corner):
+                # Vía oficial 100% confirmada con numeración municipal o esquina:
+                # Una zona que no figura en el catálogo maestro (ej. sector informal o vecino) se conserva como referencia y NO invalida la dirección
+                sec_ref = f"Sector/Zona: {nom_zona}"
+                clean_referencia = f"{clean_referencia} - {sec_ref}".strip(" -") if clean_referencia else sec_ref
+                nom_zona = None
+                zona_detectada_en_texto = False
+            else:
+                det_zona = f"Zona/Habilitación '{nom_zona}' no figura en el catálogo maestro de zonas de Chiclayo."
+                if matched_via:
+                    det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})."
+                observaciones.append(det_zona)
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:
             observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
@@ -1013,6 +1043,8 @@ class AIAddressParser:
 
         if "NO USAR LA VIA PUBLICA" in raw_text.upper():
             observaciones.append("Advertencia registrada: Restricción de uso de vía pública en la licencia.")
+
+
 
         if observaciones:
             # Caso observado: Se nullifican relaciones para consistencia

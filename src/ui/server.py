@@ -1220,7 +1220,13 @@ def extract_v2_export_row(
         if "MANZANA" in c_nom and not mz:
             mz = c_val
         elif "SUBLOTE" in c_nom and not sl:
-            sl = c_val
+            has_mod = bool(re.search(
+                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|BLOCK|BLQ|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
+                c_val,
+                re.IGNORECASE,
+            ))
+            if not has_mod and "PISO" not in c_val.upper():
+                sl = c_val
         elif "LOTE" in c_nom and not lt:
             lt = c_val
         elif "PISO" in c_nom and not piso:
@@ -1262,20 +1268,30 @@ def extract_v2_export_row(
             m_v = str(m.get("ditm_nombre") or "").strip()
             if m_v:
                 extracted_mods.append((m_t, m_v))
-    elif sl:
-        m_pattern = re.compile(
-            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|BLOCK|BLQ|LOCAL|OFICINA|OF)\b\.?\s*([A-Z0-9\-]+(?:\s*(?:,|Y|-)\s*[A-Z0-9\-]+)*)",
+    if sl:
+        has_mod_in_sl = bool(re.search(
+            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|BLOCK|BLQ|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
+            sl,
             re.IGNORECASE,
-        )
-        for m_match in m_pattern.finditer(sl):
-            t_name = m_match.group(1).upper()
-            raw_val = m_match.group(2).strip()
-            parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_val, flags=re.IGNORECASE) if p.strip()]
-            if len(parts) > 1 and all(len(p) <= 6 for p in parts):
-                for p in parts:
-                    extracted_mods.append((t_name, p))
-            else:
-                extracted_mods.append((t_name, raw_val))
+        ))
+        if has_mod_in_sl:
+            if not extracted_mods:
+                kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
+                m_pattern = re.compile(
+                    rf"\b({kw})\b\.?\s*[:\-]?\s*([A-Z0-9\-]+(?:\s*(?:,|Y|-)\s*(?!{kw}\b)[A-Z0-9\-]+)*)",
+                    re.IGNORECASE,
+                )
+                for m_match in m_pattern.finditer(sl):
+                    t_name = m_match.group(1).upper()
+                    raw_val = m_match.group(2).strip()
+                    parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_val, flags=re.IGNORECASE) if p.strip()]
+                    if len(parts) > 1 and all(len(p) <= 6 for p in parts):
+                        for p in parts:
+                            extracted_mods.append((t_name, p))
+                    else:
+                        extracted_mods.append((t_name, raw_val))
+            # Limpiar sl para que no figure falsamente como sublote predial
+            sl = ""
 
     row_mod_data: Dict[str, Any] = {}
     limit_mods = max(1, max_modulos, len(extracted_mods))
@@ -1520,13 +1536,23 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
         raw_comps = r.get("componentes") or []
         if raw_comps:
             for c in raw_comps:
+                c_nom = str(c.get("codi_nombre") or c.get("tipo_componente") or c.get("nombre") or "").upper()
+                c_val = str(c.get("diti_nombre") or c.get("valor") or "").strip()
+                if "SUBLOTE" in c_nom:
+                    has_mod = bool(re.search(
+                        r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                        c_val,
+                        re.IGNORECASE,
+                    ))
+                    if has_mod or "PISO" in c_val.upper():
+                        continue
                 componentes_nested.append({
                     "codi_id": c.get("codi_id") or None,
                     "tipo_componente": c.get("codi_nombre") or None,
                     "nombre": c.get("codi_nombre") or None,
                     "codi_nombre": c.get("codi_nombre") or None,
-                    "diti_nombre": str(c.get("diti_nombre") or "").strip(),
-                    "valor": str(c.get("diti_nombre") or "").strip(),
+                    "diti_nombre": c_val,
+                    "valor": c_val,
                 })
         else:
             if row_dict["Manzana"]:
@@ -1534,7 +1560,13 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
             if row_dict["Lote"]:
                 componentes_nested.append({"codi_id": 2, "tipo_componente": "LOTE", "nombre": "LOTE", "codi_nombre": "LOTE", "valor": row_dict["Lote"], "diti_nombre": row_dict["Lote"]})
             if row_dict["Sublote"]:
-                componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"]})
+                has_mod = bool(re.search(
+                    r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                    row_dict["Sublote"],
+                    re.IGNORECASE,
+                ))
+                if not has_mod and "PISO" not in row_dict["Sublote"].upper():
+                    componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"]})
             if row_dict["Piso"]:
                 componentes_nested.append({"codi_id": 4, "tipo_componente": "PISO", "nombre": "PISO", "codi_nombre": "PISO", "valor": row_dict["Piso"], "diti_nombre": row_dict["Piso"]})
 
@@ -1566,6 +1598,8 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
             "tipo_zona": row_dict["Tipo_Zona"] or None,
         }
 
+        clean_sublote_final = row_dict["Sublote"] if (row_dict["Sublote"] and not re.search(r"\b(INT|DEP|STAND|TIENDA|TDA|OF|BLOCK|LOCAL|PUESTO|PUERTA)\b", str(row_dict["Sublote"]), re.I)) else None
+
         # Objeto unificado V2 con retrocompatibilidad
         rec_obj = {
             "id": row_dict["ID"],
@@ -1595,12 +1629,12 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
             "id_zona": row_dict["ID_Zona"] or None,
             "manzana": row_dict["Manzana"] or None,
             "lote": row_dict["Lote"] or None,
-            "slote": row_dict["Sublote"] or None,
+            "slote": clean_sublote_final,
             "piso": row_dict["Piso"] or None,
             "catastro": {
                 "manzana": row_dict["Manzana"] or None,
                 "lote": row_dict["Lote"] or None,
-                "sublote": row_dict["Sublote"] or None,
+                "sublote": clean_sublote_final,
                 "piso": row_dict["Piso"] or None,
                 "otros": [c.strip() for c in row_dict["Otros_Componentes"].split(";") if c.strip()] if row_dict["Otros_Componentes"] else [],
             },
