@@ -924,18 +924,16 @@ V2_EXPORT_HEADERS = [
     "Via_Principal_Tipo",
     "Via_Principal_Nombre",
     "Via_Principal_Numero",
-    "Via_Principal_ID",
     "Via_Secundaria_Tipo",
     "Via_Secundaria_Nombre",
     "Via_Secundaria_Numero",
-    "Via_Secundaria_ID",
     "Todas_Las_Vias",
     "Tipo_Zona",
     "Nombre_Zona",
-    "ID_Zona",
     "Manzana",
     "Lote",
     "Sublote",
+    "Block",
     "Piso",
     "Otros_Componentes",
     "Tipo_Modulo",
@@ -974,14 +972,14 @@ def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[st
             num_m = 1
         elif not num_m and r.get("slote"):
             sl_str = str(r.get("slote") or "")
-            if re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|STAND|TIENDA|BLOCK|OFICINA|PUERTA)\b", sl_str, re.IGNORECASE):
+            if re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|STAND|TIENDA|OFICINA|PUERTA)\b", sl_str, re.IGNORECASE):
                 parts = [p for p in re.split(r",|\s+Y\s+", sl_str, flags=re.IGNORECASE) if p.strip()]
                 num_m = max(1, len(parts)) if len(parts) > 1 else 1
         if num_m > max_modulos:
             max_modulos = num_m
 
     # 3. Determinar cardinalidad máxima de componentes adicionales (rurales / no estándar)
-    standard_comp_names = {"MANZANA", "LOTE", "SUBLOTE", "PISO"}
+    standard_comp_names = {"MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO"}
     max_extra_comps = 0
     for r in records:
         raw_comps = r.get("componentes") or []
@@ -1000,24 +998,21 @@ def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[st
         "Direccion_Original",
     ]
 
-    # Vías
+    # Vías (sin IDs técnicos)
     if max_vias == 1:
         headers.extend([
             "Via_Principal_Tipo",
             "Via_Principal_Nombre",
             "Via_Principal_Numero",
-            "Via_Principal_ID",
         ])
     elif max_vias == 2:
         headers.extend([
             "Via_Principal_Tipo",
             "Via_Principal_Nombre",
             "Via_Principal_Numero",
-            "Via_Principal_ID",
             "Via_Secundaria_Tipo",
             "Via_Secundaria_Nombre",
             "Via_Secundaria_Numero",
-            "Via_Secundaria_ID",
         ])
     else:
         # 3 o más vías
@@ -1025,34 +1020,31 @@ def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[st
             "Via_Principal_Tipo",
             "Via_Principal_Nombre",
             "Via_Principal_Numero",
-            "Via_Principal_ID",
             "Via_Secundaria_Tipo",
             "Via_Secundaria_Nombre",
             "Via_Secundaria_Numero",
-            "Via_Secundaria_ID",
         ])
         for v in range(3, max_vias + 1):
             headers.extend([
                 f"Via_{v}_Tipo",
                 f"Via_{v}_Nombre",
                 f"Via_{v}_Numero",
-                f"Via_{v}_ID",
             ])
 
     headers.append("Todas_Las_Vias")
 
-    # Zona
+    # Zona (sin ID técnico)
     headers.extend([
         "Tipo_Zona",
         "Nombre_Zona",
-        "ID_Zona",
     ])
 
-    # Componentes Catastrales Estándar
+    # Componentes Catastrales Estándar (incluye Block y Piso)
     headers.extend([
         "Manzana",
         "Lote",
         "Sublote",
+        "Block",
         "Piso",
     ])
 
@@ -1202,16 +1194,17 @@ def extract_v2_export_row(
     nombre_zona = r.get("nom_zona") or r.get("zona_nombre") or ""
     id_zona = r.get("id_zona") or r.get("zona_id") or ""
 
-    # 17-21. Componentes Catastrales (Manzana, Lote, Sublote, Piso, Otros)
+    # 17-21. Componentes Catastrales (Manzana, Lote, Sublote, Block, Piso, Otros)
     mz = str(r.get("manzana") or "").strip()
     lt = str(r.get("lote") or "").strip()
     sl = str(r.get("slote") or "").strip()
+    block = str(r.get("block") or "").strip()
     piso = str(r.get("piso") or "").strip()
     otros_comp_list = []
     extra_comps_list = []
 
     raw_comps = r.get("componentes") or []
-    standard_names = {"MANZANA", "LOTE", "SUBLOTE", "PISO"}
+    standard_names = {"MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO"}
     for c in raw_comps:
         c_nom = (c.get("codi_nombre") or "").upper().strip()
         c_val = str(c.get("diti_nombre") or "").strip()
@@ -1221,14 +1214,16 @@ def extract_v2_export_row(
             mz = c_val
         elif "SUBLOTE" in c_nom and not sl:
             has_mod = bool(re.search(
-                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|BLOCK|BLQ|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
+                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
                 c_val,
                 re.IGNORECASE,
             ))
-            if not has_mod and "PISO" not in c_val.upper():
+            if not has_mod and "PISO" not in c_val.upper() and not re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", c_val, re.I):
                 sl = c_val
         elif "LOTE" in c_nom and not lt:
             lt = c_val
+        elif ("BLOCK" in c_nom or "BLOQUE" in c_nom or "TORRE" in c_nom) and not block:
+            block = c_val
         elif "PISO" in c_nom and not piso:
             piso = c_val
         else:
@@ -1237,6 +1232,12 @@ def extract_v2_export_row(
                 otros_comp_list.append(item_desc)
             if c_nom not in standard_names:
                 extra_comps_list.append(c)
+
+    if not block and sl and re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", sl, re.IGNORECASE):
+        b_m = re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*([0-9A-Z\-]+)", sl, re.IGNORECASE)
+        if b_m:
+            block = b_m.group(1)
+            sl = re.sub(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*[0-9A-Z\-]+", "", sl, flags=re.IGNORECASE).strip(" -/,.")
 
     if not piso and sl and "PISO" in sl.upper():
         p_m = re.search(r"PISO\s*([0-9A-Z]+)", sl, re.IGNORECASE)
@@ -1270,13 +1271,13 @@ def extract_v2_export_row(
                 extracted_mods.append((m_t, m_v))
     if sl:
         has_mod_in_sl = bool(re.search(
-            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|BLOCK|BLQ|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
+            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
             sl,
             re.IGNORECASE,
         ))
         if has_mod_in_sl:
             if not extracted_mods:
-                kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
+                kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
                 m_pattern = re.compile(
                     rf"\b({kw})\b\.?\s*[:\-]?\s*([A-Z0-9\-]+(?:\s*(?:,|Y|-)\s*(?!{kw}\b)[A-Z0-9\-]+)*)",
                     re.IGNORECASE,
@@ -1336,6 +1337,7 @@ def extract_v2_export_row(
         "Manzana": mz,
         "Lote": lt,
         "Sublote": sl,
+        "Block": block,
         "Piso": piso,
         "Otros_Componentes": otros_componentes,
         "Tipo_Modulo": tipo_modulo,
@@ -1567,6 +1569,8 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
                 ))
                 if not has_mod and "PISO" not in row_dict["Sublote"].upper():
                     componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"]})
+            if row_dict.get("Block"):
+                componentes_nested.append({"codi_id": 11, "tipo_componente": "BLOCK", "nombre": "BLOCK", "codi_nombre": "BLOCK", "valor": row_dict["Block"], "diti_nombre": row_dict["Block"]})
             if row_dict["Piso"]:
                 componentes_nested.append({"codi_id": 4, "tipo_componente": "PISO", "nombre": "PISO", "codi_nombre": "PISO", "valor": row_dict["Piso"], "diti_nombre": row_dict["Piso"]})
 
@@ -1593,7 +1597,7 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
 
         # Zona anidada
         zona_nested = {
-            "id_zona": row_dict["ID_Zona"] or None,
+            "id_zona": row_dict.get("ID_Zona") or None,
             "nombre_zona": row_dict["Nombre_Zona"] or None,
             "tipo_zona": row_dict["Tipo_Zona"] or None,
         }
@@ -1623,18 +1627,22 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
             "nom_via": row_dict["Via_Principal_Nombre"] or None,
             "tipo_via_name": row_dict["Via_Principal_Tipo"] or None,
             "num_via": row_dict["Via_Principal_Numero"] or None,
-            "id_via": row_dict["Via_Principal_ID"] or None,
+            "id_via": row_dict.get("Via_Principal_ID") or None,
             "nom_zona": row_dict["Nombre_Zona"] or None,
             "tipo_zona_name": row_dict["Tipo_Zona"] or None,
-            "id_zona": row_dict["ID_Zona"] or None,
+            "id_zona": row_dict.get("ID_Zona") or None,
             "manzana": row_dict["Manzana"] or None,
             "lote": row_dict["Lote"] or None,
+            "sublote": clean_sublote_final,
             "slote": clean_sublote_final,
+            "block": row_dict.get("Block") or None,
             "piso": row_dict["Piso"] or None,
             "catastro": {
                 "manzana": row_dict["Manzana"] or None,
                 "lote": row_dict["Lote"] or None,
                 "sublote": clean_sublote_final,
+                "slote": clean_sublote_final,
+                "block": row_dict.get("Block") or None,
                 "piso": row_dict["Piso"] or None,
                 "otros": [c.strip() for c in row_dict["Otros_Componentes"].split(";") if c.strip()] if row_dict["Otros_Componentes"] else [],
             },

@@ -47,9 +47,9 @@ class TestAIAddressObservations(unittest.TestCase):
         self.assertEqual(extraction.manzana, "B")
         self.assertEqual(extraction.lote, "14")
         self.assertEqual(extraction.slote, "A")
-        self.assertIn("DEP 301", extraction.referencia)
-        self.assertIn("STAND 12", extraction.referencia)
-        self.assertIn("PISO 3", extraction.referencia)
+        self.assertEqual(extraction.piso, "3")
+        self.assertTrue(any(m.tipo_modulo == "DEPARTAMENTO" and str(m.valor) == "301" for m in extraction.modulos))
+        self.assertTrue(any(m.tipo_modulo == "STAND" and str(m.valor) == "12" for m in extraction.modulos))
         self.assertIn("FRENTE AL PARQUE", extraction.referencia)
         self.assertEqual(extraction.observaciones, "Requiere verificación de numeración municipal")
         self.assertEqual(extraction.confianza, 0.95)
@@ -183,7 +183,7 @@ class TestAIAddressObservations(unittest.TestCase):
         dest2 = self.parser.parse(rec2)
         self.assertTrue(dest2.es_procesado)
         self.assertEqual(dest2.id_via, 104)
-        self.assertIn("STAND 3 B - I", dest2.referencia)
+        self.assertTrue(any(m["timo_nombre"] == "STAND" and m["ditm_nombre"] == "3" for m in dest2.modulos))
 
     def test_condominio_la_primavera_and_angel_cornejo(self):
         """Verifica que CONDOMINIO LA PRIMAVERA resuelva a LA PRIMAVERA y ANGEL CORNEJO a ANGEL GUSTAVO CORNEJO."""
@@ -194,7 +194,8 @@ class TestAIAddressObservations(unittest.TestCase):
         self.assertTrue(dest.es_procesado)
         self.assertEqual(dest.id_zona, 45)   # LA PRIMAVERA
         self.assertEqual(dest.id_via, 421)   # ANGEL GUSTAVO CORNEJO
-        self.assertIn("BLOCK F", dest.referencia)
+        self.assertEqual(dest.block, "F")
+        self.assertTrue(any(c["codi_nombre"] == "BLOCK" for c in dest.componentes))
 
     def test_3_de_octubre_and_salaverry(self):
         """Verifica que '3 DE OCTUBRE-FELIPE SANTIAGO SALAVERRY01731' resuelva vía y zona oficiales."""

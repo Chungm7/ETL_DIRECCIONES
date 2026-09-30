@@ -31,9 +31,9 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
 1. **Estructura JSON Desglosada:**
    - `vias`: Arreglo de vías asociadas a la dirección. Cada vía tiene: `nombre` (nombre oficial limpio sin tipo), `tipo_via` ("AVENIDA", "CALLE", etc., o null), `numero` (dígitos limpios o "S/N"), y `orden` (1 para vía principal, 2 para intersección/esquina, 3 para tercera vía).
    - `tipo_zona_detectada`: Tipo de zona según los 28 tipos oficiales, o null.
-   - `nom_zona`: Nombre de la urbanización, pueblo joven, asentamiento o sector, o null.
-   - `componentes`: Arreglo de atributos catastrales: `nombre` ("MANZANA", "LOTE", "SUBLOTE", "PISO", "PREDIO", etc.), `valor` (limpio sin prefijos Mz/Lt), y `es_urbano` (true/false).
-   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "BLOCK", "PUESTO", "LOCAL"), y `valor` (ej. "201", "B", "14").
+   - `nom_zona`: Nombre de la urbanización, condominio, pueblo joven, asentamiento o sector, o null.
+   - `componentes`: Arreglo de atributos catastrales estructurales: `nombre` ("MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO", "PREDIO", etc.), `valor` (limpio sin prefijos Mz/Lt/Block/Piso), y `es_urbano` (true/false).
+   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "PUESTO", "LOCAL"), y `valor` (ej. "201", "B", "14"). `BLOCK` o `TORRE` no es un submódulo interior, pertenece a `componentes`.
    - `referencia`: Hitos espaciales y comerciales EXCLUSIVOS de orientación urbana ("FRENTE AL PARQUE PRINCIPAL", "CERCA AL SENATI", "C.C. REAL PLAZA", "MALL AVENTURA", "AL COSTADO DEL MERCADO MODELO").
    - `confianza`: Decimal entre 0.0 y 1.0.
    - `observaciones`: Notas técnicas o dictamen de inconsistencia.
@@ -43,19 +43,19 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
    - Si la dirección consigna "H.U." o "HABILITACION URBANA", DEBES clasificarla como `tipo_zona_detectada: "URBANIZACION"`.
 
 3. **Regla de Esquinas y Cruces de Vías (Multi-Vía - 2 o 3 Vías):**
-   - Si una dirección registra dos o más arterias viales en esquina, cruce o intersección (ej. "SAN JOSE N 102 CON LUIS GONZALES 801", "BALTA 100 ESQ. SAN JOSE Y BOLOGNESI"):
-     - Extrae cada arteria en el arreglo `vias` con su `orden` correlativo (1, 2, 3), nombre limpio y número municipal.
+   - Si una dirección registra dos o más arterias viales en esquina, cruce o intersección (ej. "SAN JOSE N 102 CON LUIS GONZALES 801", "AV. SAENZ PEÑA N 106 - ESQ. GARCILAZO DE LA VEGA N 905"):
+     - Extrae cada arteria en el arreglo `vias` con su `orden` correlativo (1, 2, 3), nombre limpio y su número municipal respectivo.
      - NUNCA pongas vías secundarias como referencia ni como zona.
 
-4. **Regla Estricta de Múltiples Módulos (Interiores, Departamentos, Stands):**
+4. **Regla Estricta de Módulos Interiores y Componentes (Block y Piso):**
    - Si la dirección consigna múltiples interiores o dependencias agrupadas o en rango (ej. "INT. B-C", "INT. 17-19", "INT. 1, 2 Y 3", "STAND 14 - INT. 2"), DEBES desglosar CADA interior como un elemento independiente dentro de `modulos`.
      Ejemplos:
      - "INT. B-C" -> `[{"tipo_modulo": "INTERIOR", "valor": "B"}, {"tipo_modulo": "INTERIOR", "valor": "C"}]`
      - "INT. 17-19" -> `[{"tipo_modulo": "INTERIOR", "valor": "17"}, {"tipo_modulo": "INTERIOR", "valor": "19"}]`
-     - "INT. 1, 2 Y 3" -> `[{"tipo_modulo": "INTERIOR", "valor": "1"}, {"tipo_modulo": "INTERIOR", "valor": "2"}, {"tipo_modulo": "INTERIOR", "valor": "3"}]`
+   - `PISO` (ej. "3 PISO", "2DO PISO") es un COMPONENTE CATASTRAL (`{"nombre": "PISO", "valor": "3", "es_urbano": true}`) y NUNCA debe colocarse en `referencia`.
+   - `BLOCK` o `TORRE` (ej. "BLOCK S", "TORRE A") es un COMPONENTE CATASTRAL (`{"nombre": "BLOCK", "valor": "S", "es_urbano": true}`) y NO un módulo interior.
    - Queda TERMINANTEMENTE PROHIBIDO incluir subunidades en el número municipal de vía (`numero`). El número municipal debe contener ÚNICAMENTE dígitos numéricos puros (ej. "102", "839") o "S/N".
-   - Queda TERMINANTEMENTE PROHIBIDO enviar módulos o dependencias interiores al campo `referencia`.
-   - Queda TERMINANTEMENTE PROHIBIDO clasificar un interior, departamento, tienda, stand, puerta o piso como "SUBLOTE" en `componentes`. El SUBLOTE es exclusivamente una subdivisión física de lote/terreno (ej. Mz. A Lt. 1 Slt. 2). Los interiores pertenecen ÚNICAMENTE al arreglo `modulos`.
+   - Queda TERMINANTEMENTE PROHIBIDO enviar módulos o componentes catastrales al campo `referencia`.
 
 5. **Regla Estricta de Referencias:**
    - El campo `referencia` se reserva EXCLUSIVAMENTE para hitos de ubicación espacial y complejos comerciales ("FRENTE AL PARQUE", "CERCA AL SENATI", "A MEDIA CUADRA DEL MERCADO", "C.C. REAL PLAZA", "MALL AVENTURA", "BOULEVARD").
@@ -70,8 +70,9 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
      - Zona: `nom_zona: "SAN NICOLAS"` o `"REMIGIO SILVA"`.
      - Vía: `nombre: "LAS AMERICAS"` o `"TOMAS GUTIERREZ"`, con su número municipal limpio.
 
-8. **Nombres de Ciudad como Prefijo ('CHICLAYO -', 'LAMBAYEQUE -'):**
-   - Si la dirección empieza con "CHICLAYO -" o "LAMBAYEQUE -", indica la jurisdicción provincial/distrital general. No lo conviertas en zona a menos que diga expresamente "CERCADO".
+8. **Nombres de Ciudad/Distrito ('CHICLAYO', 'LAMBAYEQUE', 'PIMENTEL', etc.) y Condominios sin Vía:**
+   - Si la dirección contiene el nombre de la ciudad o distrito (ej. "- CHICLAYO", "- PIMENTEL"), indica la jurisdicción general. Queda TERMINANTEMENTE PROHIBIDO asignar la ciudad como nombre de vía (ej. nunca clasificar "U. DE CHICLAYO" solo por decir "- CHICLAYO").
+   - Si una dirección corresponde a un condominio o complejo residencial sin calle directa (ej. "CONDOMINIO LOS PINOS DE LA PLATA BLOCK S DPTO. 102 - CHICLAYO"), el arreglo `vias` DEBE SER VACÍO `[]`.
 
 ### Ejemplos de referencia (Few-Shot V2):
 
@@ -90,12 +91,12 @@ Salida:
   "observaciones": null
 }
 
-Entrada: "CALLE SAN JOSE N 102 CON AV. LUIS GONZALES 801"
+Entrada: "AV. SAENZ PEÑA N 106 - ESQ. GARCILAZO DE LA VEGA N 905 - CHICLAYO"
 Salida:
 {
   "vias": [
-    {"nombre": "SAN JOSE", "tipo_via": "CALLE", "numero": "102", "orden": 1},
-    {"nombre": "LUIS GONZALES", "tipo_via": "AVENIDA", "numero": "801", "orden": 2}
+    {"nombre": "SAENZ PEÑA", "tipo_via": "AVENIDA", "numero": "106", "orden": 1},
+    {"nombre": "GARCILAZO DE LA VEGA", "tipo_via": "CALLE", "numero": "905", "orden": 2}
   ],
   "tipo_zona_detectada": null,
   "nom_zona": null,
@@ -106,91 +107,38 @@ Salida:
   "observaciones": "Intersección en esquina con dos vías y numeraciones oficiales"
 }
 
-Entrada: "AV. BALTA 500 CON SAN JOSE Y BOLOGNESI"
+Entrada: "AV. JOSÉ BALTA N 259 - 3 PISO"
 Salida:
 {
   "vias": [
-    {"nombre": "JOSE BALTA", "tipo_via": "AVENIDA", "numero": "500", "orden": 1},
-    {"nombre": "SAN JOSE", "tipo_via": "CALLE", "numero": "S/N", "orden": 2},
-    {"nombre": "FRANCISCO BOLOGNESI", "tipo_via": "AVENIDA", "numero": "S/N", "orden": 3}
+    {"nombre": "JOSE BALTA", "tipo_via": "AVENIDA", "numero": "259", "orden": 1}
   ],
   "tipo_zona_detectada": null,
   "nom_zona": null,
-  "componentes": [],
+  "componentes": [
+    {"nombre": "PISO", "valor": "3", "es_urbano": true}
+  ],
   "modulos": [],
   "referencia": null,
   "confianza": 0.98,
-  "observaciones": "Intersección de tres vías"
+  "observaciones": null
 }
 
-Entrada: "URB. SANTA VICTORIA CA. PACASMAYO 147 - INT. 1, 2 Y 3"
-Salida:
-{
-  "vias": [
-    {"nombre": "PACASMAYO", "tipo_via": "CALLE", "numero": "147", "orden": 1}
-  ],
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "SANTA VICTORIA",
-  "componentes": [],
-  "modulos": [
-    {"tipo_modulo": "INTERIOR", "valor": "1"},
-    {"tipo_modulo": "INTERIOR", "valor": "2"},
-    {"tipo_modulo": "INTERIOR", "valor": "3"}
-  ],
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "Múltiples interiores normalizados en registros independientes"
-}
-
-Entrada: "H.U. LA PURISIMA - CA. LOS PINOS 240 - PUERTA 1 STAND 15"
-Salida:
-{
-  "vias": [
-    {"nombre": "LOS PINOS", "tipo_via": "CALLE", "numero": "240", "orden": 1}
-  ],
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "LA PURISIMA",
-  "componentes": [],
-  "modulos": [
-    {"tipo_modulo": "PUERTA", "valor": "1"},
-    {"tipo_modulo": "STAND", "valor": "15"}
-  ],
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "HU homologada a URBANIZACION y multiples modulos identificados"
-}
-
-Entrada: "P.J. 9 DE OCTUBRE - MZ. D LT. 12"
+Entrada: "CONDOMINIO LOS PINOS DE LA PLATA BLOCK S DPTO. 102 - CHICLAYO"
 Salida:
 {
   "vias": [],
-  "tipo_zona_detectada": "PUEBLO JOVEN",
-  "nom_zona": "9 DE OCTUBRE",
+  "tipo_zona_detectada": "URBANIZACION",
+  "nom_zona": "LOS PINOS DE LA PLATA",
   "componentes": [
-    {"nombre": "MANZANA", "valor": "D", "es_urbano": true},
-    {"nombre": "LOTE", "valor": "12", "es_urbano": true}
+    {"nombre": "BLOCK", "valor": "S", "es_urbano": true}
   ],
-  "modulos": [],
+  "modulos": [
+    {"tipo_modulo": "DEPARTAMENTO", "valor": "102"}
+  ],
   "referencia": null,
   "confianza": 0.98,
-  "observaciones": "Predio catastral con zona y manzana/lote sin via vehicular"
-}
-
-Entrada: "CHICLAYO - AV. MIGUEL DE CERVANTES 300 C.C. REAL PLAZA TDA. LC-105"
-Salida:
-{
-  "vias": [
-    {"nombre": "MIGUEL DE CERVANTES", "tipo_via": "AVENIDA", "numero": "300", "orden": 1}
-  ],
-  "tipo_zona_detectada": null,
-  "nom_zona": null,
-  "componentes": [],
-  "modulos": [
-    {"tipo_modulo": "TIENDA", "valor": "LC-105"}
-  ],
-  "referencia": "C.C. REAL PLAZA",
-  "confianza": 0.98,
-  "observaciones": "Hito comercial clasificado como referencia y local interior como modulo"
+  "observaciones": "Complejo multifamiliar con bloque y departamento sin calle física"
 }
 
 Entrada: "REMIGIO SILVA - TOMAS GUTIERREZ 00370 BLOCK F INT. 201"
@@ -201,9 +149,10 @@ Salida:
   ],
   "tipo_zona_detectada": "URBANIZACION",
   "nom_zona": "REMIGIO SILVA",
-  "componentes": [],
+  "componentes": [
+    {"nombre": "BLOCK", "valor": "F", "es_urbano": true}
+  ],
   "modulos": [
-    {"tipo_modulo": "BLOCK", "valor": "F"},
     {"tipo_modulo": "INTERIOR", "valor": "201"}
   ],
   "referencia": null,

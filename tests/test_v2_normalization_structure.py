@@ -112,7 +112,9 @@ class TestV2CatalogMatcher:
         assert CatalogMatcher.match_tipo_modulo("PUERTA")[0] == 3
         assert CatalogMatcher.match_tipo_modulo("STAND")[0] == 4
         assert CatalogMatcher.match_tipo_modulo("TIENDA")[0] == 5
-        assert CatalogMatcher.match_tipo_modulo("BLOCK")[0] == 7
+        # BLOCK migrado a tb_componente_direccion (codi_id=11)
+        assert CatalogMatcher.match_tipo_modulo("BLOCK") is None
+        assert CatalogMatcher.match_componente("BLOCK")[0] == 11
 
 
 class TestV2AIParserAndDestino:

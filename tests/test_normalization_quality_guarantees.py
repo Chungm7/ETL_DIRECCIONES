@@ -136,7 +136,7 @@ def test_clean_numbering_interior_decoupling():
     rec3 = DireccionOrigen(id_licencia=1230, emp_direccion="CONDOMINIO LA PRIMAVERA-ANGEL CORNEJO BLOCK F-101")
     res3 = parser.parse(rec3)
     assert res3.num_via is None or res3.num_via == "S/N"
-    assert "BLOCK" in str(res3.slote or res3.referencia)
+    assert res3.block == "F" or any(c["codi_nombre"] == "BLOCK" for c in res3.componentes)
 
 
 def test_clean_numbering_letter_suffix():

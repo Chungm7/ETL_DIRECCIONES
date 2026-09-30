@@ -105,36 +105,37 @@ def sample_v2_records():
 
 
 def test_v2_export_headers_length_and_order():
-    """Verifica que las cabeceras contengan exactamente las 28 columnas relacionales V2."""
-    assert len(V2_EXPORT_HEADERS) == 28
-    assert V2_EXPORT_HEADERS[0] == "ID"
-    assert V2_EXPORT_HEADERS[1] == "ID_Direccion"
-    assert V2_EXPORT_HEADERS[2] == "Estado"
-    assert V2_EXPORT_HEADERS[3] == "Direccion_Original"
-    assert V2_EXPORT_HEADERS[4] == "Via_Principal_Tipo"
-    assert V2_EXPORT_HEADERS[5] == "Via_Principal_Nombre"
-    assert V2_EXPORT_HEADERS[6] == "Via_Principal_Numero"
-    assert V2_EXPORT_HEADERS[7] == "Via_Principal_ID"
-    assert V2_EXPORT_HEADERS[8] == "Via_Secundaria_Tipo"
-    assert V2_EXPORT_HEADERS[9] == "Via_Secundaria_Nombre"
-    assert V2_EXPORT_HEADERS[10] == "Via_Secundaria_Numero"
-    assert V2_EXPORT_HEADERS[11] == "Via_Secundaria_ID"
-    assert V2_EXPORT_HEADERS[12] == "Todas_Las_Vias"
-    assert V2_EXPORT_HEADERS[13] == "Tipo_Zona"
-    assert V2_EXPORT_HEADERS[14] == "Nombre_Zona"
-    assert V2_EXPORT_HEADERS[15] == "ID_Zona"
-    assert V2_EXPORT_HEADERS[16] == "Manzana"
-    assert V2_EXPORT_HEADERS[17] == "Lote"
-    assert V2_EXPORT_HEADERS[18] == "Sublote"
-    assert V2_EXPORT_HEADERS[19] == "Piso"
-    assert V2_EXPORT_HEADERS[20] == "Otros_Componentes"
-    assert V2_EXPORT_HEADERS[21] == "Tipo_Modulo"
-    assert V2_EXPORT_HEADERS[22] == "Numero_Modulo"
-    assert V2_EXPORT_HEADERS[23] == "Todos_Los_Modulos"
-    assert V2_EXPORT_HEADERS[24] == "Referencia"
-    assert V2_EXPORT_HEADERS[25] == "Metodo_Normalizacion"
-    assert V2_EXPORT_HEADERS[26] == "Diagnostico_Observacion"
-    assert V2_EXPORT_HEADERS[27] == "Fecha_Hora_Proceso"
+    """Verifica que las cabeceras contengan exactamente las 26 columnas limpias (sin IDs técnicos) relacionales V2."""
+    assert len(V2_EXPORT_HEADERS) == 26
+    expected_order = [
+        "ID",
+        "ID_Direccion",
+        "Estado",
+        "Direccion_Original",
+        "Via_Principal_Tipo",
+        "Via_Principal_Nombre",
+        "Via_Principal_Numero",
+        "Via_Secundaria_Tipo",
+        "Via_Secundaria_Nombre",
+        "Via_Secundaria_Numero",
+        "Todas_Las_Vias",
+        "Tipo_Zona",
+        "Nombre_Zona",
+        "Manzana",
+        "Lote",
+        "Sublote",
+        "Block",
+        "Piso",
+        "Otros_Componentes",
+        "Tipo_Modulo",
+        "Numero_Modulo",
+        "Todos_Los_Modulos",
+        "Referencia",
+        "Metodo_Normalizacion",
+        "Diagnostico_Observacion",
+        "Fecha_Hora_Proceso",
+    ]
+    assert V2_EXPORT_HEADERS == expected_order
 
 
 def test_extract_v2_export_row_multi_via(sample_v2_records):
@@ -242,13 +243,13 @@ def test_build_dynamic_export_headers():
 
 def test_generate_excel_report_structure(sample_v2_records):
     """Verifica que generate_excel_report cree el archivo binario con columnas dinámicas y con cabeceras explícitas."""
-    # 1. Con cabeceras estándar explícitas (28 columnas)
+    # 1. Con cabeceras estándar explícitas (26 columnas)
     buf_std = generate_excel_report(sample_v2_records, headers=V2_EXPORT_HEADERS)
     assert isinstance(buf_std, io.BytesIO)
     wb_std = openpyxl.load_workbook(io.BytesIO(buf_std.getvalue()))
     ws_std = wb_std.active
-    assert ws_std.max_column == 28
-    header_cells_std = [ws_std.cell(row=1, column=col).value for col in range(1, 29)]
+    assert ws_std.max_column == 26
+    header_cells_std = [ws_std.cell(row=1, column=col).value for col in range(1, 27)]
     assert header_cells_std == V2_EXPORT_HEADERS
 
     # 2. Con cabeceras dinámicas (adaptadas automáticamente a sample_v2_records: 2 vías, 2 módulos, 1 componente extra)

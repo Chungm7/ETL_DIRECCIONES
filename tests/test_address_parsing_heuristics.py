@@ -246,7 +246,9 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.id_via, 2913)   # AV. LUIS GONZALES
         self.assertEqual(destino.num_via, "839")  # Limpio sin 00 iniciales
-        self.assertIn("2DO. Y 3ER. PISO", destino.referencia)
+        self.assertTrue(any(c["codi_nombre"] == "PISO" for c in destino.componentes))
+        self.assertEqual(destino.piso, "2")
+        self.assertTrue(destino.referencia is None or "PISO" not in destino.referencia)
         self.assertIsNone(destino.observacion)
 
     def test_parse_san_juan_de_dios_lot_without_street(self):
@@ -294,7 +296,9 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertEqual(destino.id_via, 874)  # TORRES PAZ
         self.assertEqual(destino.nom_via, "TORRES PAZ")
         self.assertEqual(destino.num_via, "651")
-        self.assertEqual(destino.referencia, "3ER. PISO")
+        self.assertTrue(any(c["codi_nombre"] == "PISO" for c in destino.componentes))
+        self.assertEqual(destino.piso, "3")
+        self.assertTrue(destino.referencia is None or "PISO" not in destino.referencia)
 
     def test_slote_with_floor_or_reference_reassigned_to_referencia(self):
         """Verifica que un valor como '2DO. PISO ESQ. LIBERTAD' en slote se reubique a referencia sin error de longitud."""
@@ -315,19 +319,21 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertIsNone(destino.slote)
-        self.assertIn("2DO. PISO ESQ. LIBERTAD", destino.referencia)
+        self.assertEqual(destino.piso, "2")
+        self.assertIn("ESQ. LIBERTAD", destino.referencia)
 
     def test_direccion_destino_model_validator_sanitizes_slote_and_lengths(self):
         """Verifica que el validador de DireccionDestino evite errores ValidationError por longitud en slote y otros campos."""
         from src.models.direccion_destino import DireccionDestino
 
-        # slote que supera 20 caracteres y contiene palabras de referencia
+        # slote que supera 20 caracteres y contiene palabras de referencia y piso
         dest = DireccionDestino(
             id_licencia=25312,
             slote="2DO. PISO ESQ. LIBERTAD",
         )
         self.assertIsNone(dest.slote)
-        self.assertEqual(dest.referencia, "2DO. PISO ESQ. LIBERTAD")
+        self.assertEqual(dest.piso, "2")
+        self.assertEqual(dest.referencia, "ESQ. LIBERTAD")
 
         # Texto que supera el límite de un campo se trunca de forma segura
         dest_long = DireccionDestino(

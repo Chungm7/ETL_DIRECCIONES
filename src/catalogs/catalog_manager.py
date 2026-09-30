@@ -11,7 +11,7 @@ import os
 import re
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("etl_mpch.catalog_manager")
 
@@ -137,6 +137,7 @@ class CatalogManager:
             (8, "UNIDAD CATASTRAL", False, "A"),
             (9, "COORDENADA NORTE", False, "A"),
             (10, "COORDENADA ESTE", False, "A"),
+            (11, "BLOCK", True, "A"),
         ]
 
     @classmethod
@@ -154,6 +155,28 @@ class CatalogManager:
             (9, "LOCAL", "A"),
             (10, "COCHERA", "A"),
         ]
+
+    CITY_DISTRICT_STOPWORDS: Set[str] = {
+        "CHICLAYO",
+        "LAMBAYEQUE",
+        "FERRENAFE",
+        "FERREÑAFE",
+        "PIMENTEL",
+        "LA VICTORIA",
+        "JOSE LEONARDO ORTIZ",
+        "JOSÉ LEONARDO ORTIZ",
+        "JLO",
+        "J.L.O.",
+        "MONSEFU",
+        "MONSEFÚ",
+        "REQUE",
+        "ETEN",
+        "PUERTO ETEN",
+        "CIUDAD ETEN",
+        "SANTA ROSA",
+        "PICSI",
+        "POMALCA",
+    }
 
     EXTRA_VIAS_SYNONYMS: Dict[str, str] = {
         "NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
@@ -235,6 +258,8 @@ class CatalogManager:
         "MAGISTERIAL": "RESIDENCIAL DERRAMA MAGISTERIAL",
         "DERRAMA MAGISTERIAL": "RESIDENCIAL DERRAMA MAGISTERIAL",
         "CONDOMINIO LA PRIMAVERA": "LA PRIMAVERA",
+        "CONDOMINIO LOS PINOS DE LA PLATA": "MULTIFAMILIAR LOS PINOS DE LA PLATA",
+        "LOS PINOS DE LA PLATA": "MULTIFAMILIAR LOS PINOS DE LA PLATA",
         "LA PRIMAVERA III ETAPA": "LA PRIMAVERA III",
         "LA PRIMAVERA III-ETAPA": "LA PRIMAVERA III",
         "LA PRIMAVERA 3 ETAPA": "LA PRIMAVERA III",
@@ -274,17 +299,23 @@ class CatalogManager:
             for item in cls.get_vias_chiclayo_catalog():
                 nom = item["nom_via"].strip().upper()
                 clean_nom = _remove_accents(nom)
-                lookup[nom] = item
-                lookup[clean_nom] = item
+                if nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[nom] = item
+                if clean_nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[clean_nom] = item
 
                 for syn in item.get("sinonimos", []):
                     s_clean = str(syn).strip().upper()
                     s_noacc = _remove_accents(s_clean)
-                    lookup[s_clean] = item
-                    lookup[s_noacc] = item
+                    if s_clean not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_clean] = item
+                    if s_noacc not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_noacc] = item
 
             # Enriquecer con sinónimos canónicos frecuentes de Chiclayo
             for alias, target in cls.EXTRA_VIAS_SYNONYMS.items():
+                if alias in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(alias) in cls.CITY_DISTRICT_STOPWORDS:
+                    continue
                 target_clean = target.strip().upper()
                 target_obj = lookup.get(target_clean) or lookup.get(_remove_accents(target_clean))
                 if target_obj:
@@ -303,7 +334,7 @@ class CatalogManager:
             multi: Dict[str, List[Dict[str, Any]]] = {}
 
             def _add(key: str, item: Dict[str, Any]):
-                if not key:
+                if not key or key in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(key) in cls.CITY_DISTRICT_STOPWORDS:
                     return
                 if key not in multi:
                     multi[key] = []
@@ -323,6 +354,8 @@ class CatalogManager:
                     _add(s_noacc, item)
 
             for alias, target in cls.EXTRA_VIAS_SYNONYMS.items():
+                if alias in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(alias) in cls.CITY_DISTRICT_STOPWORDS:
+                    continue
                 target_clean = target.strip().upper()
                 targets = multi.get(target_clean) or multi.get(_remove_accents(target_clean)) or []
                 for target_obj in targets:

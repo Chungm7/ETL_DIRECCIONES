@@ -77,6 +77,8 @@ class DireccionDestino(BaseModel):
     manzana: Optional[str] = Field(default=None, max_length=20, description="Identificador de Manzana (Mz)")
     lote: Optional[str] = Field(default=None, max_length=20, description="Identificador de Lote (Lt)")
     slote: Optional[str] = Field(default=None, max_length=100, description="Sublote o resumen de módulos interiores")
+    piso: Optional[str] = Field(default=None, max_length=20, description="Identificador de Piso o Nivel")
+    block: Optional[str] = Field(default=None, max_length=20, description="Identificador de Block, Bloque o Torre")
     referencia: Optional[str] = Field(default=None, max_length=255, description="Punto de referencia")
 
     @model_validator(mode="before")
@@ -85,18 +87,39 @@ class DireccionDestino(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        # 1. Sanitizar slote: si contiene 'PISO', 'ESQ', 'ESQUINA', etc., reasignar a referencia
+        # 1. Sanitizar slote: segregar PISO y BLOCK hacia componentes; referencias hacia referencia
         slote_val = data.get("slote")
         if slote_val and isinstance(slote_val, str):
             slote_clean = slote_val.strip()
-            is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ENTRE|CRUCE|ALTURA|CUADRA)\b", slote_clean, re.IGNORECASE))
+
+            # Capturar PISO si vino en slote
+            m_piso = re.search(r"\b(?:PISO\s*(\d+|[A-Z0-9]+)|(\d+)(?:DO|ER|TO|VO|MO)?\.?\s*PISO)\b", slote_clean, re.IGNORECASE)
+            if m_piso:
+                pval = (m_piso.group(1) or m_piso.group(2) or "").strip()
+                if pval and not data.get("piso"):
+                    data["piso"] = pval
+                slote_clean = re.sub(r"\b(?:PISO\s*(\d+|[A-Z0-9]+)|(\d+)(?:DO|ER|TO|VO|MO)?\.?\s*PISO)\b", "", slote_clean, flags=re.IGNORECASE).strip(" -/,.")
+
+            # Capturar BLOCK si vino en slote
+            m_block = re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*([A-Z0-9\-]+)\b", slote_clean, re.IGNORECASE)
+            if m_block:
+                bval = m_block.group(1).strip()
+                if bval and not data.get("block"):
+                    data["block"] = bval
+                slote_clean = re.sub(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*([A-Z0-9\-]+)\b", "", slote_clean, flags=re.IGNORECASE).strip(" -/,.")
+
+            is_ref_like = bool(re.search(r"\b(?:ESQ|ESQUINA|FRENTE|ENTRE|CRUCE|ALTURA|CUADRA)\b", slote_clean, re.IGNORECASE))
             if is_ref_like:
                 current_ref = data.get("referencia") or data.get("dire_referencia") or ""
                 data["referencia"] = f"{current_ref} {slote_clean}".strip() if current_ref else slote_clean
                 data["dire_referencia"] = data["referencia"]
                 data["slote"] = None
+            elif not slote_clean:
+                data["slote"] = None
             elif len(slote_clean) > 100:
                 data["slote"] = slote_clean[:100].strip()
+            else:
+                data["slote"] = slote_clean
 
         # 2. Límites de longitud seguros iniciales
         limits = {
@@ -104,6 +127,8 @@ class DireccionDestino(BaseModel):
             "manzana": 20,
             "lote": 20,
             "slote": 100,
+            "piso": 20,
+            "block": 20,
             "referencia": 255,
             "dire_referencia": 500,
             "nom_via": 150,
@@ -147,7 +172,7 @@ class DireccionDestino(BaseModel):
                 "tipo_via": data.get("tipo_via"),
             }]
 
-        # 6. Sincronización Componentes (Manzana, Lote)
+        # 6. Sincronización Componentes (Manzana, Lote, Piso, Block)
         comps = data.get("componentes") or []
         if comps:
             for c in comps:
@@ -156,12 +181,29 @@ class DireccionDestino(BaseModel):
                     data["manzana"] = c.get("diti_nombre")
                 elif "LOTE" in cn and "SUBLOTE" not in cn and not data.get("lote"):
                     data["lote"] = c.get("diti_nombre")
+                elif "PISO" in cn and not data.get("piso"):
+                    data["piso"] = c.get("diti_nombre")
+                elif "BLOCK" in cn and not data.get("block"):
+                    data["block"] = c.get("diti_nombre")
+
+            # Asegurar que si data tiene piso o block, estén en la lista comps
+            has_piso = any((c.get("codi_nombre") or "").upper() == "PISO" for c in comps)
+            if data.get("piso") and not has_piso:
+                comps.append({"codi_id": 4, "codi_nombre": "PISO", "diti_nombre": str(data["piso"]).strip()})
+            has_block = any((c.get("codi_nombre") or "").upper() == "BLOCK" for c in comps)
+            if data.get("block") and not has_block:
+                comps.append({"codi_id": 11, "codi_nombre": "BLOCK", "diti_nombre": str(data["block"]).strip()})
+            data["componentes"] = comps
         else:
             new_comps = []
             if data.get("manzana"):
                 new_comps.append({"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": str(data["manzana"]).strip()})
             if data.get("lote"):
                 new_comps.append({"codi_id": 2, "codi_nombre": "LOTE", "diti_nombre": str(data["lote"]).strip()})
+            if data.get("piso"):
+                new_comps.append({"codi_id": 4, "codi_nombre": "PISO", "diti_nombre": str(data["piso"]).strip()})
+            if data.get("block"):
+                new_comps.append({"codi_id": 11, "codi_nombre": "BLOCK", "diti_nombre": str(data["block"]).strip()})
             if new_comps:
                 data["componentes"] = new_comps
 
@@ -170,7 +212,7 @@ class DireccionDestino(BaseModel):
         sl_val = data.get("slote")
         if sl_val and not mods:
             s_val = str(sl_val).strip()
-            kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
+            kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
             m_match = re.search(rf"\b({kw})\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)", s_val, re.IGNORECASE)
             if m_match:
                 from src.transformers.catalog_matcher import CatalogMatcher
@@ -193,6 +235,8 @@ class DireccionDestino(BaseModel):
             "manzana": 20,
             "lote": 20,
             "slote": 100,
+            "piso": 20,
+            "block": 20,
             "referencia": 255,
             "dire_referencia": 500,
             "nom_via": 150,

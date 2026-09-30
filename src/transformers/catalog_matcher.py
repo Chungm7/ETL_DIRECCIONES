@@ -293,6 +293,16 @@ class CatalogMatcher:
         "NORTE": (9, "COORDENADA NORTE", False),
         "COORDENADA ESTE": (10, "COORDENADA ESTE", False),
         "ESTE": (10, "COORDENADA ESTE", False),
+        "BLOCK": (11, "BLOCK", True),
+        "BLOQUE": (11, "BLOCK", True),
+        "BLQ": (11, "BLOCK", True),
+        "BLQ.": (11, "BLOCK", True),
+        "TORRE": (11, "BLOCK", True),
+        "TORRE.": (11, "BLOCK", True),
+        "PABELLON": (11, "BLOCK", True),
+        "PABELLÓN": (11, "BLOCK", True),
+        "PAB": (11, "BLOCK", True),
+        "PAB.": (11, "BLOCK", True),
     }
 
     MODULOS_DICT: Dict[str, Tuple[int, str]] = {
@@ -316,11 +326,6 @@ class CatalogMatcher:
         "OFICINA": (6, "OFICINA"),
         "OF": (6, "OFICINA"),
         "OF.": (6, "OFICINA"),
-        "BLOCK": (7, "BLOCK"),
-        "BLQ": (7, "BLOCK"),
-        "TORRE": (7, "BLOCK"),
-        "PABELLON": (7, "BLOCK"),
-        "PABELLÓN": (7, "BLOCK"),
         "PUESTO": (8, "PUESTO"),
         "PTO": (8, "PUESTO"),
         "LOCAL": (9, "LOCAL"),
@@ -492,6 +497,11 @@ class CatalogMatcher:
         if not text:
             return []
         q_norm = cls.normalize_variants_text(text)
+        if (
+            q_norm in CatalogManager.CITY_DISTRICT_STOPWORDS
+            or TextCleaner.remove_accents(q_norm) in CatalogManager.CITY_DISTRICT_STOPWORDS
+        ) and not tipo_via_hint:
+            return []
         q_tokens = cls._extract_sig_tokens(q_norm, is_via=True)
         if not q_tokens:
             return []
@@ -645,6 +655,14 @@ class CatalogMatcher:
             flags=re.IGNORECASE,
         ).strip()
         no_acc_noprefix = TextCleaner.remove_accents(clean_noprefix)
+
+        # Si el término limpio coincide con una ciudad o distrito y carece de prefijo explícito de vía,
+        # no debe homologarse como vía física
+        if (
+            clean_noprefix in CatalogManager.CITY_DISTRICT_STOPWORDS
+            or no_acc_noprefix in CatalogManager.CITY_DISTRICT_STOPWORDS
+        ) and not inferred_tipo_via:
+            return None
 
         # Context-sensitive: Santa Victoria as Av. Sesquicentenario (ID 2926) only with Avenue hint/prefix
         is_av_santa_victoria = (

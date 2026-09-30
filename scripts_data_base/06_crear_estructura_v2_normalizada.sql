@@ -323,7 +323,8 @@ INSERT INTO tb_componente_direccion (codi_id, codi_nombre, codi_es_urbano, codi_
     (7, 'SECTOR', FALSE, 'A'),
     (8, 'UNIDAD CATASTRAL', FALSE, 'A'),
     (9, 'COORDENADA NORTE', FALSE, 'A'),
-    (10, 'COORDENADA ESTE', FALSE, 'A')
+    (10, 'COORDENADA ESTE', FALSE, 'A'),
+    (11, 'BLOCK', TRUE, 'A')
 ON CONFLICT (codi_nombre) DO UPDATE
 SET codi_es_urbano = EXCLUDED.codi_es_urbano,
     codi_estado    = EXCLUDED.codi_estado;

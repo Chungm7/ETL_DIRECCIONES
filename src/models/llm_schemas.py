@@ -1,8 +1,14 @@
 """Esquemas Pydantic para la respuesta estructurada de extracción e inferencia con Ollama (Versión 2.0)."""
 
 import re
+import unicodedata
 from typing import Any, List, Optional
 from pydantic import BaseModel, Field, model_validator, field_validator
+
+
+def _remove_accents(text: str) -> str:
+    nfkd = unicodedata.normalize("NFKD", text)
+    return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
 class ExtractedVia(BaseModel):
@@ -79,6 +85,8 @@ class OllamaAddressExtraction(BaseModel):
     manzana: Optional[str] = Field(default=None, description="Manzana limpia (retrocompatibilidad)")
     lote: Optional[str] = Field(default=None, description="Lote limpio (retrocompatibilidad)")
     slote: Optional[str] = Field(default=None, description="Sublote (retrocompatibilidad)")
+    piso: Optional[str] = Field(default=None, description="Piso o nivel del predio (componente)")
+    block: Optional[str] = Field(default=None, description="Block, bloque o torre del predio (componente)")
 
     referencia: Optional[str] = Field(
         default=None,
@@ -155,12 +163,28 @@ class OllamaAddressExtraction(BaseModel):
                         break
 
             if p_nom_via:
-                parsed_vias.append({
-                    "nombre": p_nom_via,
-                    "tipo_via": p_tipo_via,
-                    "numero": p_num_via,
-                    "orden": 1,
-                })
+                p_nom_upper = p_nom_via.strip().upper()
+                from src.catalogs.catalog_manager import CatalogManager
+                if (p_nom_upper in CatalogManager.CITY_DISTRICT_STOPWORDS or _remove_accents(p_nom_upper) in CatalogManager.CITY_DISTRICT_STOPWORDS) and not p_tipo_via:
+                    pass
+                else:
+                    parsed_vias.append({
+                        "nombre": p_nom_via,
+                        "tipo_via": p_tipo_via,
+                        "numero": p_num_via,
+                        "orden": 1,
+                    })
+
+        # Filtrar vías que sean únicamente nombres de distritos/ciudades sin tipo de vía formal
+        from src.catalogs.catalog_manager import CatalogManager
+        filtered_vias = []
+        for v in parsed_vias:
+            vn = str(v.get("nombre") or "").strip().upper()
+            vn_clean = _remove_accents(vn)
+            if (vn in CatalogManager.CITY_DISTRICT_STOPWORDS or vn_clean in CatalogManager.CITY_DISTRICT_STOPWORDS) and not v.get("tipo_via"):
+                continue
+            filtered_vias.append(v)
+        parsed_vias = filtered_vias
 
         norm["vias"] = parsed_vias
         if parsed_vias:
@@ -191,7 +215,7 @@ class OllamaAddressExtraction(BaseModel):
                     norm["nom_zona"] = v
                     break
 
-        # 3. Extracción de Componentes (Mz, Lote, Sublote, Piso, etc.)
+        # 3. Extracción de Componentes (Mz, Lote, Sublote, Piso, Block, etc.)
         parsed_comp: List[dict] = []
         raw_comp = data.get("componentes")
         if isinstance(raw_comp, list):
@@ -204,7 +228,7 @@ class OllamaAddressExtraction(BaseModel):
                     # Si vino como SUBLOTE pero contiene módulos o pisos, no ingresarlo como SUBLOTE
                     if c_nom in ("SUBLOTE", "SUB LOTE", "SLOTE"):
                         has_mod = bool(re.search(
-                            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
                             c_val,
                             re.IGNORECASE,
                         ))
@@ -216,6 +240,22 @@ class OllamaAddressExtraction(BaseModel):
                             if not any(cp["nombre"] == "PISO" for cp in parsed_comp):
                                 parsed_comp.append({"nombre": "PISO", "valor": piso_clean, "es_urbano": True})
                             continue
+                        if re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", c_val, re.IGNORECASE):
+                            b_m = re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*([A-Z0-9\-]+)\b", c_val, re.IGNORECASE)
+                            b_clean = b_m.group(1).strip() if b_m else c_val
+                            if not any(cp["nombre"] == "BLOCK" for cp in parsed_comp):
+                                parsed_comp.append({"nombre": "BLOCK", "valor": b_clean, "es_urbano": True})
+                            continue
+
+                    # Normalizar nombres de componentes a canónicos
+                    if c_nom in ("BLOCK", "BLOQUE", "BLQ", "TORRE", "PABELLON", "PABELLÓN"):
+                        c_nom = "BLOCK"
+                    elif c_nom in ("PISO", "PISOS", "NIVEL"):
+                        c_nom = "PISO"
+                        p_num = re.search(r"\d+", c_val)
+                        if p_num:
+                            c_val = p_num.group(0)
+
                     parsed_comp.append({
                         "nombre": c_nom,
                         "valor": c_val,
@@ -245,6 +285,31 @@ class OllamaAddressExtraction(BaseModel):
                         parsed_comp.append({"nombre": "LOTE", "valor": val, "es_urbano": True})
                     break
 
+        # Manejo de piso plano
+        piso_val = None
+        for k in ("piso", "Piso", "PISO", "nivel", "Nivel", "NIVEL"):
+            if k in data and data[k] is not None:
+                val = str(data[k]).strip()
+                if val:
+                    p_num = re.search(r"\d+", val)
+                    clean_p = p_num.group(0) if p_num else val
+                    norm["piso"] = clean_p
+                    if not any(c["nombre"] == "PISO" for c in parsed_comp):
+                        parsed_comp.append({"nombre": "PISO", "valor": clean_p, "es_urbano": True})
+                    break
+
+        # Manejo de block plano
+        block_val = None
+        for k in ("block", "Block", "BLOCK", "bloque", "Bloque", "BLOQUE", "torre", "Torre", "TORRE"):
+            if k in data and data[k] is not None:
+                val = str(data[k]).strip()
+                if val:
+                    clean_b = re.sub(r"^(?:BLOCK|BLOQUE|BLQ|TORRE)\s*", "", val, flags=re.IGNORECASE).strip() or val
+                    norm["block"] = clean_b
+                    if not any(c["nombre"] == "BLOCK" for c in parsed_comp):
+                        parsed_comp.append({"nombre": "BLOCK", "valor": clean_b, "es_urbano": True})
+                    break
+
         # Manejo de sublote plano (solo predial genuino, NUNCA módulos ni pisos)
         slt_val = None
         raw_slt_source = None
@@ -254,11 +319,11 @@ class OllamaAddressExtraction(BaseModel):
                 if val:
                     raw_slt_source = val
                     has_mod = bool(re.search(
-                        r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                        r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
                         val,
                         re.IGNORECASE,
                     ))
-                    is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", val, re.IGNORECASE))
+                    is_ref_like = bool(re.search(r"\b(?:PISO|BLOCK|BLOQUE|BLQ|TORRE|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", val, re.IGNORECASE))
                     if not has_mod and not is_ref_like:
                         clean_sublote = re.sub(r"^(?:SUB\s*LOTE|SLT\.?|SLOTE)\s*", "", val, flags=re.IGNORECASE).strip()
                         norm["slote"] = clean_sublote or val
@@ -271,9 +336,16 @@ class OllamaAddressExtraction(BaseModel):
                         norm["slote"] = None
                     break
 
+        # Sincronizar piso y block en norm desde parsed_comp si aún no estaban
+        for c in parsed_comp:
+            if c["nombre"] == "PISO" and not norm.get("piso"):
+                norm["piso"] = c["valor"]
+            elif c["nombre"] == "BLOCK" and not norm.get("block"):
+                norm["block"] = c["valor"]
+
         norm["componentes"] = parsed_comp
 
-        # 4. Extracción de Módulos (Interior, Dpto, Puerta, Stand, Tienda, Block, etc.)
+        # 4. Extracción de Módulos (Interior, Dpto, Puerta, Stand, Tienda, etc. - BLOCK se maneja como componente)
         def _split_modulo_range(v_str: str) -> List[str]:
             clean_v = re.sub(r"^[\[\(]+|[\]\)]+$", "", str(v_str)).strip(" '\"")
             clean_v = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", clean_v, flags=re.IGNORECASE).strip()
@@ -300,6 +372,12 @@ class OllamaAddressExtraction(BaseModel):
                 if isinstance(m, dict) and m.get("tipo_modulo") and m.get("valor"):
                     t_mod = str(m["tipo_modulo"]).strip().upper()
                     split_vals = _split_modulo_range(m["valor"])
+                    if t_mod in ("BLOCK", "BLQ", "TORRE", "PABELLON", "PABELLÓN"):
+                        for sp_val in split_vals:
+                            if not any(cp["nombre"] == "BLOCK" for cp in parsed_comp):
+                                parsed_comp.append({"nombre": "BLOCK", "valor": sp_val, "es_urbano": True})
+                            norm["block"] = sp_val
+                        continue
                     for sp_val in split_vals:
                         if not any(x["tipo_modulo"] == t_mod and x["valor"] == sp_val for x in parsed_mod):
                             parsed_mod.append({
@@ -315,7 +393,6 @@ class OllamaAddressExtraction(BaseModel):
             ("TDA.", "TIENDA"), ("tda", "TIENDA"), ("tienda", "TIENDA"),
             ("puerta", "PUERTA"), ("PUERTA", "PUERTA"),
             ("oficina", "OFICINA"), ("OFICINA", "OFICINA"), ("of", "OFICINA"),
-            ("block", "BLOCK"), ("BLOCK", "BLOCK"),
             ("puesto", "PUESTO"), ("PUESTO", "PUESTO"),
         ]
         for k, timo_name in legacy_module_keys:
@@ -328,7 +405,7 @@ class OllamaAddressExtraction(BaseModel):
 
         # Si el valor de sublote plano contenía módulos (ej. "INT B-C", "INTERIOR B, INTERIOR C", "STAND 81")
         if raw_slt_source:
-            kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
+            kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
             mod_pattern = re.compile(
                 rf"\b({kw})\b\.?\s*[:\-]?\s*([A-Z0-9\-]+(?:\s*(?:,|Y|-)\s*(?!{kw}\b)[A-Z0-9\-]+)*)",
                 re.IGNORECASE,
@@ -340,10 +417,8 @@ class OllamaAddressExtraction(BaseModel):
                         "STAND" if "ST" in t_raw else (
                             "TIENDA" if "T" in t_raw else (
                                 "OFICINA" if "OF" in t_raw else (
-                                    "BLOCK" if "BL" in t_raw else (
-                                        "PUERTA" if "PT" in t_raw or "PUERTA" in t_raw else (
-                                            "PUESTO" if "P" in t_raw else "LOCAL"
-                                        )
+                                    "PUERTA" if "PT" in t_raw or "PUERTA" in t_raw else (
+                                        "PUESTO" if "P" in t_raw else "LOCAL"
                                     )
                                 )
                             )
@@ -375,8 +450,20 @@ class OllamaAddressExtraction(BaseModel):
                 clean_piso = p_num.group(0) if p_num else piso_str
                 if not any(c["nombre"] == "PISO" for c in parsed_comp):
                     parsed_comp.append({"nombre": "PISO", "valor": clean_piso, "es_urbano": True})
+                norm["piso"] = clean_piso
+                ref_val = ref_val[:m_piso.start()] + " " + ref_val[m_piso.end():]
 
-            norm["referencia"] = ref_val.strip(" -/,.") if ref_val else None
+            # Capturar blocks si vinieron en referencia (ej. "BLOCK S", "TORRE A")
+            m_block = re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*([A-Z0-9\-]+)\b", ref_val, re.IGNORECASE)
+            if m_block:
+                b_val = m_block.group(1).strip()
+                if not any(c["nombre"] == "BLOCK" for c in parsed_comp):
+                    parsed_comp.append({"nombre": "BLOCK", "valor": b_val, "es_urbano": True})
+                norm["block"] = b_val
+                ref_val = ref_val[:m_block.start()] + " " + ref_val[m_block.end():]
+
+            clean_ref = ref_val.strip(" -/,.")
+            norm["referencia"] = clean_ref if clean_ref else None
         else:
             norm["referencia"] = None
 

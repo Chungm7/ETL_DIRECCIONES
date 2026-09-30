@@ -24,8 +24,8 @@
     "id": 4,
     "nombre": "CONJUNTO RESIDENCIAL",
     "abreviatura": "CONJ.RES.",
-    "sinonimos": ["CONJUNTO RESIDENCIAL", "CONJ.RES.", "CONJ.RES", "CONJ RES"],
-    "patron_regex": "\\b(?:CONJ(?:UNTO)?\\s*RES(?:IDENCIAL)?|CONJ\\.?RES\\.?)\\b"
+    "sinonimos": ["CONJUNTO RESIDENCIAL", "CONJ.RES.", "CONJ.RES", "CONJ RES", "CONDOMINIO", "CONDOMINIOS", "RESIDENCIAL", "RES."],
+    "patron_regex": "\\b(?:CONJ(?:UNTO)?\\s*RES(?:IDENCIAL)?|CONJ\\.?RES\\.?|CONDOMINIO(?:S)?|RESIDENCIAL)\\b"
   },
   {
     "id": 5,
