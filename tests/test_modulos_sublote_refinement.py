@@ -195,3 +195,81 @@ def test_export_row_clean_sublote():
     assert reg["catastro"]["sublote"] is None
     assert not any(c.get("tipo_componente") == "SUBLOTE" for c in reg["componentes"])
     assert len(reg["modulos"]) == 2
+
+
+def test_record_206_no_slt_in_export():
+    """Verifica que el registro 206 (sin lote ni sublote ni modulo) no exporte 'slt' en modulos ni sublote."""
+    rec = {
+        "id": 206,
+        "id_licencia": 206,
+        "dire_id": 7,
+        "estado": "NORMALIZADO",
+        "raw_text": "CA. NICOLAS CUGLIEVAN N 110 - CHICLAYO",
+        "vias": [{"via_id": 104, "via_nombre": "JUAN CUGLIEVAN", "divi_numero": "110", "tipo_via": 2}],
+        "componentes": [],
+        "modulos": [],
+        "slote": "slt",  # Simula placeholder residual
+        "es_procesado": True,
+    }
+    row = extract_v2_export_row(rec)
+    assert row["Sublote"] == ""
+    assert row["Tipo_Modulo"] == ""
+    assert row["Numero_Modulo"] == ""
+    assert row["Todos_Los_Modulos"] == ""
+
+
+def test_llm_schema_sublote_placeholders_cleaned():
+    """Verifica que OllamaAddressExtraction descarte placeholders comunes de sublote."""
+    placeholders = ["slt", "SLT", "Sub LT.", "sub lt", "SLOTE", "SUB LOTE", "-", "N/A", "NO"]
+    for ph in placeholders:
+        data = {
+            "vias": [{"nombre": "JUAN CUGLIEVAN", "tipo_via": "CALLE", "numero": "110"}],
+            "slote": ph,
+            "componentes": [{"nombre": "SUBLOTE", "valor": ph, "es_urbano": True}],
+            "modulos": [],
+        }
+        ext = OllamaAddressExtraction(**data)
+        assert ext.slote is None, f"Fallo para placeholder {ph}: se esperaba None pero fue {ext.slote}"
+        assert not any(c.nombre == "SUBLOTE" for c in ext.componentes), f"Fallo para componente con {ph}"
+        assert not any("SLT" in m.tipo_modulo.upper() for m in ext.modulos)
+
+    # Sublote genuino si debe preservarse
+    valid_data = {
+        "vias": [{"nombre": "JUAN CUGLIEVAN", "tipo_via": "CALLE", "numero": "110"}],
+        "slote": "Sub LT. 14",
+        "componentes": [],
+        "modulos": [],
+    }
+    valid_ext = OllamaAddressExtraction(**valid_data)
+    assert valid_ext.slote == "14"
+    assert any(c.nombre == "SUBLOTE" and c.valor == "14" for c in valid_ext.componentes)
+
+
+def test_ai_parser_record_206_with_mock_ollama_slt():
+    """Verifica el flujo integral de AIAddressParser para el registro 206 evitando falsos positivos de módulo por 'slt'."""
+    from unittest.mock import MagicMock
+    from src.services.ollama_service import OllamaService
+
+    mock_ollama = MagicMock(spec=OllamaService)
+    mock_ollama.model_name = "qwen2.5:7b"
+    mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(**{
+        "vias": [{"nombre": "JUAN CUGLIEVAN", "tipo_via": "CALLE", "numero": "110"}],
+        "slote": "slt",
+        "componentes": [],
+        "modulos": [],
+    })
+
+    parser = AIAddressParser(ollama_service=mock_ollama)
+    rec = DireccionOrigen(id_licencia=206, emp_direccion="CA. NICOLAS CUGLIEVAN N 110 - CHICLAYO")
+    destino = parser.parse(rec)
+
+    assert destino.modulos == []
+    assert destino.slote is None
+    assert not any(c.get("codi_nombre") == "SUBLOTE" for c in destino.componentes)
+
+    row = extract_v2_export_row(destino.model_dump())
+    assert row["Sublote"] == ""
+    assert row["Tipo_Modulo"] == ""
+    assert row["Numero_Modulo"] == ""
+    assert row["Todos_Los_Modulos"] == ""
+

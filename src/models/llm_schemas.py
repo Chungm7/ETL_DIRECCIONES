@@ -11,6 +11,16 @@ def _remove_accents(text: str) -> str:
     return "".join(c for c in nfkd if not unicodedata.combining(c))
 
 
+SUBLOTE_PREFIX_REGEX = re.compile(
+    r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*",
+    re.IGNORECASE,
+)
+SUBLOTE_PLACEHOLDER_REGEX = re.compile(
+    r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$",
+    re.IGNORECASE,
+)
+
+
 class ExtractedVia(BaseModel):
     """Representa una arteria vial individual identificada en la dirección."""
     nombre: str = Field(description="Nombre oficial de la vía sin tipo ni número (ej. BALTA, SAN JOSE)")
@@ -225,8 +235,11 @@ class OllamaAddressExtraction(BaseModel):
                 if isinstance(c, dict) and c.get("nombre") and c.get("valor"):
                     c_nom = str(c["nombre"]).strip().upper()
                     c_val = str(c["valor"]).strip()
-                    # Si vino como SUBLOTE pero contiene módulos o pisos, no ingresarlo como SUBLOTE
+                    # Si vino como SUBLOTE pero contiene módulos o pisos, o es un placeholder ("slt"), no ingresarlo como SUBLOTE
                     if c_nom in ("SUBLOTE", "SUB LOTE", "SLOTE"):
+                        clean_c_val = SUBLOTE_PREFIX_REGEX.sub("", c_val).strip(" -:,.")
+                        if not clean_c_val or SUBLOTE_PLACEHOLDER_REGEX.match(clean_c_val) or SUBLOTE_PLACEHOLDER_REGEX.match(c_val):
+                            continue
                         has_mod = bool(re.search(
                             r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
                             c_val,
@@ -246,6 +259,7 @@ class OllamaAddressExtraction(BaseModel):
                             if not any(cp["nombre"] == "BLOCK" for cp in parsed_comp):
                                 parsed_comp.append({"nombre": "BLOCK", "valor": b_clean, "es_urbano": True})
                             continue
+                        c_val = clean_c_val
 
                     # Normalizar nombres de componentes a canónicos
                     if c_nom in ("BLOCK", "BLOQUE", "BLQ", "TORRE", "PABELLON", "PABELLÓN"):
@@ -325,10 +339,13 @@ class OllamaAddressExtraction(BaseModel):
                     ))
                     is_ref_like = bool(re.search(r"\b(?:PISO|BLOCK|BLOQUE|BLQ|TORRE|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", val, re.IGNORECASE))
                     if not has_mod and not is_ref_like:
-                        clean_sublote = re.sub(r"^(?:SUB\s*LOTE|SLT\.?|SLOTE)\s*", "", val, flags=re.IGNORECASE).strip()
-                        norm["slote"] = clean_sublote or val
-                        if not any(c["nombre"] == "SUBLOTE" for c in parsed_comp):
-                            parsed_comp.append({"nombre": "SUBLOTE", "valor": clean_sublote or val, "es_urbano": True})
+                        clean_sublote = SUBLOTE_PREFIX_REGEX.sub("", val).strip(" -:,.")
+                        if clean_sublote and not SUBLOTE_PLACEHOLDER_REGEX.match(clean_sublote):
+                            norm["slote"] = clean_sublote
+                            if not any(c["nombre"] == "SUBLOTE" for c in parsed_comp):
+                                parsed_comp.append({"nombre": "SUBLOTE", "valor": clean_sublote, "es_urbano": True})
+                        else:
+                            norm["slote"] = None
                     elif not has_mod:
                         # Referencia urbana (ej: '2DO. PISO ESQ. LIBERTAD') preservada para reubicación en ai_parser
                         norm["slote"] = val[:100]
@@ -430,7 +447,13 @@ class OllamaAddressExtraction(BaseModel):
                     if not any(m["tipo_modulo"] == canon_mod and m["valor"] == sp for m in parsed_mod):
                         parsed_mod.append({"tipo_modulo": canon_mod, "valor": sp})
 
-        norm["modulos"] = parsed_mod
+        # Filtrar módulos con valores espurios o etiquetas de sublote
+        norm["modulos"] = [
+            m for m in parsed_mod
+            if m.get("valor")
+            and not SUBLOTE_PLACEHOLDER_REGEX.match(str(m["valor"]).strip())
+            and str(m.get("tipo_modulo", "")).upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L")
+        ]
 
         # 5. Referencia Espacial de Orientación (Estricta para hitos urbanos)
         ref_val = None

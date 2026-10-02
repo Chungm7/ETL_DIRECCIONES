@@ -953,6 +953,25 @@
       justify-content: flex-end;
       gap: 10px;
     }
+    .btn-modal-close {
+      background: transparent;
+      border: none;
+      font-size: 22px;
+      line-height: 1;
+      color: var(--slate-400);
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+    }
+    .btn-modal-close:hover {
+      background: var(--slate-100);
+      color: var(--slate-700);
+    }
 
     /* ── Modal de Exportación Catastral (Ampliación) ── */
     .modal-dialog-export {
@@ -1769,7 +1788,7 @@
 </main>
 
 <!-- MODAL INSTITUCIONAL DE EXPORTACIÓN CATASTRAL (EXCEL Y CSV) -->
-<div id="modalExportOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+<div id="modalExportOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if (event.target === this) closeExportModal()">
   <div class="modal-dialog modal-dialog-export">
     <div class="modal-header">
       <div class="modal-icon-badge modal-icon-badge-export">
@@ -1777,10 +1796,11 @@
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
       </div>
-      <div>
+      <div style="flex:1;">
         <h3 style="margin:0; font-size:16px; color:var(--mpch-navy);">Centro de Descargas y Exportación Catastral</h3>
         <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Exporte registros procesados en Excel (.xlsx), CSV delimitado o JSON estructurado V2</p>
       </div>
+      <button type="button" class="btn-modal-close" onclick="closeExportModal()" aria-label="Cerrar modal" title="Cerrar modal">&times;</button>
     </div>
 
     <div class="modal-body" style="margin-bottom:14px;">
@@ -1893,16 +1913,15 @@
         </div>
       </div>
     </div>
-    </div>
 
-    <div class="modal-footer" style="border-top:1px solid var(--slate-200); padding-top:12px; margin-top:0;">
-      <button class="btn btn-ghost" onclick="closeExportModal()">Cerrar</button>
+    <div class="modal-footer" style="border-top:1px solid var(--slate-200); padding-top:14px; margin-top:4px;">
+      <button type="button" class="btn btn-ghost" onclick="closeExportModal()">Cerrar</button>
     </div>
   </div>
 </div>
 
 <!-- MODAL INSTITUCIONAL DE APAGADO DE SERVICIO -->
-<div id="modalShutdownOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+<div id="modalShutdownOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if (event.target === this) closeShutdownModal()">
   <div class="modal-dialog">
     <div class="modal-header">
       <div class="modal-icon-badge">
@@ -1910,7 +1929,10 @@
           <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
         </svg>
       </div>
-      <h3 id="shutdownModalTitle">¿Desea apagar el servicio?</h3>
+      <div style="flex:1;">
+        <h3 id="shutdownModalTitle" style="margin:0;">¿Desea apagar el servicio?</h3>
+      </div>
+      <button type="button" class="btn-modal-close" onclick="closeShutdownModal()" aria-label="Cerrar modal" title="Cerrar modal">&times;</button>
     </div>
     <div class="modal-body" id="shutdownModalBody">
       <p id="shutdownWarningText">

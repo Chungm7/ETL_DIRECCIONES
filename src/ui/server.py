@@ -965,11 +965,20 @@ def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[st
 
     # 2. Determinar cardinalidad máxima de módulos
     max_modulos = 0
+    sub_placeholder_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
     for r in records:
-        raw_mods = r.get("modulos") or []
+        raw_mods = [
+            m for m in (r.get("modulos") or [])
+            if (m.get("ditm_nombre") or m.get("valor"))
+            and not re.match(sub_placeholder_pat, str(m.get("ditm_nombre") or m.get("valor")).strip(), re.I)
+            and str(m.get("timo_nombre") or m.get("tipo_modulo") or "").upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L")
+        ]
         num_m = len(raw_mods)
         if not num_m and (r.get("tipo_modulo") or r.get("numero_modulo")):
-            num_m = 1
+            t_m = str(r.get("tipo_modulo") or "")
+            n_m = str(r.get("numero_modulo") or "")
+            if not re.match(sub_placeholder_pat, n_m, re.I) and t_m.upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L"):
+                num_m = 1
         elif not num_m and r.get("slote"):
             sl_str = str(r.get("slote") or "")
             if re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|STAND|TIENDA|OFICINA|PUERTA)\b", sl_str, re.IGNORECASE):
@@ -1203,6 +1212,13 @@ def extract_v2_export_row(
     otros_comp_list = []
     extra_comps_list = []
 
+    sub_placeholder_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+    clean_sl_val = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", sl, flags=re.IGNORECASE).strip(" -:,.")
+    if not clean_sl_val or re.match(sub_placeholder_pat, sl, re.I) or re.match(sub_placeholder_pat, clean_sl_val, re.I):
+        sl = ""
+    else:
+        sl = clean_sl_val
+
     raw_comps = r.get("componentes") or []
     standard_names = {"MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO"}
     for c in raw_comps:
@@ -1213,13 +1229,15 @@ def extract_v2_export_row(
         if "MANZANA" in c_nom and not mz:
             mz = c_val
         elif "SUBLOTE" in c_nom and not sl:
+            clean_c = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val, flags=re.IGNORECASE).strip(" -:,.")
+            is_placeholder = bool(not clean_c or re.match(sub_placeholder_pat, c_val, re.I) or re.match(sub_placeholder_pat, clean_c, re.I))
             has_mod = bool(re.search(
                 r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
                 c_val,
                 re.IGNORECASE,
             ))
-            if not has_mod and "PISO" not in c_val.upper() and not re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", c_val, re.I):
-                sl = c_val
+            if not has_mod and not is_placeholder and "PISO" not in c_val.upper() and not re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", c_val, re.I):
+                sl = clean_c
         elif "LOTE" in c_nom and not lt:
             lt = c_val
         elif ("BLOCK" in c_nom or "BLOQUE" in c_nom or "TORRE" in c_nom) and not block:
@@ -1267,7 +1285,12 @@ def extract_v2_export_row(
         for m in raw_mods:
             m_t = m.get("timo_nombre") or ""
             m_v = str(m.get("ditm_nombre") or "").strip()
-            if m_v:
+            # Descartar residuos espurios que son etiquetas de sublote o placeholders
+            if (
+                m_v
+                and not re.match(sub_placeholder_pat, m_v, re.I)
+                and m_t.upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L")
+            ):
                 extracted_mods.append((m_t, m_v))
     if sl:
         has_mod_in_sl = bool(re.search(
@@ -1602,7 +1625,16 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
             "tipo_zona": row_dict["Tipo_Zona"] or None,
         }
 
-        clean_sublote_final = row_dict["Sublote"] if (row_dict["Sublote"] and not re.search(r"\b(INT|DEP|STAND|TIENDA|TDA|OF|BLOCK|LOCAL|PUESTO|PUERTA)\b", str(row_dict["Sublote"]), re.I)) else None
+        sub_pat_json = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+        clean_sublote_final = (
+            row_dict["Sublote"]
+            if (
+                row_dict["Sublote"]
+                and not re.search(r"\b(INT|DEP|STAND|TIENDA|TDA|OF|BLOCK|LOCAL|PUESTO|PUERTA)\b", str(row_dict["Sublote"]), re.I)
+                and not re.match(sub_pat_json, str(row_dict["Sublote"]).strip(), re.I)
+            )
+            else None
+        )
 
         # Objeto unificado V2 con retrocompatibilidad
         rec_obj = {
@@ -2084,12 +2116,13 @@ def fetch_db_records_for_export(
                         elif "LOTE" in c_name and "SUBLOTE" not in c_name and not rec.get("lote"):
                             rec["lote"] = c["diti_nombre"]
                         elif "SUBLOTE" in c_name and not rec.get("slote"):
-                            rec["slote"] = c["diti_nombre"]
+                            sub_pat_load = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+                            c_val_slt = str(c["diti_nombre"] or "").strip()
+                            clean_c_slt = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val_slt, flags=re.IGNORECASE).strip(" -:,.")
+                            if clean_c_slt and not re.match(sub_pat_load, c_val_slt, re.I) and not re.match(sub_pat_load, clean_c_slt, re.I):
+                                rec["slote"] = clean_c_slt
                         elif "PISO" in c_name and not rec.get("piso"):
                             rec["piso"] = c["diti_nombre"]
-
-                    if rec["modulos"] and not rec.get("slote"):
-                        rec["slote"] = ", ".join(f"{m['timo_nombre']} {m['ditm_nombre']}".strip() for m in rec["modulos"])
 
     return records
 

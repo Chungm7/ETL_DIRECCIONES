@@ -635,24 +635,30 @@ class AIAddressParser:
                 nom_zona = None
                 heuristica_aplicada = True
 
-        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.), reubicar a referencia
+        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.), reubicar a referencia. Descartar placeholders ("slt", etc.)
         if slote:
             slote_clean = str(slote).strip()
-            # Identificar si es exclusivamente una referencia urbana (PISO, ESQUINA, FRENTE, etc.)
-            # y NO un módulo oficial (BLOCK, INT, DPTO, TIENDA, STAND, OFICINA)
-            is_module_like = bool(re.search(r"\b(?:BLOCK|BLQ|INT(?:ERIOR)?|DPTO|DEP|TIENDA|TDA|STAND|OF(?:ICINA)?|PTA|PUERTA|PUESTO|LOCAL)\b", slote_clean, re.IGNORECASE))
-            is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", slote_clean, re.IGNORECASE))
-            if is_ref_like and not is_module_like:
-                if not referencia:
-                    referencia = slote_clean
-                elif slote_clean.upper() not in referencia.upper():
-                    referencia = f"{referencia} - {slote_clean}".strip(" -")
+            clean_sub_val = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", slote_clean, flags=re.IGNORECASE).strip(" -:,.")
+            sub_placeholder_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+            if not clean_sub_val or re.match(sub_placeholder_pat, slote_clean, re.I) or re.match(sub_placeholder_pat, clean_sub_val, re.I):
                 slote = None
-                heuristica_aplicada = True
-            elif len(slote_clean) > 100:
-                slote = slote_clean[:100].strip()
             else:
-                slote = slote_clean
+                slote_clean = clean_sub_val
+                # Identificar si es exclusivamente una referencia urbana (PISO, ESQUINA, FRENTE, etc.)
+                # y NO un módulo oficial (BLOCK, INT, DPTO, TIENDA, STAND, OFICINA)
+                is_module_like = bool(re.search(r"\b(?:BLOCK|BLQ|INT(?:ERIOR)?|DPTO|DEP|TIENDA|TDA|STAND|OF(?:ICINA)?|PTA|PUERTA|PUESTO|LOCAL)\b", slote_clean, re.IGNORECASE))
+                is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", slote_clean, re.IGNORECASE))
+                if is_ref_like and not is_module_like:
+                    if not referencia:
+                        referencia = slote_clean
+                    elif slote_clean.upper() not in referencia.upper():
+                        referencia = f"{referencia} - {slote_clean}".strip(" -")
+                    slote = None
+                    heuristica_aplicada = True
+                elif len(slote_clean) > 100:
+                    slote = slote_clean[:100].strip()
+                else:
+                    slote = slote_clean
 
         # Limpieza de referencia y prevención de redundancia (preserva intactos nom_via y nom_zona)
         if referencia:
@@ -858,8 +864,12 @@ class AIAddressParser:
                 mc = CatalogMatcher.match_componente(c.nombre)
                 if mc:
                     c_val_str = str(c.valor).strip()
-                    # Aislamiento estricto: Si el componente es SUBLOTE pero contiene módulos o pisos, NUNCA ingresarlo
+                    # Aislamiento estricto: Si el componente es SUBLOTE pero contiene módulos o pisos o es un placeholder, NUNCA ingresarlo
                     if mc[1] == "SUBLOTE":
+                        clean_sub = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val_str, flags=re.IGNORECASE).strip(" -:,.")
+                        sub_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+                        if not clean_sub or re.match(sub_pat, c_val_str, re.I) or re.match(sub_pat, clean_sub, re.I):
+                            continue
                         has_mod = bool(re.search(
                             r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
                             c_val_str,
@@ -867,6 +877,7 @@ class AIAddressParser:
                         ))
                         if has_mod or "PISO" in c_val_str.upper():
                             continue
+                        c_val_str = clean_sub
                     componentes_result.append({
                         "codi_id": mc[0],
                         "codi_nombre": mc[1],
@@ -984,10 +995,6 @@ class AIAddressParser:
                         if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
                             modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
 
-            if not modulos_result and slote:
-                clean_slote = re.sub(r"[\[\]'\" ]", "", str(slote)).strip(" ,.-")
-                if clean_slote and clean_slote.upper() not in ("N", "NRO", "NUM"):
-                    modulos_result.append({"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": clean_slote})
 
         # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
         clean_referencia = None

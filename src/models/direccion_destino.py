@@ -193,6 +193,20 @@ class DireccionDestino(BaseModel):
             has_block = any((c.get("codi_nombre") or "").upper() == "BLOCK" for c in comps)
             if data.get("block") and not has_block:
                 comps.append({"codi_id": 11, "codi_nombre": "BLOCK", "diti_nombre": str(data["block"]).strip()})
+
+            # Filtrar componentes espurios de sublote (placeholders como "slt")
+            sub_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+            cleaned_comps = []
+            for c in comps:
+                cn = (c.get("codi_nombre") or "").upper()
+                cv = str(c.get("diti_nombre") or "").strip()
+                if "SUBLOTE" in cn:
+                    clean_c = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", cv, flags=re.IGNORECASE).strip(" -:,.")
+                    if not clean_c or re.match(sub_pat, cv, re.I) or re.match(sub_pat, clean_c, re.I):
+                        continue
+                    c["diti_nombre"] = clean_c
+                cleaned_comps.append(c)
+            comps = cleaned_comps
             data["componentes"] = comps
         else:
             new_comps = []
@@ -210,6 +224,16 @@ class DireccionDestino(BaseModel):
         # 7. Sincronización Módulos y Slote (Aislamiento Estricto para persistencia relacional V2)
         mods = data.get("modulos") or []
         sl_val = data.get("slote")
+        if sl_val:
+            s_val = str(sl_val).strip()
+            sub_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+            clean_s = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", s_val, flags=re.IGNORECASE).strip(" -:,.")
+            if not clean_s or re.match(sub_pat, s_val, re.I) or re.match(sub_pat, clean_s, re.I):
+                data["slote"] = None
+                sl_val = None
+            else:
+                data["slote"] = clean_s
+                sl_val = clean_s
         if sl_val and not mods:
             s_val = str(sl_val).strip()
             kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"

@@ -1330,6 +1330,13 @@ function closeExportModal() {
   if (overlay) overlay.classList.add('hidden');
 }
 
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeExportModal();
+    if (typeof closeShutdownModal === 'function') closeShutdownModal();
+  }
+});
+
 function setExportDataSource(source) {
   currentExportDataSource = source;
   const btnDb = document.getElementById('btnSourceDb');
