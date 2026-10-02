@@ -384,8 +384,8 @@ class OllamaService:
             return "Dirección incompleta: Carece de numeración municipal y de manzana/lote."
         if any("Zona/Habilitación" in f and "no figura" in f for f in facts):
             return "Predio no localizado: Consigna zona/habilitación urbana no identificada en el catálogo maestro de zonas de Chiclayo."
-        if any("DIRECCIÓN NO RECONOCIDA" in f for f in facts):
-            return "Dirección no reconocida: No se identificó vía ni habilitación urbana válida en el catálogo maestro."
+        if any("DIRECCIÓN NO RECONOCIDA" in f.upper() or "ININTELIGIBLE" in f.upper() or "CONFUSA" in f.upper() for f in facts):
+            return "Dirección no reconocida o ininteligible: No se identificó vía ni habilitación urbana válida en el catálogo maestro."
         if facts:
             return "; ".join(facts)
         return "Dirección no cumple con los criterios mínimos de ubicación física catastral."

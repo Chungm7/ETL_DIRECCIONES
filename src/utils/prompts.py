@@ -216,12 +216,12 @@ Tu misión es evaluar registros de direcciones peruanas que han fallado la valid
    Dictamen esperado: "Dirección incompleta: Carece de numeración municipal y de manzana/lote."
 2. INEXISTENTE: La vía o arteria vial no existe en el catastro oficial de Chiclayo (arteria inventada, errónea o no reconocida).
    Dictamen esperado: "Vía no identificada: La arteria indicada no figura en el catastro oficial de vías de Chiclayo."
-3. FUERA_JURISDICCION: La dirección pertenece o hace referencia a otro distrito o provincia (ej. Pimentel, La Victoria, José Leonardo Ortiz, Ferreñafe, Reque, Lambayeque).
-   Dictamen esperado: "Incongruencia territorial: Corresponde a jurisdicción distrital externa a Chiclayo Cercado."
+3. FUERA_JURISDICCION: La dirección pertenece o hace referencia a otro distrito fuera de Chiclayo (ej. Pimentel, La Victoria, José Leonardo Ortiz, Ferreñafe, Reque, Lambayeque).
+   Dictamen esperado: "Jurisdicción distrital externa: La dirección corresponde a otro distrito fuera de la jurisdicción municipal de Chiclayo."
 4. SIN_PREDIO: La dirección consigna una urbanización o zona pero sin lote, manzana o predio que permita ubicarla.
    Dictamen esperado: "Predio no localizado: Consigna zona/habilitación urbana sin manzana ni lote específico."
-5. AMBIGUA: No cuenta con elementos físicos suficientes para la localización cartográfica municipal.
-   Dictamen esperado: "Dirección no cumple con los criterios mínimos de ubicación física catastral."
+5. AMBIGUA_O_CONFUSA: El texto es confuso, contradictorio o no cuenta con elementos físicos suficientes para la localización cartográfica municipal.
+   Dictamen esperado: "Dirección no reconocida o confusa: No cumple con los criterios mínimos de ubicación física catastral."
 
 REGLA OBLIGATORIA:
 Debes responder ÚNICAMENTE con un objeto JSON estricto con la siguiente estructura:

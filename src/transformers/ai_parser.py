@@ -178,7 +178,10 @@ class AIAddressParser:
                     posible_1 = match_zona_via.group(1).strip()
                     posible_2 = match_zona_via.group(2).strip()
                     posible_num = match_zona_via.group(3) or match_zona_via.group(4)
-                    if posible_1 not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
+                    city_stopwords = ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO")
+                    if (posible_1 not in city_stopwords 
+                        and posible_2 not in city_stopwords
+                        and not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_1, re.IGNORECASE)):
                         # Detectar y separar número pegado al final si existe
                         m_p2_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', posible_2, re.IGNORECASE)
                         cand_p2_num = None
@@ -244,16 +247,20 @@ class AIAddressParser:
                                 referencia = trailing.upper()
                         heuristica_aplicada = True
 
-        # Filtrado de topónimos de ciudades como vías falsas
+        # Filtrado de topónimos de ciudades o componentes prediales como vías falsas
         if nom_via:
             nv_upper = nom_via.strip().upper()
-            nv_noacc = TextCleaner.remove_accents(nv_upper)
-            if nv_upper in CatalogManager.CITY_DISTRICT_STOPWORDS or nv_noacc in CatalogManager.CITY_DISTRICT_STOPWORDS:
-                via_prefixes = CatalogManager.get_via_prefix_regex_str()
-                has_formal_via_prefix = bool(re.search(rf"\b(?:{via_prefixes})\s+{re.escape(nom_via)}\b", raw_text, re.IGNORECASE))
-                if not has_formal_via_prefix:
-                    nom_via = None
-                    num_via = None
+            if re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", nv_upper):
+                nom_via = None
+                num_via = None
+            else:
+                nv_noacc = TextCleaner.remove_accents(nv_upper)
+                if nv_upper in CatalogManager.CITY_DISTRICT_STOPWORDS or nv_noacc in CatalogManager.CITY_DISTRICT_STOPWORDS:
+                    via_prefixes = CatalogManager.get_via_prefix_regex_str()
+                    has_formal_via_prefix = bool(re.search(rf"\b(?:{via_prefixes})\s+{re.escape(nom_via)}\b", raw_text, re.IGNORECASE))
+                    if not has_formal_via_prefix:
+                        nom_via = None
+                        num_via = None
 
         # 5. Respaldo Heurístico para numeración de vía (SOLO si existe una vía)
         if not nom_via:
@@ -1100,26 +1107,47 @@ class AIAddressParser:
             "ETEN": "Eten",
             "PUERTO ETEN": "Puerto Eten",
             "CIUDAD ETEN": "Ciudad Eten",
-            "SANTA ROSA": "Santa Rosa",
+            "DISTRITO SANTA ROSA": "Santa Rosa",
+            "DISTRITO DE SANTA ROSA": "Santa Rosa",
+            "CALETA SANTA ROSA": "Santa Rosa",
             "PICSI": "Picsi",
             "POMALCA": "Pomalca",
         }
+        has_chiclayo_dist = bool(re.search(r"(?:^|[\-\–—,/]|\bDISTRITO\s+(?:DE\s+)?)\s*CHICLAYO\b", raw_text, re.IGNORECASE))
+        via_prefixes = CatalogManager.get_via_prefix_regex_str()
+        zona_prefixes = CatalogManager.get_zona_prefix_regex_str()
+
         detected_external_dist = None
         for ext_key, ext_name in EXTERNAL_DISTRICTS.items():
             pat = rf"(?:^|[\-\–—,/\s]|\bDISTRITO\s+(?:DE\s+)?)\b{re.escape(ext_key)}\b"
-            if re.search(pat, raw_text, re.IGNORECASE):
-                # Verificar que no sea parte del nombre de la vía matched (ej. CALLE SANTA ROSA)
+            m_ext = re.search(pat, raw_text, re.IGNORECASE)
+            if m_ext:
+                # 1. Si está precedido inmediatamente por un prefijo de vía (ej. "CALLE PIMENTEL", "AV. LA VICTORIA")
+                before_match = raw_text[:m_ext.start()].strip()
+                if re.search(rf"\b(?:{via_prefixes})\s*$", before_match, re.IGNORECASE):
+                    continue
+                # 2. Si está precedido inmediatamente por un prefijo de zona (ej. "PP.JJ. SANTA ROSA", "URB. LA VICTORIA")
+                if re.search(rf"\b(?:{zona_prefixes})\s*$", before_match, re.IGNORECASE):
+                    continue
+                # 3. Si coincide con el nombre de la vía matched oficial (ej. CALLE PIMENTEL)
                 if matched_via and ext_key in matched_via.get("nom_via", "").upper():
                     continue
-                # Verificar que no sea parte de una zona oficial de Chiclayo (ej. UPIS SANTA ROSA)
+                # 4. Si coincide con el nombre de la zona matched oficial (ej. SANTA ROSA DE LIMA)
                 if matched_zona and ext_key in matched_zona.get("nom_zona", "").upper():
                     continue
+                # 5. Si la vía ya fue homologada oficialmente en Chiclayo y la dirección indica explícitamente CHICLAYO
+                if matched_via and has_chiclayo_dist:
+                    continue
+                # 6. Si la zona ya fue homologada oficialmente en Chiclayo
+                if matched_zona:
+                    continue
+
                 detected_external_dist = ext_name
                 break
 
         if detected_external_dist and not matched_zona:
             observaciones.append(
-                f"Dirección con jurisdicción distrital externa ({detected_external_dist}): No corresponde al catastro urbano del distrito de Chiclayo."
+                f"Jurisdicción distrital externa: La dirección corresponde al distrito de {detected_external_dist}, fuera de la jurisdicción municipal del distrito de Chiclayo."
             )
 
         # Guardrail de Integridad Estricta:

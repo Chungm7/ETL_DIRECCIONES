@@ -173,7 +173,6 @@ class CatalogManager:
         "ETEN",
         "PUERTO ETEN",
         "CIUDAD ETEN",
-        "SANTA ROSA",
         "PICSI",
         "POMALCA",
         "PERU",
@@ -291,6 +290,17 @@ class CatalogManager:
         "CESAR VALLEJO": "CÉSAR VALLEJO",
         "CÉSAR VALLEJO": "CÉSAR VALLEJO",
         "LAS TORRES DE CHICLAYO": "CERCADO DE CHICLAYO",
+        "SANTA ROSA": "SANTA ROSA DE LIMA",
+        "STA. ROSA": "SANTA ROSA DE LIMA",
+        "STA ROSA": "SANTA ROSA DE LIMA",
+        "PP.JJ. SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PP.JJ SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PPJJ SANTA ROSA": "SANTA ROSA DE LIMA",
+        "P.J. SANTA ROSA": "SANTA ROSA DE LIMA",
+        "P.J SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PJ SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PUEBLO JOVEN SANTA ROSA": "SANTA ROSA DE LIMA",
+        "UPIS SANTA ROSA": "SANTA ROSA DE LIMA",
     }
 
     @classmethod

@@ -173,3 +173,90 @@ def test_excel_export_freezes_header_row():
     ws = wb.active
     assert ws is not None
     assert ws.freeze_panes == "A2", f"freeze_panes debe ser 'A2', pero se obtuvo '{ws.freeze_panes}'"
+
+
+def test_salvador_allende_santa_rosa_normalizes_cleanly():
+    """ID 221: CA. SALVADOR ALLENDE N 321 PP.JJ. SANTA ROSA - CHICLAYO debe normalizarse con éxito.
+    Nunca debe ser observada por 'jurisdicción distrital externa' ni por falta de componentes.
+    """
+    parser = AIAddressParser(ollama_service=None)
+    rec = DireccionOrigen(
+        id_licencia=221,
+        emp_direccion="CA. SALVADOR ALLENDE N 321 PP.JJ. SANTA ROSA - CHICLAYO "
+    )
+    dest = parser.parse(rec)
+
+    assert dest.es_procesado is True, f"ID 221 debe ser exitosa, pero fue observada: {dest.observacion}"
+    assert dest.nom_via == "SALVADOR ALLENDE"
+    assert dest.num_via == "321"
+    assert dest.nom_zona == "SANTA ROSA DE LIMA"
+    assert dest.zona_id == 44
+    assert len(dest.vias) == 1
+    assert dest.vias[0]["via_id"] == 353
+    assert dest.observacion is None
+
+
+def test_av_jose_leonardo_ortiz_chiclayo_is_not_external_district():
+    """ID 366: AV. JOSE LEONARDO ORTIZ N 118 - CHICLAYO es una avenida oficial en Chiclayo (ID 2863).
+    No debe confundirse con el distrito de JLO ni observarse como jurisdicción externa.
+    """
+    parser = AIAddressParser(ollama_service=None)
+    rec = DireccionOrigen(
+        id_licencia=366,
+        emp_direccion="AV. JOSE LEONARDO ORTIZ N 118 - CHICLAYO "
+    )
+    dest = parser.parse(rec)
+
+    assert dest.es_procesado is True, f"ID 366 debe normalizarse, pero fue observada: {dest.observacion}"
+    assert dest.nom_via == "JOSÉ LEONARDO ORTIZ"
+    assert dest.num_via == "118"
+    assert len(dest.vias) == 1
+    assert dest.vias[0]["via_id"] == 2863
+    assert dest.observacion is None
+
+
+def test_predio_mz_lt_without_via_normalizes():
+    """ID 312 y 302: Lotes prediales urbanos con Mz/Lt y Zona confirmada deben normalizarse."""
+    parser = AIAddressParser(ollama_service=None)
+
+    # Caso 1: Miraflores II Etapa
+    rec_312 = DireccionOrigen(
+        id_licencia=312,
+        emp_direccion="MZ. A LOTE 09 URB. MIRAFLORES II ETAPA - CHICLAYO "
+    )
+    dest_312 = parser.parse(rec_312)
+    assert dest_312.es_procesado is True, f"ID 312 debe ser exitosa: {dest_312.observacion}"
+    assert dest_312.nom_zona == "MIRAFLORES II ETAPA"
+    assert dest_312.manzana == "A"
+    assert dest_312.lote == "09"
+
+    # Caso 2: Fanny Abanto Calle (el apellido Calle no debe convertirse en nom_via = 'MZ Q')
+    rec_302 = DireccionOrigen(
+        id_licencia=302,
+        emp_direccion="PP.JJ. FANNY ABANTO CALLE MZ. Q  LT 04 - CHICLAYO"
+    )
+    dest_302 = parser.parse(rec_302)
+    assert dest_302.es_procesado is True, f"ID 302 debe ser exitosa: {dest_302.observacion}"
+    assert dest_302.nom_zona == "FANNY ABANTO CALLE"
+    assert dest_302.manzana == "Q"
+    assert dest_302.lote == "04"
+    assert dest_302.nom_via is None
+
+
+def test_confusing_records_remain_observed_with_clear_diagnosis():
+    """Direcciones ininteligibles, confusas o sin datos mínimos deben mantenerse observadas con diagnóstico claro."""
+    parser = AIAddressParser(ollama_service=None)
+
+    # 1. Dirección incompleta (vía sin número y sin predio)
+    rec_inc = DireccionOrigen(id_licencia=991, emp_direccion="CALLE ELIAS AGUIRRE - CHICLAYO")
+    dest_inc = parser.parse(rec_inc)
+    assert dest_inc.es_procesado is False
+    assert "incompleta" in dest_inc.observacion.lower()
+    assert "numeración" in dest_inc.observacion.lower() or "número" in dest_inc.observacion.lower()
+
+    # 2. Vía inexistente / no identificada
+    rec_inv = DireccionOrigen(id_licencia=992, emp_direccion="CA. ARTERIA INEXISTENTE N 999 - CHICLAYO")
+    dest_inv = parser.parse(rec_inv)
+    assert dest_inv.es_procesado is False
+    assert "no figura" in dest_inv.observacion.lower() or "no identificada" in dest_inv.observacion.lower()
+
