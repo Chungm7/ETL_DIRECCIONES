@@ -35,7 +35,8 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.id_via, 2905)  # JOSE BALTA
         self.assertIn("882", destino.num_via)
-        self.assertEqual(destino.slote, "INT-I")
+        self.assertIsNone(destino.slote)
+        self.assertTrue(any(m.get("timo_nombre") == "INTERIOR" and m.get("ditm_nombre") == "I" for m in destino.modulos))
         self.assertIsNone(destino.id_zona)  # CHICLAYO es la ciudad, no forzar CERCADO
 
     def test_parse_fitzcarral_airport_with_fallback(self):

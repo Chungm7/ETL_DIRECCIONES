@@ -124,13 +124,15 @@ def test_clean_numbering_interior_decoupling():
     rec1 = DireccionOrigen(id_licencia=1319, emp_direccion="CHICLAYO-TORRES PAZ00683 DPTO. 304")
     res1 = parser.parse(rec1)
     assert res1.num_via == "683"
-    assert "DPTO" in (res1.slote or "")
+    assert res1.slote is None
+    assert any(m["timo_nombre"] == "DEPARTAMENTO" and m["ditm_nombre"] == "304" for m in res1.modulos)
 
     # Caso INT
     rec2 = DireccionOrigen(id_licencia=1533, emp_direccion="CHICLAYO-ELIAS AGUIRRE 00631-INT. 105")
     res2 = parser.parse(rec2)
     assert res2.num_via == "631"
-    assert "INT" in (res2.slote or "")
+    assert res2.slote is None
+    assert any(m["timo_nombre"] == "INTERIOR" and m["ditm_nombre"] == "105" for m in res2.modulos)
 
     # Caso BLOCK
     rec3 = DireccionOrigen(id_licencia=1230, emp_direccion="CONDOMINIO LA PRIMAVERA-ANGEL CORNEJO BLOCK F-101")

@@ -518,14 +518,11 @@ class TestV2DatabaseLoader:
         assert any("ALTER COLUMN \"tivi_estado\" TYPE VARCHAR(3)" in s for s in executed_sqls)
 
     def test_multiple_modules_slote_summary_exceeds_20_chars_without_validation_error(self):
-        """Valida que direcciones con múltiples dependencias (como los 9 casos fallidos) no disparen ValidationError."""
-        # 1. Caso ID 261: 2 Tiendas (27 caracteres)
+        """Valida que valores en slote de más de 20 caracteres no disparen ValidationError."""
+        # 1. Caso ID 261: 2 Tiendas (26 caracteres)
         d_tiendas = DireccionDestino(
             id_licencia=261,
-            modulos=[
-                {"timo_id": 5, "timo_nombre": "TIENDA", "ditm_nombre": "METRO"},
-                {"timo_id": 5, "timo_nombre": "TIENDA", "ditm_nombre": "LOCAL"},
-            ],
+            slote="TIENDA METRO, TIENDA LOCAL",
         )
         assert d_tiendas.slote == "TIENDA METRO, TIENDA LOCAL"
         assert len(d_tiendas.slote) == 26
@@ -534,34 +531,27 @@ class TestV2DatabaseLoader:
         # 2. Caso ID 359: 2 Interiores (24 caracteres)
         d_interiores = DireccionDestino(
             id_licencia=359,
-            modulos=[
-                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "308"},
-                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "A"},
-            ],
+            slote="INTERIOR 308, INTERIOR A",
         )
         assert d_interiores.slote == "INTERIOR 308, INTERIOR A"
         assert len(d_interiores.slote) == 24
 
         # 3. Caso ID 1013: 6 Oficinas (76 caracteres)
+        ofis_str = ", ".join(f"OFICINA {i}" for i in range(204, 210))
         d_oficinas = DireccionDestino(
             id_licencia=1013,
-            modulos=[
-                {"timo_id": 6, "timo_nombre": "OFICINA", "ditm_nombre": str(i)}
-                for i in range(204, 210)
-            ],
+            slote=ofis_str,
         )
         assert "OFICINA 204" in d_oficinas.slote
         assert "OFICINA 209" in d_oficinas.slote
         assert len(d_oficinas.slote) == 76
 
     def test_slote_capped_safely_at_100_chars(self):
-        """Valida que módulos excesivos que superen 100 caracteres se trunquen limpiamente sin error de validación."""
+        """Valida que textos excesivos en slote que superen 100 caracteres se trunquen limpiamente sin error de validación."""
+        largo = ", ".join(f"OFICINA {i}" for i in range(100, 120))
         d_extremo = DireccionDestino(
             id_licencia=9999,
-            modulos=[
-                {"timo_id": 6, "timo_nombre": "OFICINA", "ditm_nombre": str(i)}
-                for i in range(100, 120)
-            ],
+            slote=largo,
         )
         assert len(d_extremo.slote) <= 100
         assert d_extremo.slote.startswith("OFICINA 100")

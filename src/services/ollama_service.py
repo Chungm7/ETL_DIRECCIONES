@@ -373,6 +373,9 @@ class OllamaService:
 
         # Fallback determinístico con la rúbrica institucional de Chiclayo
         for f in facts:
+            if "jurisdicción distrital externa" in f.lower() or "jurisdiccion distrital externa" in f.lower():
+                return f
+        for f in facts:
             if "catálogo maestro" in f:
                 return f
         if any("Vía" in f and "no figura" in f for f in facts):

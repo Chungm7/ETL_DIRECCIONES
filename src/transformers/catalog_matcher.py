@@ -360,7 +360,8 @@ class CatalogMatcher:
     ZONA_STOPWORDS: Set[str] = {
         "URB", "URBANIZACION", "PJ", "PUEBLO", "JOVEN", "AH", "ASENTAMIENTO",
         "HUMANO", "CONJ", "HAB", "RES", "COOP", "ASOC", "VIV", "DE", "DEL",
-        "LA", "LAS", "LOS", "EL"
+        "LA", "LAS", "LOS", "EL",
+        "CHICLAYO", "LAMBAYEQUE", "PIMENTEL", "FERRENAFE", "FERREÑAFE", "PERU", "PERÚ"
     }
 
     VIA_STOPWORDS: Set[str] = {
@@ -427,7 +428,16 @@ class CatalogMatcher:
         """Encuentra los top_k candidatos oficiales de zonas de Chiclayo ordenados por similitud."""
         if not text:
             return []
+        q_clean = TextCleaner.sanitize(text).upper()
+        if not tipo_zona_hint:
+            if (q_clean in CatalogManager.CITY_DISTRICT_STOPWORDS or 
+                TextCleaner.remove_accents(q_clean) in CatalogManager.CITY_DISTRICT_STOPWORDS):
+                return []
         q_norm = cls.normalize_variants_text(text)
+        if not tipo_zona_hint:
+            if (q_norm.upper() in CatalogManager.CITY_DISTRICT_STOPWORDS or
+                TextCleaner.remove_accents(q_norm.upper()) in CatalogManager.CITY_DISTRICT_STOPWORDS):
+                return []
         q_tokens = cls._extract_sig_tokens(q_norm, is_via=False)
         if not q_tokens:
             return []
@@ -771,7 +781,22 @@ class CatalogMatcher:
         raw_text: Optional[str] = None,
         ollama_service: Optional[Any] = None,
     ) -> Optional[Dict[str, Any]]:
+        clean_upper = clean.upper().strip()
         no_acc = TextCleaner.remove_accents(clean)
+
+        clean_noprefix = re.sub(
+            r"^(?:URB\.|URBANIZACION|P\.J\.|PUEBLO JOVEN|A\.H\.|ASENTAMIENTO HUMANO|H\.U\.|CONJ\.HAB\.|CONJ\.RES\.|COOP\.VIV\.|ASOC\.VIV\.)\s+",
+            "",
+            clean,
+            flags=re.IGNORECASE,
+        ).strip().upper()
+
+        # Si el texto es puramente un distrito o ciudad (ej. CHICLAYO, PIMENTEL, LA VICTORIA, JLO), no es una zona
+        if (clean_upper in CatalogManager.CITY_DISTRICT_STOPWORDS or
+            clean_noprefix in CatalogManager.CITY_DISTRICT_STOPWORDS or
+            TextCleaner.remove_accents(clean_upper) in CatalogManager.CITY_DISTRICT_STOPWORDS or
+            TextCleaner.remove_accents(clean_noprefix) in CatalogManager.CITY_DISTRICT_STOPWORDS):
+            return None
 
         lookup = CatalogManager.get_physical_zonas_lookup()
         # 1. Búsqueda directa por nombre o sinónimo exacto (0ms)

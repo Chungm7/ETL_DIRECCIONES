@@ -189,6 +189,14 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;');
 }
 
+function isCleanSublote(sl) {
+  if (!sl) return false;
+  const s = String(sl).trim().toUpperCase();
+  if (['SLT', 'SLOTE', 'SUBLOTE', 'S/L', 'S/LT', 'NO', 'N/A', 'NA', 'NONE', 'NULL', '-', '.'].includes(s)) return false;
+  if (/^(?:INT(?:ERIOR)?|DPTO|DEP|TIENDA|TDA|STAND|OF(?:ICINA)?|PUERTA|PTA|LOCAL|BLOCK|TORRE|PISO)\b/i.test(s)) return false;
+  return true;
+}
+
 // ── PASO 1: Motor IA (Ollama) ────────────────────────────────────────────────
 function onModelSelectChange() {
   const sel = document.getElementById('ai_model_select');
@@ -1239,7 +1247,7 @@ function renderInspectorTable(records) {
     const predChips = [];
     if (r.manzana) predChips.push(`<span class="chip-predio chip-mz">Mz:${escapeHtml(r.manzana)}</span>`);
     if (r.lote)    predChips.push(`<span class="chip-predio chip-lt">Lt:${escapeHtml(r.lote)}</span>`);
-    if (r.slote)   predChips.push(`<span class="chip-predio chip-slt">Slt:${escapeHtml(r.slote)}</span>`);
+    if (r.slote && isCleanSublote(r.slote)) predChips.push(`<span class="chip-predio chip-slt">Slt:${escapeHtml(r.slote)}</span>`);
     if (r.block)   predChips.push(`<span class="chip-predio chip-block">Blk:${escapeHtml(r.block)}</span>`);
     if (r.piso)    predChips.push(`<span class="chip-predio chip-piso">Piso:${escapeHtml(r.piso)}</span>`);
     const predioText = predChips.length > 0 ? predChips.join('') : '—';
@@ -1347,7 +1355,7 @@ function createConciseRecordCard(r) {
   const predioChips = [];
   if (r.manzana) predioChips.push(`<span class="chip-predio chip-mz">Mz: ${escapeHtml(r.manzana)}</span>`);
   if (r.lote)    predioChips.push(`<span class="chip-predio chip-lt">Lt: ${escapeHtml(r.lote)}</span>`);
-  if (r.slote)   predioChips.push(`<span class="chip-predio chip-slt">Slt: ${escapeHtml(r.slote)}</span>`);
+  if (r.slote && isCleanSublote(r.slote)) predioChips.push(`<span class="chip-predio chip-slt">Slt: ${escapeHtml(r.slote)}</span>`);
   if (r.block)   predioChips.push(`<span class="chip-predio chip-block">Block: ${escapeHtml(r.block)}</span>`);
   if (r.piso)    predioChips.push(`<span class="chip-predio chip-piso">Piso: ${escapeHtml(r.piso)}</span>`);
 
@@ -1451,7 +1459,7 @@ function copySingleRecord(idLicencia) {
   const predParts = [];
   if (rec.manzana) predParts.push(`Mz: ${rec.manzana}`);
   if (rec.lote) predParts.push(`Lt: ${rec.lote}`);
-  if (rec.slote) predParts.push(`Slt: ${rec.slote}`);
+  if (rec.slote && isCleanSublote(rec.slote)) predParts.push(`Slt: ${rec.slote}`);
   if (rec.block) predParts.push(`Block: ${rec.block}`);
   if (rec.piso) predParts.push(`Piso: ${rec.piso}`);
   const catText = predParts.join(' | ');

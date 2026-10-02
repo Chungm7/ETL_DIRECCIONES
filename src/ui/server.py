@@ -151,6 +151,11 @@ class ExecutionState:
         log_line = f"[{idx}/{tot} | ID: {pk}]{worker_tag} [{status_tag}] [{motor}] \"{raw}\" -> {via} | {zona}"
         if cat:
             log_line += f" | {cat}"
+        mods = record_data.get("modulos") or []
+        if mods and "Módulos:" not in cat:
+            mod_strs = [f"{m.get('timo_nombre') or m.get('tipo', 'MOD')} {m.get('ditm_nombre') or m.get('numero', '')}".strip() for m in mods]
+            if mod_strs:
+                log_line += f" | Módulos: {', '.join(mod_strs)}"
         if ref:
             log_line += f" | Ref: {ref}"
         if obs:
@@ -1513,6 +1518,7 @@ def generate_excel_report(records: List[Dict[str, Any]], headers: Optional[List[
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = "Normalización Catastral V2"
+    ws.freeze_panes = "A2"
 
     if headers is None:
         dynamic_headers, meta = build_dynamic_export_headers(records)

@@ -244,14 +244,9 @@ class DireccionDestino(BaseModel):
                 if mm:
                     data["modulos"] = [{"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": m_match.group(2).strip()}]
         elif not sl_val and mods:
-            # Mantener resumen plano en slote para visualización GUI / compatibilidad V1 (máx 100 caracteres)
-            summary_slote = ", ".join(
-                f"{m.get('timo_nombre') or 'MODULO'} {m.get('ditm_nombre')}".strip()
-                for m in mods
-                if m.get("ditm_nombre")
-            )
-            if summary_slote:
-                data["slote"] = summary_slote[:100]
+            # En la arquitectura V2 desacoplada, slote es exclusivamente predial (sublote catastral).
+            # Los módulos se gestionan independientemente en tb_direccion_tipo_modulo.
+            pass
 
         # 8. Salvaguarda final defensiva contra ValidationError por longitud
         final_limits = {

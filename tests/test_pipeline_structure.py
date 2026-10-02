@@ -361,7 +361,8 @@ class TestPipelineStructure(unittest.TestCase):
         dest = parser.parse(record)
 
         self.assertEqual(dest.metodo_normalizacion, "Híbrido (IA + Heurística)")
-        self.assertEqual(dest.slote, "INT-2")
+        self.assertIsNone(dest.slote)
+        self.assertTrue(any(m.get("timo_nombre") == "INTERIOR" and m.get("ditm_nombre") == "2" for m in dest.modulos))
         self.assertTrue(dest.es_procesado)
 
     def test_ai_parser_fallback_heuristic_tagging(self):

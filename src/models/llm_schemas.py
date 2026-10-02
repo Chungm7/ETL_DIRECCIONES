@@ -4,6 +4,7 @@ import re
 import unicodedata
 from typing import Any, List, Optional
 from pydantic import BaseModel, Field, model_validator, field_validator
+from src.catalogs.catalog_manager import CatalogManager
 
 
 def _remove_accents(text: str) -> str:
@@ -222,7 +223,12 @@ class OllamaAddressExtraction(BaseModel):
             if k in data and data[k] is not None:
                 v = str(data[k]).strip()
                 if v:
-                    norm["nom_zona"] = v
+                    v_upper = v.upper()
+                    v_noacc = _remove_accents(v_upper)
+                    if v_upper in CatalogManager.CITY_DISTRICT_STOPWORDS or v_noacc in CatalogManager.CITY_DISTRICT_STOPWORDS:
+                        norm["nom_zona"] = None
+                    else:
+                        norm["nom_zona"] = v
                     break
 
         # 3. Extracción de Componentes (Mz, Lote, Sublote, Piso, Block, etc.)

@@ -69,17 +69,29 @@ class AIAddressParser:
                     heuristica_aplicada = True
 
             if nom_zona:
-                z_toks = CatalogMatcher._extract_sig_tokens(nom_zona, is_via=False)
-                r_toks = CatalogMatcher._extract_sig_tokens(raw_text, is_via=False)
-                is_syn_z = False
-                for cand_syn, target_name in CatalogManager.EXTRA_ZONAS_SYNONYMS.items():
-                    if target_name.upper() in nom_zona.upper() and cand_syn.upper() in raw_text.upper():
-                        is_syn_z = True
-                        break
-                if not is_syn_z and not (z_toks & r_toks):
-                    logger.warning("Descartando nom_zona alucinado por IA: '%s' no presente en '%s'", nom_zona, raw_text)
+                # Regla de Oro: CERCADO DE CHICLAYO solo es válido si la palabra CERCADO figura expresamente en raw_text
+                if "CERCADO" in nom_zona.upper() and "CERCADO" not in raw_text.upper():
+                    logger.warning("Descartando nom_zona '%s': palabra 'CERCADO' no presente en raw_text '%s'", nom_zona, raw_text)
                     nom_zona = None
+                    tipo_zona_detectada = None
                     heuristica_aplicada = True
+                elif nom_zona.upper().strip() in CatalogManager.CITY_DISTRICT_STOPWORDS:
+                    logger.warning("Descartando nom_zona '%s': corresponde a stopword de distrito/ciudad", nom_zona)
+                    nom_zona = None
+                    tipo_zona_detectada = None
+                    heuristica_aplicada = True
+                else:
+                    z_toks = CatalogMatcher._extract_sig_tokens(nom_zona, is_via=False)
+                    r_toks = CatalogMatcher._extract_sig_tokens(raw_text, is_via=False)
+                    is_syn_z = False
+                    for cand_syn, target_name in CatalogManager.EXTRA_ZONAS_SYNONYMS.items():
+                        if target_name.upper() in nom_zona.upper() and cand_syn.upper() in raw_text.upper():
+                            is_syn_z = True
+                            break
+                    if not is_syn_z and not (z_toks & r_toks):
+                        logger.warning("Descartando nom_zona alucinado por IA: '%s' no presente en '%s'", nom_zona, raw_text)
+                        nom_zona = None
+                        heuristica_aplicada = True
 
         # 2.5 Respaldo para vías emblemáticas con fechas o números cuando nom_via está vacío o truncado
         if not nom_via or nom_via.upper() in ("ENERO", "OCTUBRE", "JULIO", "MAYO", "NOVIEMBRE", "ABRIL", "FEBRERO", "JUNIO", "ENSAYOS"):
@@ -265,14 +277,6 @@ class AIAddressParser:
                     if m_let and not slote:
                         slote = m_let.group(1).upper()
 
-        # 6. Respaldo Heurístico para interiores ("INT-I", "INT- 1", "DPTO 2")
-        if "INT-" in raw_text or "DPTO" in raw_text:
-            match_int = re.search(r"\b(INT-[A-Z0-9]+|DPTO-[A-Z0-9]+)\b", raw_text)
-            if match_int:
-                interior_val = match_int.group(1)
-                if not slote:
-                    slote = interior_val
-                    heuristica_aplicada = True
 
         # 6b. Respaldo Heurístico para Manzana y Lote
         if not manzana:
@@ -644,11 +648,14 @@ class AIAddressParser:
                 slote = None
             else:
                 slote_clean = clean_sub_val
-                # Identificar si es exclusivamente una referencia urbana (PISO, ESQUINA, FRENTE, etc.)
-                # y NO un módulo oficial (BLOCK, INT, DPTO, TIENDA, STAND, OFICINA)
-                is_module_like = bool(re.search(r"\b(?:BLOCK|BLQ|INT(?:ERIOR)?|DPTO|DEP|TIENDA|TDA|STAND|OF(?:ICINA)?|PTA|PUERTA|PUESTO|LOCAL)\b", slote_clean, re.IGNORECASE))
+                # Identificar si es un módulo oficial (BLOCK, INT, DPTO, TIENDA, STAND, OFICINA)
+                # o si es una referencia urbana (PISO, ESQUINA, FRENTE, etc.)
+                is_module_like = bool(re.search(r"\b(?:BLOCK|BLQ|INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|TIENDA|TDA|STAND|OF(?:ICINA)?|PTA|PUERTA|PUESTO|LOCAL)\b", slote_clean, re.IGNORECASE))
                 is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", slote_clean, re.IGNORECASE))
-                if is_ref_like and not is_module_like:
+                if is_module_like:
+                    # Módulos son relaciones dinámicas en licencia_modulo, NO pertenecen a slote
+                    slote = None
+                elif is_ref_like:
                     if not referencia:
                         referencia = slote_clean
                     elif slote_clean.upper() not in referencia.upper():
@@ -676,10 +683,10 @@ class AIAddressParser:
             m_sub = re.search(r"\b(BLOCK\s+[A-Z0-9\-]+|DPTO\.?\s*[A-Z0-9\-]+|INT\.?\s*[A-Z0-9\-]+|TIENDA\s*[A-Z0-9\-]+|TDA\.?\s*[A-Z0-9\-]+|STAND\s*[A-Z0-9\-]+|OF\.?\s*[A-Z0-9\-]+)\b", num_via_str, re.IGNORECASE)
             if m_sub:
                 sub_val = m_sub.group(1).strip()
-                if not slote:
-                    slote = sub_val
-                elif sub_val.upper() not in slote.upper():
-                    slote = f"{slote} - {sub_val}"
+                m_blk = re.search(r"\bBLOCK\s+([A-Z0-9\-]+)\b", sub_val, re.IGNORECASE)
+                if m_blk and not detected_block:
+                    detected_block = m_blk.group(1).strip().upper()
+                # NUNCA asignar módulos a slote; limpiar num_via_str para conservar solo la numeración
                 num_via_str = re.sub(re.escape(sub_val), "", num_via_str, flags=re.IGNORECASE).strip(" -/,.")
 
             # Detectar sufijo de letra de puerta (ej. '125-A', '125 A')
@@ -728,6 +735,12 @@ class AIAddressParser:
             if zona_detectada_en_texto
             else None
         )
+
+        if matched_zona and matched_zona.get("nom_zona") == "CERCADO DE CHICLAYO":
+            if "CERCADO" not in raw_text.upper():
+                logger.warning("Descartando matched_zona 'CERCADO DE CHICLAYO': palabra 'CERCADO' no figura en raw_text '%s'", raw_text)
+                matched_zona = None
+                nom_zona = None
 
         zona_sector = matched_zona.get("sector") if matched_zona else None
 
@@ -960,7 +973,7 @@ class AIAddressParser:
         if not modulos_result:
             source_mod = f"{slote or ''} {referencia or ''} {raw_text or ''}"
             mod_pattern = re.compile(
-                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|LOCAL)\b\.?\s*[:\-]?\s*([A-Z0-9]+(?:\s*(?:,|Y|-)\s*[A-Z0-9]+)*)",
+                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|LOCAL)\b\.?\s*[:\-]?(?:\s*(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)?\s*([A-Z0-9]+(?:\s*(?:,|Y|-)\s*[A-Z0-9]+)*)",
                 re.IGNORECASE,
             )
             for m_match in mod_pattern.finditer(source_mod):
@@ -969,7 +982,7 @@ class AIAddressParser:
                 if tname in ("BLOCK", "BLQ") and "HAYA DE LA TORRE" in source_mod:
                     continue
                 # Limpiar prefijo de número N° / N
-                raw_vals = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", raw_vals, flags=re.IGNORECASE).strip()
+                raw_vals = re.sub(r"^(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N\s+)", "", raw_vals, flags=re.IGNORECASE).strip()
                 mm = CatalogMatcher.match_tipo_modulo(tname)
                 if mm:
                     parts = [
@@ -988,12 +1001,17 @@ class AIAddressParser:
                     ]
                     if len(parts) > 1 and all(len(p) <= 6 for p in parts):
                         for p in parts:
-                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p for mr in modulos_result):
-                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": p})
+                            p_clean = p.lstrip("0") if p.isdigit() else p
+                            p_clean = p_clean or "0"
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p_clean for mr in modulos_result):
+                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": p_clean})
+                                heuristica_aplicada = True
                     elif parts:
-                        clean_v = parts[0]
+                        clean_v = parts[0].lstrip("0") if parts[0].isdigit() else parts[0]
+                        clean_v = clean_v or "0"
                         if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
                             modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
+                            heuristica_aplicada = True
 
 
         # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
@@ -1064,6 +1082,45 @@ class AIAddressParser:
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:
             observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
+
+        # Detección de distritos y jurisdicciones distritales externas (Pimentel, JLO, La Victoria, etc.)
+        EXTERNAL_DISTRICTS = {
+            "PIMENTEL": "Pimentel",
+            "JOSE LEONARDO ORTIZ": "José Leonardo Ortiz",
+            "JOSÉ LEONARDO ORTIZ": "José Leonardo Ortiz",
+            "JLO": "José Leonardo Ortiz",
+            "J.L.O.": "José Leonardo Ortiz",
+            "LA VICTORIA": "La Victoria",
+            "LAMBAYEQUE": "Lambayeque",
+            "FERRENAFE": "Ferreñafe",
+            "FERREÑAFE": "Ferreñafe",
+            "MONSEFU": "Monsefú",
+            "MONSEFÚ": "Monsefú",
+            "REQUE": "Reque",
+            "ETEN": "Eten",
+            "PUERTO ETEN": "Puerto Eten",
+            "CIUDAD ETEN": "Ciudad Eten",
+            "SANTA ROSA": "Santa Rosa",
+            "PICSI": "Picsi",
+            "POMALCA": "Pomalca",
+        }
+        detected_external_dist = None
+        for ext_key, ext_name in EXTERNAL_DISTRICTS.items():
+            pat = rf"(?:^|[\-\–—,/\s]|\bDISTRITO\s+(?:DE\s+)?)\b{re.escape(ext_key)}\b"
+            if re.search(pat, raw_text, re.IGNORECASE):
+                # Verificar que no sea parte del nombre de la vía matched (ej. CALLE SANTA ROSA)
+                if matched_via and ext_key in matched_via.get("nom_via", "").upper():
+                    continue
+                # Verificar que no sea parte de una zona oficial de Chiclayo (ej. UPIS SANTA ROSA)
+                if matched_zona and ext_key in matched_zona.get("nom_zona", "").upper():
+                    continue
+                detected_external_dist = ext_name
+                break
+
+        if detected_external_dist and not matched_zona:
+            observaciones.append(
+                f"Dirección con jurisdicción distrital externa ({detected_external_dist}): No corresponde al catastro urbano del distrito de Chiclayo."
+            )
 
         # Guardrail de Integridad Estricta:
         # Una dirección legítimamente puede carecer de vía si tiene una zona/complejo oficial confirmado (ej. condominios, residenciales, asentamientos)
@@ -1147,6 +1204,13 @@ class AIAddressParser:
             )
         else:
             # Caso exitoso: Asociado formalmente a las tablas maestras oficiales
+            if ia_exitosa and heuristica_aplicada:
+                metodo = "Híbrido (IA + Heurística)"
+            elif ia_exitosa and not heuristica_aplicada:
+                metodo = f"IA ({self.ollama.model_name})"
+            else:
+                metodo = "Heurístico (Fallback - IA inactiva)"
+
             return DireccionDestino(
                 id_licencia=record.id_licencia,
                 dire_id=None,

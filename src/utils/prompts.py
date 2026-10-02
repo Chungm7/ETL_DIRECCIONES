@@ -71,7 +71,9 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
      - Vía: `nombre: "LAS AMERICAS"` o `"TOMAS GUTIERREZ"`, con su número municipal limpio.
 
 8. **Nombres de Ciudad/Distrito ('CHICLAYO', 'LAMBAYEQUE', 'PIMENTEL', etc.) y Condominios sin Vía:**
-   - Si la dirección contiene el nombre de la ciudad o distrito (ej. "- CHICLAYO", "- PIMENTEL"), indica la jurisdicción general. Queda TERMINANTEMENTE PROHIBIDO asignar la ciudad como nombre de vía (ej. nunca clasificar "U. DE CHICLAYO" solo por decir "- CHICLAYO").
+   - Si la dirección contiene el nombre de la ciudad o distrito (ej. "- CHICLAYO", "- PIMENTEL", "CHICLAYO -"), indica únicamente la jurisdicción general y NO forma parte de la dirección predial.
+   - Queda TERMINANTEMENTE PROHIBIDO clasificar el nombre de la ciudad o distrito como nombre de vía (ej. nunca clasificar "U. DE CHICLAYO" solo por decir "- CHICLAYO").
+   - Queda TERMINANTEMENTE PROHIBIDO clasificar o asignar 'CERCADO DE CHICLAYO' como nombre de zona (`nom_zona`) salvo que el texto de la dirección contenga EXPRESAMENTE la palabra "CERCADO" (ej. "URB. CERCADO", "CERCADO DE CHICLAYO"). Si la dirección simplemente termina o inicia con "CHICLAYO" o "- CHICLAYO", `nom_zona` y `tipo_zona_detectada` DEBEN SER NULL.
    - Si una dirección corresponde a un condominio o complejo residencial sin calle directa (ej. "CONDOMINIO LOS PINOS DE LA PLATA BLOCK S DPTO. 102 - CHICLAYO"), el arreglo `vias` DEBE SER VACÍO `[]`.
 
 ### Ejemplos de referencia (Few-Shot V2):

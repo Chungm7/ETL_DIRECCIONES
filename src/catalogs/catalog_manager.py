@@ -176,6 +176,8 @@ class CatalogManager:
         "SANTA ROSA",
         "PICSI",
         "POMALCA",
+        "PERU",
+        "PERÚ",
     }
 
     EXTRA_VIAS_SYNONYMS: Dict[str, str] = {
@@ -373,17 +375,23 @@ class CatalogManager:
             for item in cls.get_zonas_chiclayo_catalog():
                 nom = item["nom_zona"].strip().upper()
                 clean_nom = _remove_accents(nom)
-                lookup[nom] = item
-                lookup[clean_nom] = item
+                if nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[nom] = item
+                if clean_nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[clean_nom] = item
 
                 for syn in item.get("sinonimos", []):
                     s_clean = str(syn).strip().upper()
                     s_noacc = _remove_accents(s_clean)
-                    lookup[s_clean] = item
-                    lookup[s_noacc] = item
+                    if s_clean not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_clean] = item
+                    if s_noacc not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_noacc] = item
 
             # Enriquecer con sinónimos canónicos frecuentes de zonas
             for alias, target in cls.EXTRA_ZONAS_SYNONYMS.items():
+                if alias in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(alias) in cls.CITY_DISTRICT_STOPWORDS:
+                    continue
                 target_clean = target.strip().upper()
                 target_obj = lookup.get(target_clean) or lookup.get(_remove_accents(target_clean))
                 if target_obj:

@@ -328,7 +328,22 @@ class ETLPipeline:
         zona_desc = f"{zona_id_str} {rec_dest.nom_zona or 'N/D'}"
         if getattr(rec_dest, "id_zona", None):
             zona_desc += f" [ID Zona: {rec_dest.id_zona}]"
-        catastro = f"Mz: {rec_dest.manzana or '-'} | Lt: {rec_dest.lote or '-'} | Sublote: {rec_dest.slote or '-'}"
+        cat_items = []
+        if rec_dest.manzana:
+            cat_items.append(f"Mz: {rec_dest.manzana}")
+        if rec_dest.lote:
+            cat_items.append(f"Lt: {rec_dest.lote}")
+        if rec_dest.slote:
+            cat_items.append(f"Sublote: {rec_dest.slote}")
+        if getattr(rec_dest, "block", None):
+            cat_items.append(f"Block: {rec_dest.block}")
+        if getattr(rec_dest, "piso", None):
+            cat_items.append(f"Piso: {rec_dest.piso}")
+        catastro = " | ".join(cat_items) if cat_items else "Sin Catastro"
+        if getattr(rec_dest, "modulos", None):
+            mod_strs = [f"{m.get('timo_nombre') or m.get('tipo', 'MOD')}: {m.get('ditm_nombre') or m.get('numero', '')}".strip() for m in rec_dest.modulos]
+            if mod_strs:
+                catastro += f" | Módulos: {', '.join(mod_strs)}"
         status_str = "Cargado en BD ✅" if is_success else "Error en Carga ❌"
 
         # Mostrar seguimiento visual en vivo al instante en consola (1 sola línea limpia)
