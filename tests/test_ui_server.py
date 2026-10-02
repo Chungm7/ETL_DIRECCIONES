@@ -722,8 +722,41 @@ def test_api_stream_init_event_snapshot():
         state.num_workers = 4
 
 
+def test_execution_state_eta_and_time_metrics(client):
+    """Verifica que ExecutionState calcule eta_seconds, speed_rps y que index.html contenga los badges de tiempo."""
+    from src.ui.server import ExecutionState
 
+    exec_state = ExecutionState()
+    exec_state.reset_for_run(total=100, schema="public", table="test_table")
+    assert exec_state.stats["eta_seconds"] == 0
+    assert exec_state.stats["speed_rps"] == 0.0
 
+    # Simular inicio con tiempo anterior
+    exec_state.stats["start_time"] = exec_state.stats["start_time"] - 10.0  # 10 segundos transcurridos
+    exec_state.add_record({
+        "index": 20,
+        "total": 100,
+        "processed_count": 20,
+        "valid_count": 18,
+        "observed_count": 2,
+        "failed_count": 0,
+        "id_licencia": 1,
+        "raw_text": "CALLE SAN JOSE 123",
+        "metodo": "IA",
+    })
 
+    assert exec_state.stats["processed"] == 20
+    assert exec_state.stats["speed_rps"] > 0
+    assert exec_state.stats["eta_seconds"] > 0
+    assert "eta_seconds" in exec_state.stats
 
+    # Al finalizar la ejecución, eta_seconds debe ser 0
+    exec_state.finish_run()
+    assert exec_state.stats["eta_seconds"] == 0
 
+    # Verificar que index.html exponga los IDs requeridos
+    res = client.get("/")
+    assert res.status_code == 200
+    assert 'id="elapsedLabel"' in res.text
+    assert 'id="etaLabel"' in res.text
+    assert "Restante:" in res.text

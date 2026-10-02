@@ -975,6 +975,7 @@ function handleEvent(ev) {
 }
 
 function onStopping(payload) {
+  stopLiveTicker();
   const btnStop = document.getElementById('btnStop');
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStop) btnStop.disabled = true;
@@ -1015,7 +1016,103 @@ function onInitSnapshot(payload) {
   }
 }
 
+function formatTimeHMS(totalSeconds) {
+  if (totalSeconds === null || totalSeconds === undefined || isNaN(totalSeconds) || totalSeconds < 0) {
+    return '00h 00m 00s';
+  }
+  const sec = Math.floor(totalSeconds);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+}
+
+function updateTimeBadges(s) {
+  if (!s) return;
+  const total  = s.total_to_process || 0;
+  const proc   = s.processed || 0;
+  const secs   = s.elapsed_seconds || 0;
+  const status = s.status || 'IDLE';
+
+  // 1. Tiempo transcurrido en horas, minutos y segundos
+  const elapsedEl = document.getElementById('elapsedLabel');
+  if (elapsedEl) {
+    const span = elapsedEl.querySelector('span') || elapsedEl;
+    span.textContent = `Tiempo: ${formatTimeHMS(secs)}`;
+  }
+
+  // 2. Velocidad de procesamiento
+  let rps = 0.0;
+  if (s.speed_rps !== undefined && s.speed_rps !== null && Number(s.speed_rps) > 0) {
+    rps = Number(s.speed_rps);
+  } else if (secs > 0 && proc > 0) {
+    rps = proc / secs;
+  }
+  const speedEl = document.getElementById('speedLabel');
+  if (speedEl) {
+    speedEl.textContent = `${rps.toFixed(1)} reg/s`;
+  }
+
+  // 3. Tiempo restante estimado (Horas, minutos y segundos)
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    if (status === 'FINISHED') {
+      span.textContent = 'Completado';
+    } else if (status === 'ERROR') {
+      span.textContent = 'Interrumpido';
+    } else if (proc === 0 || total === 0) {
+      span.textContent = 'Restante: —';
+    } else if (proc >= total) {
+      span.textContent = 'Restante: 00h 00m 00s';
+    } else {
+      let etaSec = s.eta_seconds;
+      if (etaSec === undefined || etaSec === null) {
+        const remaining = Math.max(0, total - proc);
+        etaSec = rps > 0 ? (remaining / rps) : 0;
+      }
+      if (etaSec > 0) {
+        span.textContent = `Restante: ~${formatTimeHMS(etaSec)}`;
+      } else {
+        span.textContent = 'Restante: Calculando...';
+      }
+    }
+  }
+}
+
+function startLiveTicker() {
+  if (wiz.liveTickerInterval) return;
+  wiz.liveTickerInterval = setInterval(() => {
+    if (wiz.lastStats && wiz.lastStats.status === 'RUNNING' && wiz.lastStats.start_time) {
+      const nowSec = Date.now() / 1000;
+      const currentElapsed = Math.max(0, nowSec - wiz.lastStats.start_time);
+      wiz.lastStats.elapsed_seconds = currentElapsed;
+
+      const proc = wiz.lastStats.processed || 0;
+      const total = wiz.lastStats.total_to_process || 0;
+      if (currentElapsed > 0 && proc > 0) {
+        const currentSpeed = proc / currentElapsed;
+        wiz.lastStats.speed_rps = currentSpeed;
+        const remaining = Math.max(0, total - proc);
+        wiz.lastStats.eta_seconds = currentSpeed > 0 ? (remaining / currentSpeed) : 0;
+      }
+      updateTimeBadges(wiz.lastStats);
+    }
+  }, 1000);
+}
+
+function stopLiveTicker() {
+  if (wiz.liveTickerInterval) {
+    clearInterval(wiz.liveTickerInterval);
+    wiz.liveTickerInterval = null;
+  }
+}
+
 function updateStats(s) {
+  if (!s) return;
+  wiz.lastStats = s;
+
   kpi('kpiProcessed', s.processed);
   kpi('kpiValid',     s.valid);
   kpi('kpiObserved',  s.observed);
@@ -1024,43 +1121,37 @@ function updateStats(s) {
   const pct   = s.progress_pct || 0;
   const total = s.total_to_process || 0;
   const proc  = s.processed || 0;
-  const secs  = s.elapsed_seconds || 0;
-
-  document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('progressLabel').textContent =
-    `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
-
-  if (secs > 0) {
-    const m = Math.floor(secs / 60);
-    const s2 = Math.floor(secs % 60);
-    document.getElementById('elapsedLabel').textContent =
-      `Tiempo: ${m > 0 ? m + 'm ' : ''}${s2}s`;
-  }
-
-  const speedEl = document.getElementById('speedLabel');
-  if (speedEl) {
-    let rps = '0.0';
-    if (s.speed_rps !== undefined && s.speed_rps !== null && s.speed_rps > 0) {
-      rps = Number(s.speed_rps).toFixed(1);
-    } else if (secs > 0 && proc > 0) {
-      rps = (proc / secs).toFixed(1);
-    }
-    speedEl.textContent = `${rps} reg/s`;
-  }
-
   const status = s.status || 'IDLE';
+
+  const progressFill = document.getElementById('progressFill');
+  if (progressFill) progressFill.style.width = pct + '%';
+
+  const progressLabel = document.getElementById('progressLabel');
+  if (progressLabel) {
+    progressLabel.textContent = `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
+  }
+
+  updateTimeBadges(s);
+
   const labels = {
     RUNNING: 'Ejecutando proceso de normalización...',
     IDLE: 'Listo para iniciar',
     FINISHED: 'Proceso completado',
     ERROR: 'Error en procesamiento'
   };
-  document.getElementById('statusLabel').textContent = labels[status] || status;
+  const statusLabel = document.getElementById('statusLabel');
+  if (statusLabel) statusLabel.textContent = labels[status] || status;
 
   const dot = document.getElementById('termLiveDot');
   if (dot) {
     dot.className = status === 'RUNNING' ? 'dot-live' : '';
     dot.style.background = status === 'RUNNING' ? 'var(--green)' : 'var(--slate-400)';
+  }
+
+  if (status === 'RUNNING') {
+    startLiveTicker();
+  } else {
+    stopLiveTicker();
   }
 }
 
@@ -1831,6 +1922,17 @@ async function startETL() {
   document.getElementById('progressFill').style.width = '0%';
   document.getElementById('progressLabel').textContent = 'Preparando ejecución...';
 
+  const elapsedEl = document.getElementById('elapsedLabel');
+  if (elapsedEl) {
+    const span = elapsedEl.querySelector('span') || elapsedEl;
+    span.textContent = 'Tiempo: 00h 00m 00s';
+  }
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    span.textContent = 'Restante: Calculando...';
+  }
+
   document.getElementById('btnStart').disabled = true;
   document.getElementById('btnStop').disabled  = false;
   const btnStopSync = document.getElementById('btnStopSync');
@@ -1876,6 +1978,7 @@ async function startETL() {
 }
 
 async function stopETL() {
+  stopLiveTicker();
   document.getElementById('btnStop').disabled = true;
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStopSync) btnStopSync.disabled = true;
@@ -1885,6 +1988,12 @@ async function stopETL() {
 }
 
 function onDone(data) {
+  stopLiveTicker();
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    span.textContent = 'Completado';
+  }
   document.getElementById('btnStart').disabled = false;
   document.getElementById('btnStop').disabled  = true;
   const btnStopSync = document.getElementById('btnStopSync');
@@ -1900,6 +2009,12 @@ function onDone(data) {
 }
 
 function onError(data) {
+  stopLiveTicker();
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    span.textContent = 'Interrumpido';
+  }
   document.getElementById('btnStart').disabled = false;
   document.getElementById('btnStop').disabled  = true;
   const btnStopSync = document.getElementById('btnStopSync');

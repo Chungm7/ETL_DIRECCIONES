@@ -69,6 +69,8 @@ class ExecutionState:
             "progress_pct": 0.0,
             "start_time": None,
             "elapsed_seconds": 0,
+            "eta_seconds": 0,
+            "speed_rps": 0.0,
         }
         self.clients: List[asyncio.Queue] = []
         self._lock = threading.Lock()
@@ -104,6 +106,8 @@ class ExecutionState:
                 "progress_pct": 0.0,
                 "start_time": time.time(),
                 "elapsed_seconds": 0,
+                "eta_seconds": 0,
+                "speed_rps": 0.0,
             }
 
     def clear_session(self):
@@ -123,6 +127,8 @@ class ExecutionState:
                 "progress_pct": 0.0,
                 "start_time": None,
                 "elapsed_seconds": 0,
+                "eta_seconds": 0,
+                "speed_rps": 0.0,
             }
 
     def add_log(self, message: str):
@@ -187,6 +193,9 @@ class ExecutionState:
             elapsed = round(time.time() - start_t, 1) if start_t else 0
             speed_rps = round(processed / elapsed, 2) if elapsed > 0 else 0.0
 
+            remaining = max(0, total - processed) if total > 0 else 0
+            eta_seconds = round(remaining / speed_rps, 1) if speed_rps > 0 and remaining > 0 else 0
+
             self.stats.update({
                 "processed": processed,
                 "valid": record_data.get("valid_count", 0),
@@ -197,6 +206,7 @@ class ExecutionState:
                 "heuristic_records": record_data.get("heuristic_records", 0),
                 "progress_pct": pct,
                 "elapsed_seconds": elapsed,
+                "eta_seconds": eta_seconds,
                 "speed_rps": speed_rps,
                 "num_workers": self.num_workers,
             })
@@ -210,6 +220,7 @@ class ExecutionState:
             self.is_running = False
             self.pipeline = None
             self.stats["status"] = "ERROR" if error else "FINISHED"
+            self.stats["eta_seconds"] = 0
             if error:
                 self.stats["error"] = error
         if error:
