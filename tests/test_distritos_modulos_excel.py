@@ -260,3 +260,78 @@ def test_confusing_records_remain_observed_with_clear_diagnosis():
     assert dest_inv.es_procesado is False
     assert "no figura" in dest_inv.observacion.lower() or "no identificada" in dest_inv.observacion.lower()
 
+
+def test_record_61_corner_detection_and_unclear_module_observed():
+    """ID 61: 'AV. JOSE BALTA N 155 ESQ. CA. COLON TDA. METRO-LOCAL 1116'.
+    1. Debe rechazar módulos falsos ('METRO', 'LOCAL').
+    2. Al tener módulo comercial no redactado claramente ('TDA. METRO-LOCAL'),
+       debe ser OBSERVADA por el Juez sin inventar módulos.
+    """
+    parser = AIAddressParser(ollama_service=None)
+    rec_61 = DireccionOrigen(
+        id_licencia=61,
+        emp_direccion="AV. JOSE BALTA N 155 ESQ. CA. COLON TDA. METRO-LOCAL 1116",
+    )
+    dest_61 = parser.parse(rec_61)
+
+    assert dest_61.es_procesado is False, f"ID 61 debe ser OBSERVADA: {dest_61}"
+    assert dest_61.modulos == [], f"ID 61 no debe contener módulos falsos: {dest_61.modulos}"
+    assert dest_61.observacion is not None
+    assert "no redactado claramente" in dest_61.observacion.lower() or "ambigua o comercial" in dest_61.observacion.lower()
+    assert "Observado por Juez" in dest_61.metodo_normalizacion
+
+
+def test_valid_module_at_corner_normalizes_cleanly():
+    """Dirección en esquina con módulo legítimo ('TIENDA 1') debe normalizar ambas vías y el módulo."""
+    parser = AIAddressParser(ollama_service=None)
+    rec = DireccionOrigen(
+        id_licencia=995,
+        emp_direccion="AV. JOSE BALTA N 155 ESQ. CA. COLON TIENDA 1",
+    )
+    dest = parser.parse(rec)
+
+    assert dest.es_procesado is True, f"Debe normalizar: {dest.observacion}"
+    assert len(dest.vias) == 2, f"Debe tener 2 vías: {dest.vias}"
+    assert dest.vias[0]["via_nombre"] == "JOSE BALTA"
+    assert dest.vias[0]["divi_numero"] == "155"
+    assert dest.vias[1]["via_nombre"] == "CRISTOBAL COLON"
+    assert dest.vias[1]["divi_numero"] == "S/N"
+    assert len(dest.modulos) == 1
+    assert dest.modulos[0]["timo_nombre"] == "TIENDA"
+    assert dest.modulos[0]["ditm_nombre"] == "1"
+    assert dest.observacion is None
+
+
+def test_clean_corner_without_module_detects_both_streets():
+    """Dirección en esquina sin módulo debe detectar ambas calles limpiamente."""
+    parser = AIAddressParser(ollama_service=None)
+    rec = DireccionOrigen(
+        id_licencia=996,
+        emp_direccion="AV. JOSE BALTA N 155 ESQ. CA. COLON",
+    )
+    dest = parser.parse(rec)
+
+    assert dest.es_procesado is True
+    assert len(dest.vias) == 2
+    assert dest.vias[0]["via_nombre"] == "JOSE BALTA"
+    assert dest.vias[1]["via_nombre"] == "CRISTOBAL COLON"
+    assert dest.modulos == []
+
+
+def test_ambiguous_commercial_modules_always_observed():
+    """Cualquier dirección con nombres comerciales o tipos en módulos debe observarse."""
+    parser = AIAddressParser(ollama_service=None)
+
+    cases = [
+        "CALLE SAN JOSE 123 TIENDA METRO",
+        "AV. BALTA 500 STAND SODIMAC",
+        "CA. ELIAS AGUIRRE 300 INT. LOCAL",
+    ]
+    for c in cases:
+        rec = DireccionOrigen(id_licencia=997, emp_direccion=c)
+        dest = parser.parse(rec)
+        assert dest.es_procesado is False, f"Debe observarse: {c}"
+        assert dest.modulos == []
+        assert "no redactado claramente" in dest.observacion.lower() or "ambigua o comercial" in dest.observacion.lower()
+
+

@@ -369,22 +369,44 @@ class OllamaAddressExtraction(BaseModel):
         norm["componentes"] = parsed_comp
 
         # 4. Extracción de Módulos (Interior, Dpto, Puerta, Stand, Tienda, etc. - BLOCK se maneja como componente)
+        INVALID_MODULE_TYPES = {
+            "LOCAL", "LOC", "TIENDA", "TDA", "STAND", "STD", "OFICINA", "OF",
+            "INTERIOR", "INT", "DPTO", "DEP", "DEPARTAMENTO", "PUESTO", "PTO",
+            "PUERTA", "PTA", "BLOCK", "BLQ", "TORRE", "PISO", "NIVEL",
+        }
+        COMMERCIAL_BRANDS = {
+            "METRO", "TOTTUS", "SODIMAC", "SAGA", "FALABELLA", "RIPLEY",
+            "PLAZA VEA", "PLAZAVEA", "VEA", "MAESTRO", "PROMART", "OECHSLE",
+            "WONG", "MAXI", "SUPERMERCADO", "HIPERMERCADO", "ESTILOS",
+            "CURACAO", "EFE", "ELEKTRA", "TAMBO", "MASS", "OXXO", "INRETAIL"
+        }
+
         def _split_modulo_range(v_str: str) -> List[str]:
             clean_v = re.sub(r"^[\[\(]+|[\]\)]+$", "", str(v_str)).strip(" '\"")
             clean_v = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", clean_v, flags=re.IGNORECASE).strip()
+            clean_v_upper = clean_v.upper()
+
+            # Descartar marcas comerciales o palabras de tipo que no son identificadores válidos
+            if clean_v_upper in INVALID_MODULE_TYPES or any(b in clean_v_upper for b in COMMERCIAL_BRANDS):
+                return []
+
             parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", clean_v, flags=re.IGNORECASE) if p.strip()]
             noise_tokens = {
                 "N", "NRO", "NUM", "PISO", "PISOS", "NIVEL", "CHICLAYO", "LAMBAYEQUE",
                 "FERRENAFE", "PIMENTEL", "LA VICTORIA", "VICTORIA", "JLO", "REQUE",
                 "MONSEFU", "LIMA", "PERU", "PERÚ"
-            }
+            } | INVALID_MODULE_TYPES | COMMERCIAL_BRANDS
+
             parts = [
                 p for p in parts
                 if p and p.upper() not in noise_tokens and not (len(p) > 5 and not p.isdigit())
             ]
-            if len(parts) > 1 and all(len(p) <= 6 for p in parts):
-                return parts
-            return [clean_v] if clean_v else []
+            if len(parts) > 1:
+                # Solo permitir desglose por guión/separador si son identificadores unitarios alfanuméricos válidos
+                if all(p.isdigit() or (len(p) <= 3 and p.isalnum()) for p in parts):
+                    return parts
+                return []
+            return [clean_v] if clean_v and clean_v_upper not in noise_tokens else []
 
         parsed_mod: List[dict] = []
         raw_mod = data.get("modulos")
@@ -453,12 +475,15 @@ class OllamaAddressExtraction(BaseModel):
                     if not any(m["tipo_modulo"] == canon_mod and m["valor"] == sp for m in parsed_mod):
                         parsed_mod.append({"tipo_modulo": canon_mod, "valor": sp})
 
-        # Filtrar módulos con valores espurios o etiquetas de sublote
+        # Filtrar módulos con valores espurios, etiquetas de sublote, marcas comerciales o nombres de tipos
         norm["modulos"] = [
             m for m in parsed_mod
             if m.get("valor")
             and not SUBLOTE_PLACEHOLDER_REGEX.match(str(m["valor"]).strip())
             and str(m.get("tipo_modulo", "")).upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L")
+            and str(m.get("valor", "")).strip().upper() not in INVALID_MODULE_TYPES
+            and str(m.get("valor", "")).strip().upper() not in COMMERCIAL_BRANDS
+            and not any(b in str(m.get("valor", "")).strip().upper() for b in COMMERCIAL_BRANDS)
         ]
 
         # 5. Referencia Espacial de Orientación (Estricta para hitos urbanos)

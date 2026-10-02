@@ -76,6 +76,13 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
    - Queda TERMINANTEMENTE PROHIBIDO clasificar o asignar 'CERCADO DE CHICLAYO' como nombre de zona (`nom_zona`) salvo que el texto de la dirección contenga EXPRESAMENTE la palabra "CERCADO" (ej. "URB. CERCADO", "CERCADO DE CHICLAYO"). Si la dirección simplemente termina o inicia con "CHICLAYO" o "- CHICLAYO", `nom_zona` y `tipo_zona_detectada` DEBEN SER NULL.
    - Si una dirección corresponde a un condominio o complejo residencial sin calle directa (ej. "CONDOMINIO LOS PINOS DE LA PLATA BLOCK S DPTO. 102 - CHICLAYO"), el arreglo `vias` DEBE SER VACÍO `[]`.
 
+9. **Regla de Marcas Comerciales y Módulos Inválidos:**
+   - Cadenas comerciales o marcas (ej. "METRO", "TOTTUS", "SODIMAC", "PLAZA VEA", "SAGA", "RIPLEY") y nombres genéricos de tipos (ej. "LOCAL", "TIENDA", "STAND", "OFICINA") NUNCA son identificadores de módulo catastral.
+   - Si la dirección consigna un nombre comercial en una tienda (ej. "TDA. METRO-LOCAL", "TIENDA METRO"), NUNCA crees módulos inventados con nombres de marcas ni palabras genéricas.
+
+10. **Principio de Conservadurismo Catastral ("Mínima Incoherencia = Observar"):**
+   - Si una dirección presenta dependencias interiores redactadas de forma confusa, ambigua o con marcas comerciales sin identificador unívoco de unidad catastral (ej. Tienda 1, Stand A), reporta la inconsistencia en el campo `observaciones` para que sea evaluada por el Juez Catastral.
+
 ### Ejemplos de referencia (Few-Shot V2):
 
 Entrada: "Ca. 7 de enero N129"
@@ -222,6 +229,8 @@ Tu misión es evaluar registros de direcciones peruanas que han fallado la valid
    Dictamen esperado: "Predio no localizado: Consigna zona/habilitación urbana sin manzana ni lote específico."
 5. AMBIGUA_O_CONFUSA: El texto es confuso, contradictorio o no cuenta con elementos físicos suficientes para la localización cartográfica municipal.
    Dictamen esperado: "Dirección no reconocida o confusa: No cumple con los criterios mínimos de ubicación física catastral."
+6. MODULO_AMBIGUO: Consigna módulo, tienda o dependencia interior redactado de forma ambigua, comercial o confusa (ej. "TDA. METRO-LOCAL", "TIENDA METRO", nombres comerciales o tipos genéricos como valor) sin identificador unívoco de unidad catastral (ej. Tienda 1, Tienda A, Stand).
+   Dictamen esperado: "Módulo o dependencia interior no redactado claramente: Consigna denominación ambigua o comercial sin identificador unívoco de unidad catastral."
 
 REGLA OBLIGATORIA:
 Debes responder ÚNICAMENTE con un objeto JSON estricto con la siguiente estructura:

@@ -828,35 +828,42 @@ class AIAddressParser:
                 rf"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\s+(?:({via_prefixes_str})\s+)?([A-ZÁÉÍÓÚÑ0-9\s\.\-°ºª]+)",
                 re.IGNORECASE,
             )
+            CORNER_CUTOFF_REGEX = re.compile(
+                r"\b(?:TDA|TIENDA|LOCAL|LOC|STAND|STD|INT(?:ERIOR(?:ES)?)?|DEP(?:TO|ARTAMENTO)?|OF(?:ICINA)?|PTA|PUERTA|PUESTO|PTO|BLOCK|BLQ|TORRE|PABELLON|(?:\d+(?:DO|ER|TO|VO|MO)?\.?\s*)?PISO|NIVEL|MZ|MZA|MANZANA|LT|LOTE|SLT|SUBLOTE|S_LOTE|REF|FRENTE|ALTURA|CDRA|CUADRA|METRO|TOTTUS|SODIMAC|PLAZA\s+VEA|SAGA|RIPLEY)\b",
+                re.IGNORECASE,
+            )
             for m_corn in corner_pattern.finditer(raw_text):
                 if len(vias_result) >= 3:
                     break
                 extra_tipo_prefix = m_corn.group(1)
                 extra_via_raw = m_corn.group(2).strip()
 
+                # Separar cualquier mención de módulo, componente, piso o referencia posterior
+                m_cut = CORNER_CUTOFF_REGEX.search(extra_via_raw)
+                via_portion = extra_via_raw[:m_cut.start()].strip(" ,.-") if m_cut else extra_via_raw
+
+                # Limpieza de sub-separadores y sufijos de ciudad si quedaron pegados
+                m_sub_sep = re.search(r"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\b", via_portion, re.IGNORECASE)
+                if m_sub_sep:
+                    via_portion = via_portion[:m_sub_sep.start()].strip(" ,.-")
+                via_portion = re.sub(
+                    r"\s*-\s*(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\b.*$",
+                    "",
+                    via_portion,
+                    flags=re.IGNORECASE,
+                ).strip(" ,.-")
+
                 extra_num = "S/N"
-                m_num_extra = re.search(r"(?:\b(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)(\d+)\b", extra_via_raw, re.IGNORECASE)
+                m_num_extra = re.search(r"(?:\b(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)(\d+)\b", via_portion, re.IGNORECASE)
                 if not m_num_extra:
-                    m_num_extra = re.search(r"\b(\d+)\b", extra_via_raw)
+                    m_num_extra = re.search(r"\b(\d+)\b", via_portion)
 
                 if m_num_extra:
                     extra_num = m_num_extra.group(1).lstrip("0") or "S/N"
-                    extra_via_candidate = extra_via_raw[:m_num_extra.start()].strip(" ,.-")
+                    extra_via_candidate = via_portion[:m_num_extra.start()].strip(" ,.-")
                     extra_via_candidate = re.sub(r"\b(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*$", "", extra_via_candidate, flags=re.IGNORECASE).strip(" ,.-")
                 else:
-                    extra_via_candidate = re.sub(
-                        r"\b(?:INT|DPTO|STAND|TIENDA|MZ|LT|LOTE|PISO|REF)\b.*$",
-                        "",
-                        extra_via_raw,
-                        flags=re.IGNORECASE,
-                    ).strip(" ,.-")
-
-                m_sub_sep = re.search(r"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\b", extra_via_candidate, re.IGNORECASE)
-                if m_sub_sep:
-                    extra_via_candidate = extra_via_candidate[:m_sub_sep.start()].strip(" ,.-")
-
-                # Limpieza de sufijos de ciudad si quedaron pegados al final (ej: "GARCILAZO DE LA VEGA N 905 - CHICLAYO")
-                extra_via_candidate = re.sub(r"\s*-\s*(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\b.*$", "", extra_via_candidate, flags=re.IGNORECASE).strip(" ,.-")
+                    extra_via_candidate = via_portion
 
                 if extra_via_candidate:
                     extra_t_id = CatalogMatcher.match_tipo_via(extra_tipo_prefix) if extra_tipo_prefix else None
@@ -928,6 +935,24 @@ class AIAddressParser:
 
         # Construcción relacional V2 de Módulos (Interiores, Dpto, Puerta, Stand, Block, etc.)
         modulos_result = []
+        modulo_ambiguo_detectado = None
+
+        INVALID_MODULE_TYPES = {
+            "LOCAL", "LOC", "TIENDA", "TDA", "STAND", "STD", "OFICINA", "OF",
+            "INTERIOR", "INT", "DPTO", "DEP", "DEPARTAMENTO", "PUESTO", "PTO",
+            "PUERTA", "PTA", "BLOCK", "BLQ", "TORRE", "PISO", "NIVEL",
+        }
+        COMMERCIAL_BRANDS = {
+            "METRO", "TOTTUS", "SODIMAC", "SAGA", "FALABELLA", "RIPLEY",
+            "PLAZA VEA", "PLAZAVEA", "VEA", "MAESTRO", "PROMART", "OECHSLE",
+            "WONG", "MAXI", "SUPERMERCADO", "HIPERMERCADO", "ESTILOS",
+            "CURACAO", "EFE", "ELEKTRA", "TAMBO", "MASS", "OXXO", "INRETAIL",
+        }
+        COMMERCIAL_BRANDS_REGEX = re.compile(
+            r"\b(METRO|TOTTUS|SODIMAC|SAGA|FALABELLA|RIPLEY|PLAZA\s+VEA|PLAZAVEA|MAESTRO|PROMART|OECHSLE|WONG|MAXI|SUPERMERCADO|HIPERMERCADO|ESTILOS|CURACAO|EFE|ELEKTRA|TAMBO|MASS|OXXO|INRETAIL)\b",
+            re.IGNORECASE,
+        )
+
         if extraction and extraction.modulos:
             for m in extraction.modulos:
                 mm = CatalogMatcher.match_tipo_modulo(m.tipo_modulo)
@@ -939,6 +964,11 @@ class AIAddressParser:
                     # 2. Descartar prefijos de número municipal pegados al módulo (ej. "N 2", "N° 2", "NRO. 5")
                     val_str = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", val_str, flags=re.IGNORECASE).strip()
 
+                    val_str_upper = val_str.upper()
+                    if val_str_upper in INVALID_MODULE_TYPES or val_str_upper in COMMERCIAL_BRANDS or COMMERCIAL_BRANDS_REGEX.search(val_str):
+                        modulo_ambiguo_detectado = f"{m.tipo_modulo} {val_str}"
+                        continue
+
                     # 3. Si quedó únicamente como "N" o "NRO" (falso positivo por abreviatura de número), recuperar de raw_text
                     if val_str.upper() in ("N", "N.", "NRO", "NRO.", "NUM", "NUM."):
                         m_real = re.search(
@@ -948,6 +978,9 @@ class AIAddressParser:
                         )
                         if m_real:
                             val_str = m_real.group(1).strip()
+                            if val_str.upper() in INVALID_MODULE_TYPES or val_str.upper() in COMMERCIAL_BRANDS or COMMERCIAL_BRANDS_REGEX.search(val_str):
+                                modulo_ambiguo_detectado = f"{m.tipo_modulo} {val_str}"
+                                continue
                         else:
                             continue
 
@@ -957,9 +990,14 @@ class AIAddressParser:
                         for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", val_str, flags=re.IGNORECASE)
                         if p.strip()
                     ]
-                    split_parts = [p for p in split_parts if p and p.upper() not in ("N", "NRO", "NUM")]
+                    noise_tokens = {
+                        "N", "NRO", "NUM", "PISO", "PISOS", "NIVEL", "CHICLAYO", "LAMBAYEQUE",
+                        "FERRENAFE", "PIMENTEL", "LA VICTORIA", "VICTORIA", "JLO", "REQUE",
+                        "MONSEFU", "LIMA", "PERU", "PERÚ"
+                    } | INVALID_MODULE_TYPES | COMMERCIAL_BRANDS
+                    split_parts = [p for p in split_parts if p and p.upper() not in noise_tokens]
 
-                    if len(split_parts) > 1 and all(len(p) <= 6 for p in split_parts):
+                    if len(split_parts) > 1 and all(p.isdigit() or (len(p) <= 3 and p.isalnum()) for p in split_parts):
                         for sp in split_parts:
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == sp for mr in modulos_result):
                                 modulos_result.append({
@@ -969,7 +1007,7 @@ class AIAddressParser:
                                 })
                     else:
                         clean_single = re.sub(r"[\[\]'\" ]", "", val_str).strip(" ,.-")
-                        if clean_single and clean_single.upper() not in ("N", "NRO", "NUM"):
+                        if clean_single and clean_single.upper() not in noise_tokens:
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_single for mr in modulos_result):
                                 modulos_result.append({
                                     "timo_id": mm[0],
@@ -990,6 +1028,18 @@ class AIAddressParser:
                     continue
                 # Limpiar prefijo de número N° / N
                 raw_vals = re.sub(r"^(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N\s+)", "", raw_vals, flags=re.IGNORECASE).strip()
+                raw_vals_upper = raw_vals.upper()
+
+                # Detectar si consigna una marca comercial o denominación no clara
+                if (
+                    raw_vals_upper in INVALID_MODULE_TYPES
+                    or raw_vals_upper in COMMERCIAL_BRANDS
+                    or COMMERCIAL_BRANDS_REGEX.search(raw_vals)
+                    or (any(sep in raw_vals for sep in ("-", "–")) and any(b in raw_vals_upper for b in COMMERCIAL_BRANDS | INVALID_MODULE_TYPES))
+                ):
+                    modulo_ambiguo_detectado = f"{m_match.group(1)} {raw_vals}"
+                    continue
+
                 mm = CatalogMatcher.match_tipo_modulo(tname)
                 if mm:
                     parts = [
@@ -1001,12 +1051,16 @@ class AIAddressParser:
                         "N", "NRO", "NUM", "PISO", "PISOS", "NIVEL", "CHICLAYO", "LAMBAYEQUE",
                         "FERRENAFE", "PIMENTEL", "LA VICTORIA", "VICTORIA", "JLO", "REQUE",
                         "MONSEFU", "LIMA", "PERU", "PERÚ"
-                    }
+                    } | INVALID_MODULE_TYPES | COMMERCIAL_BRANDS
                     parts = [
                         p for p in parts
                         if p and p.upper() not in noise_tokens and not (len(p) > 5 and not p.isdigit())
                     ]
-                    if len(parts) > 1 and all(len(p) <= 6 for p in parts):
+                    if any(p.upper() in COMMERCIAL_BRANDS or p.upper() in INVALID_MODULE_TYPES for p in parts):
+                        modulo_ambiguo_detectado = f"{m_match.group(1)} {raw_vals}"
+                        continue
+
+                    if len(parts) > 1 and all(p.isdigit() or (len(p) <= 3 and p.isalnum()) for p in parts):
                         for p in parts:
                             p_clean = p.lstrip("0") if p.isdigit() else p
                             p_clean = p_clean or "0"
@@ -1016,9 +1070,25 @@ class AIAddressParser:
                     elif parts:
                         clean_v = parts[0].lstrip("0") if parts[0].isdigit() else parts[0]
                         clean_v = clean_v or "0"
-                        if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
-                            modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
-                            heuristica_aplicada = True
+                        if clean_v.upper() not in noise_tokens:
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
+                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
+                                heuristica_aplicada = True
+
+        # Verificación directa sobre raw_text para capturar módulos ambiguos con marcas comerciales
+        if not modulo_ambiguo_detectado:
+            m_amb_raw = re.search(
+                r"\b(TDA|TIENDA|STAND|STD|LOCAL|LOC|INT(?:ERIOR)?|DPTO|OF(?:ICINA)?)\b\.?\s*[:\-]?(?:\s*(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)?\s*([A-Z0-9\s\-]+?\b(?:METRO|TOTTUS|SODIMAC|SAGA|RIPLEY|PLAZA\s+VEA|MAESTRO|PROMART|OECHSLE|WONG)\b[A-Z0-9\s\-]*)",
+                raw_text,
+                re.IGNORECASE,
+            )
+            if m_amb_raw:
+                modulo_ambiguo_detectado = m_amb_raw.group(0).strip()
+
+        if modulo_ambiguo_detectado:
+            observaciones.append(
+                f"Módulo o dependencia interior no redactado claramente: Consigna denominación ambigua o comercial ('{modulo_ambiguo_detectado.strip()}') sin identificador unívoco de unidad catastral (ej. Tienda 1, Tienda A, Stand)."
+            )
 
 
         # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
