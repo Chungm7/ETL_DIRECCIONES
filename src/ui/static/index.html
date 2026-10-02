@@ -1492,6 +1492,19 @@
       </p>
 
       <div id="alertSchema"></div>
+
+      <!-- Buscador de Esquemas -->
+      <div style="margin-bottom:12px; display:flex; gap:10px; align-items:center;">
+        <div style="position:relative; width:100%; max-width:320px;">
+          <input type="text" id="searchSchema" placeholder="Buscar esquema por nombre..." style="width:100%; padding:8px 12px 8px 34px; font-size:12.5px; border-radius:var(--radius); border:1px solid var(--slate-300); background:#ffffff; outline:none; transition:border-color 0.15s, box-shadow 0.15s;" oninput="filterSchemaCards()" onkeydown="handleSchemaSearchKey(event)" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--slate-400); pointer-events:none;">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+        <span id="schemaCountBadge" style="font-size:11.5px; color:var(--slate-500); background:var(--slate-100); border:1px solid var(--slate-200); padding:4px 9px; border-radius:12px; font-weight:600;"></span>
+      </div>
+
       <div class="cards-grid" id="schemaCards"></div>
 
       <div style="margin-top:16px; display:flex; gap:12px; align-items:center;">
@@ -1525,8 +1538,15 @@
       <div id="alertTable"></div>
 
       <!-- Buscador de Tablas -->
-      <div style="margin-bottom:10px; display:flex; gap:8px;">
-        <input type="text" id="searchTable" placeholder="Filtrar tablas por nombre..." style="max-width:280px; padding:7px 12px; font-size:12.5px;" oninput="filterTableCards()" />
+      <div style="margin-bottom:12px; display:flex; gap:10px; align-items:center;">
+        <div style="position:relative; width:100%; max-width:320px;">
+          <input type="text" id="searchTable" placeholder="Filtrar tablas por nombre..." style="width:100%; padding:8px 12px 8px 34px; font-size:12.5px; border-radius:var(--radius); border:1px solid var(--slate-300); background:#ffffff; outline:none; transition:border-color 0.15s, box-shadow 0.15s;" oninput="filterTableCards()" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--slate-400); pointer-events:none;">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+        <span id="tableCountBadge" style="font-size:11.5px; color:var(--slate-500); background:var(--slate-100); border:1px solid var(--slate-200); padding:4px 9px; border-radius:12px; font-weight:600;"></span>
       </div>
 
       <div class="cards-grid" id="tableCards"></div>

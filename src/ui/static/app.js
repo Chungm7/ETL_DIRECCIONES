@@ -123,6 +123,12 @@ function goStep(n) {
 
   wiz.step = n;
   window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (n === 4) {
+    setTimeout(() => document.getElementById('searchSchema')?.focus(), 150);
+  } else if (n === 5) {
+    setTimeout(() => document.getElementById('searchTable')?.focus(), 150);
+  }
 }
 
 // ── Helpers Visuales y Diagnóstico ──────────────────────────────────────────
@@ -552,7 +558,11 @@ async function verifyDBConnection() {
     wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
     wiz.availableSchemas = data.schemas || [];
 
+    const searchInput = document.getElementById('searchSchema');
+    if (searchInput) searchInput.value = '';
+
     renderSchemaCards(wiz.availableSchemas);
+    updateSchemaCountBadge(wiz.availableSchemas.length, wiz.availableSchemas.length);
 
     const btnNext = document.getElementById('btnGoStep4');
     if (btnNext) btnNext.disabled = false;
@@ -578,20 +588,60 @@ async function verifyDBConnection() {
   }
 }
 
-// ── PASO 3: Selección de Esquema ────────────────────────────────────────────
+// ── PASO 4: Selección de Esquema ────────────────────────────────────────────
+function filterSchemaCards() {
+  const query = (document.getElementById('searchSchema')?.value || '').toLowerCase().trim();
+  const allSchemas = wiz.availableSchemas || [];
+  const filtered = allSchemas.filter(s => s.toLowerCase().includes(query));
+  renderSchemaCards(filtered);
+  updateSchemaCountBadge(filtered.length, allSchemas.length);
+}
+
+function handleSchemaSearchKey(e) {
+  if (e.key === 'Enter') {
+    const query = (document.getElementById('searchSchema')?.value || '').toLowerCase().trim();
+    const allSchemas = wiz.availableSchemas || [];
+    const filtered = allSchemas.filter(s => s.toLowerCase().includes(query));
+    if (filtered.length === 1) {
+      wiz.schema = filtered[0];
+      const card = document.querySelector(`#schemaCards .card-item[data-schema="${CSS.escape(filtered[0])}"]`);
+      if (card) {
+        document.querySelectorAll('#schemaCards .card-item').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        document.getElementById('btnSchema').disabled = false;
+      }
+    }
+  }
+}
+
+function updateSchemaCountBadge(filteredCount, totalCount) {
+  const badge = document.getElementById('schemaCountBadge');
+  if (!badge) return;
+  if (!totalCount) {
+    badge.textContent = '';
+    return;
+  }
+  if (filteredCount === totalCount) {
+    badge.textContent = `${totalCount} esquema${totalCount === 1 ? '' : 's'}`;
+  } else {
+    badge.textContent = `${filteredCount} de ${totalCount}`;
+  }
+}
+
 function renderSchemaCards(schemas) {
   const grid = document.getElementById('schemaCards');
   if (!grid) return;
   grid.innerHTML = '';
 
   if (!schemas || !schemas.length) {
-    grid.innerHTML = '<p style="color:var(--slate-500); font-size:13px;">No se encontraron esquemas disponibles en la base de datos.</p>';
+    grid.innerHTML = '<p style="color:var(--slate-500); font-size:13px; padding:10px;">No se encontraron esquemas que coincidan con la búsqueda.</p>';
     return;
   }
 
   schemas.forEach(s => {
     const card = document.createElement('div');
     card.className = 'card-item';
+    if (wiz.schema === s) card.classList.add('selected');
     card.innerHTML = `
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -628,7 +678,10 @@ async function inspectSchema() {
     }
 
     wiz.availableTables = data.tables || [];
+    const searchTbl = document.getElementById('searchTable');
+    if (searchTbl) searchTbl.value = '';
     renderTableCards(wiz.availableTables);
+    updateTableCountBadge(wiz.availableTables.length, wiz.availableTables.length);
     document.getElementById('labelSchema').textContent = wiz.schema;
 
     wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
@@ -644,11 +697,27 @@ async function inspectSchema() {
   }
 }
 
-// ── PASO 4: Tablas y Mapeo de Columnas ───────────────────────────────────────
+// ── PASO 5: Tablas y Mapeo de Columnas ───────────────────────────────────────
 function filterTableCards() {
   const query = (document.getElementById('searchTable')?.value || '').toLowerCase().trim();
-  const filtered = wiz.availableTables.filter(t => t.name.toLowerCase().includes(query));
+  const allTables = wiz.availableTables || [];
+  const filtered = allTables.filter(t => t.name.toLowerCase().includes(query));
   renderTableCards(filtered);
+  updateTableCountBadge(filtered.length, allTables.length);
+}
+
+function updateTableCountBadge(filteredCount, totalCount) {
+  const badge = document.getElementById('tableCountBadge');
+  if (!badge) return;
+  if (!totalCount) {
+    badge.textContent = '';
+    return;
+  }
+  if (filteredCount === totalCount) {
+    badge.textContent = `${totalCount} tabla${totalCount === 1 ? '' : 's'}`;
+  } else {
+    badge.textContent = `${filteredCount} de ${totalCount}`;
+  }
 }
 
 function renderTableCards(tables) {
