@@ -1245,26 +1245,30 @@
   </div>
 </header>
 
-<!-- BARRA DEL ASISTENTE DE 5 PASOS -->
+<!-- BARRA DEL ASISTENTE DE 6 PASOS -->
 <nav class="wizard-bar" id="wizardBar" aria-label="Progreso de configuración">
   <div class="step-tab active" id="tab1" onclick="tryGoStep(1)">
     <span class="tab-icon" id="tabIcon1">1</span>
-    <span>Conexión IA</span>
+    <span>Conexión IA (Extractor)</span>
   </div>
   <div class="step-tab locked" id="tab2" onclick="tryGoStep(2)">
     <span class="tab-icon" id="tabIcon2">2</span>
-    <span>Conexión BD</span>
+    <span>Juez Catastral</span>
   </div>
   <div class="step-tab locked" id="tab3" onclick="tryGoStep(3)">
     <span class="tab-icon" id="tabIcon3">3</span>
-    <span>Esquema</span>
+    <span>Conexión BD</span>
   </div>
   <div class="step-tab locked" id="tab4" onclick="tryGoStep(4)">
     <span class="tab-icon" id="tabIcon4">4</span>
-    <span>Tabla y Mapeo</span>
+    <span>Esquema</span>
   </div>
   <div class="step-tab locked" id="tab5" onclick="tryGoStep(5)">
     <span class="tab-icon" id="tabIcon5">5</span>
+    <span>Tabla y Mapeo</span>
+  </div>
+  <div class="step-tab locked" id="tab6" onclick="tryGoStep(6)">
+    <span class="tab-icon" id="tabIcon6">6</span>
     <span>Inspector Catastral</span>
   </div>
 </nav>
@@ -1272,14 +1276,14 @@
 <!-- CONTENEDOR PRINCIPAL -->
 <main>
 
-  <!-- ════ PASO 1: CONEXIÓN AL MOTOR IA ════ -->
+  <!-- ════ PASO 1: CONEXIÓN AL MOTOR IA (EXTRACTOR) ════ -->
   <section id="step1">
     <div class="panel">
       <div class="panel-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
         </svg>
-        Paso 1: Configuración del Motor de Inteligencia Artificial (Ollama)
+        Paso 1: Configuración del Motor de Inteligencia Artificial (Modelo 1: Extractor)
       </div>
 
       <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
@@ -1297,7 +1301,7 @@
         </div>
         <div class="field full">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <label for="ai_model_select" style="margin:0;">Modelo de Lenguaje (LLM)</label>
+            <label for="ai_model_select" style="margin:0;">Modelo de Lenguaje (LLM - Extractor)</label>
             <button type="button" class="btn btn-ghost" style="padding:3px 10px; font-size:11.5px;" onclick="detectAIModels()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Detectar modelos instalados</span>
@@ -1332,7 +1336,7 @@
           <span>Verificar Conexión IA</span>
         </button>
         <button class="btn btn-green" id="btnGoStep2" onclick="goStep(2)" disabled>
-          <span>Continuar a Base de Datos</span>
+          <span>Continuar a Juez Catastral</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
         <span id="spinConnectAI" class="hidden"><div class="spinner"></div></span>
@@ -1340,14 +1344,89 @@
     </div>
   </section>
 
-  <!-- ════ PASO 2: CONEXIÓN A BASE DE DATOS ════ -->
+  <!-- ════ PASO 2: JUEZ CATASTRAL (MODELO 2 - OBSERVADOR) ════ -->
   <section id="step2" class="hidden">
+    <div class="panel">
+      <div class="panel-title">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          <path d="m9 12 2 2 4-4"/>
+        </svg>
+        Paso 2: Configuración del Juez Catastral (Modelo 2 - El Observador)
+      </div>
+
+      <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
+        El Modelo 2 actúa como <strong>Auditor / Juez Catastral de la MPCH</strong> de ejecución estrictamente secuencial.
+        Solo se evalúa si una dirección no supera la validación lógica contra los catálogos oficiales de Chiclayo en el Paso 3, analizando la inconsistencia y dictaminando un motivo de rechazo exacto y estandarizado.
+      </p>
+
+      <div class="form-grid">
+        <div class="field full">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+            <label for="ai_judge_model_select" style="margin:0;">Modelo Juez / Observador (LLM)</label>
+            <div style="display:flex; gap:8px;">
+              <button type="button" class="btn btn-ghost" style="padding:3px 10px; font-size:11.5px;" onclick="useSameModelForJudge()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                <span>Usar el mismo modelo que Extractor</span>
+              </button>
+              <button type="button" class="btn btn-ghost" style="padding:3px 10px; font-size:11.5px;" onclick="detectJudgeModels()">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+                <span>Detectar modelos instalados</span>
+              </button>
+            </div>
+          </div>
+          <select id="ai_judge_model_select" onchange="onJudgeModelSelectChange()">
+            <option value="" disabled selected>-- Seleccione o detecte modelo para el Juez --</option>
+            <option value="custom">Ingresar nombre de modelo manualmente...</option>
+          </select>
+          <input type="text" id="ai_judge_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. patroclo-artesano-7b:latest o qwen2.5:7b" />
+        </div>
+      </div>
+
+      <!-- Tarjeta Explicativa de la Rúbrica Catastral -->
+      <div style="margin-top:16px; padding:14px 16px; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius); font-size:12px; color:var(--slate-700);">
+        <strong style="color:var(--mpch-navy); display:block; margin-bottom:6px; font-size:12.5px;">⚖️ Rúbrica Institucional de Juicio y Rechazo MPCH:</strong>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:10px;">
+          <div>• <strong>Dirección Incompleta:</strong> Vía sin número municipal y sin combinación de Manzana/Lote.</div>
+          <div>• <strong>Vía No Identificada:</strong> La arteria no existe en el catastro oficial de 2,935 vías de Chiclayo.</div>
+          <div>• <strong>Incongruencia Territorial:</strong> Distritos externos (Pimentel, La Victoria, JLO, Ferreñafe, Reque).</div>
+          <div>• <strong>Predio No Localizado:</strong> Consigna zona sin lote, manzana o predio cartográfico.</div>
+        </div>
+      </div>
+
+      <!-- Tarjeta de Diagnóstico Interactivo de Juez -->
+      <div id="diagJudgeAI" style="margin-top:16px;"></div>
+
+      <div style="margin-top:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <button class="btn btn-ghost" onclick="goStep(1)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          <span>Volver a Extractor</span>
+        </button>
+        <button class="btn btn-primary" id="btnConnectJudgeAI" onclick="verifyJudgeConnection()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          <span>Verificar Modelo Juez</span>
+        </button>
+        <button class="btn btn-ghost" id="btnTestJudgeInference" onclick="testJudgeInferenceLive()" style="border:1px solid var(--slate-300);">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span>Probar Dictamen de Muestra</span>
+        </button>
+        <button class="btn btn-green" id="btnGoStep3" onclick="goStep(3)" disabled>
+          <span>Continuar a Base de Datos</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+        </button>
+        <span id="spinConnectJudgeAI" class="hidden"><div class="spinner"></div></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════ PASO 3: CONEXIÓN A BASE DE DATOS ════ -->
+  <section id="step3" class="hidden">
     <div class="panel">
       <div class="panel-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
         </svg>
-        Paso 2: Conexión a la Base de Datos PostgreSQL
+        Paso 3: Conexión a la Base de Datos PostgreSQL
       </div>
 
       <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
@@ -1381,15 +1460,15 @@
       <div id="diagDB"></div>
 
       <div style="margin-top:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
-        <button class="btn btn-ghost" onclick="goStep(1)">
+        <button class="btn btn-ghost" onclick="goStep(2)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          <span>Volver a IA</span>
+          <span>Volver a Juez Catastral</span>
         </button>
         <button class="btn btn-primary" id="btnConnectDB" onclick="verifyDBConnection()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
           <span>Verificar Conexión BD</span>
         </button>
-        <button class="btn btn-green" id="btnGoStep3" onclick="goStep(3)" disabled>
+        <button class="btn btn-green" id="btnGoStep4" onclick="goStep(4)" disabled>
           <span>Continuar a Esquemas</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
         </button>
@@ -1398,14 +1477,14 @@
     </div>
   </section>
 
-  <!-- ════ PASO 3: SELECCIÓN DE ESQUEMA ════ -->
-  <section id="step3" class="hidden">
+  <!-- ════ PASO 4: SELECCIÓN DE ESQUEMA ════ -->
+  <section id="step4" class="hidden">
     <div class="panel">
       <div class="panel-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
         </svg>
-        Paso 3: Selección del Esquema de Trabajo
+        Paso 4: Selección del Esquema de Trabajo
       </div>
 
       <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
@@ -1416,7 +1495,7 @@
       <div class="cards-grid" id="schemaCards"></div>
 
       <div style="margin-top:16px; display:flex; gap:12px; align-items:center;">
-        <button class="btn btn-ghost" onclick="goStep(2)">
+        <button class="btn btn-ghost" onclick="goStep(3)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           <span>Volver a BD</span>
         </button>
@@ -1429,14 +1508,14 @@
     </div>
   </section>
 
-  <!-- ════ PASO 4: TABLA Y MAPEO DE COLUMNAS ════ -->
-  <section id="step4" class="hidden">
+  <!-- ════ PASO 5: TABLA Y MAPEO DE COLUMNAS ════ -->
+  <section id="step5" class="hidden">
     <div class="panel">
       <div class="panel-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>
         </svg>
-        Paso 4: Identificación de Tabla y Mapeo de Columnas
+        Paso 5: Identificación de Tabla y Mapeo de Columnas
       </div>
 
       <div style="font-size:13px; color:var(--slate-600); margin-bottom:14px;">
@@ -1500,7 +1579,7 @@
       </div>
 
       <div style="margin-top:22px; display:flex; gap:12px; align-items:center;">
-        <button class="btn btn-ghost" onclick="goStep(3)">
+        <button class="btn btn-ghost" onclick="goStep(4)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           <span>Volver a Esquemas</span>
         </button>
@@ -1512,8 +1591,8 @@
     </div>
   </section>
 
-  <!-- ════ PASO 5: EJECUCIÓN Y MONITOREO CATASTRAL ════ -->
-  <section id="step5" class="hidden">
+  <!-- ════ PASO 6: EJECUCIÓN Y MONITOREO CATASTRAL ════ -->
+  <section id="step6" class="hidden">
 
     <!-- Banner de Sesión Activa / Multi-Sesión Sincronizada -->
     <div id="bannerActiveSession" class="hidden" style="background:#eff6ff; border:1px solid #bfdbfe; border-left:4px solid #2563eb; border-radius:var(--radius); padding:14px 18px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; gap:14px; box-shadow:var(--shadow-sm);">
@@ -1548,8 +1627,12 @@
         </div>
 
         <div style="border-left:1px solid var(--slate-300); padding-left:20px;">
-          <div class="summary-col-label">Motor de Inteligencia Artificial</div>
-          <div class="summary-col-val" style="color:var(--green);" id="summAiModel">Ollama</div>
+          <div class="summary-col-label">Motor de Inteligencia Artificial (2 Modelos)</div>
+          <div class="summary-col-val" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <span style="color:var(--green); font-size:13px;" id="summAiModel">Extractor: Ollama</span>
+            <span style="font-size:12px; color:var(--slate-400);">|</span>
+            <span style="color:var(--amber); font-size:13px;" id="summJudgeModel">Juez: Ollama</span>
+          </div>
           <div class="summary-col-sub">
             Endpoint: <span id="summAiHost" style="font-family:monospace;"></span> &nbsp;|&nbsp; Instancias IA: <strong id="summWorkers">4</strong>
           </div>

@@ -204,3 +204,47 @@ def build_user_prompt_for_address(address_text: str) -> str:
         clean_addr = address_text.strip()
 
     return f'{hints_str}Extrae los componentes de la siguiente dirección en formato JSON estructurado V2:\n"{clean_addr}"'
+
+
+SYSTEM_PROMPT_JUDGE_OBSERVER = """Eres el Auditor y Juez Catastral Oficial de la Municipalidad Provincial de Chiclayo (MPCH).
+Tu misión es evaluar registros de direcciones peruanas que han fallado la validación lógica contra los catálogos oficiales de Chiclayo y dictaminar de forma estricta, concisa e institucional el motivo de observación o rechazo.
+
+### Rúbrica Institucional de Dictamen:
+1. INCOMPLETA: Carece de número municipal y de combinación de Manzana/Lote/Predio (ej. consigna vía sin número ni predio).
+   Dictamen esperado: "Dirección incompleta: Carece de numeración municipal y de manzana/lote."
+2. INEXISTENTE: La vía o arteria vial no existe en el catastro oficial de Chiclayo (arteria inventada, errónea o no reconocida).
+   Dictamen esperado: "Vía no identificada: La arteria indicada no figura en el catastro oficial de vías de Chiclayo."
+3. FUERA_JURISDICCION: La dirección pertenece o hace referencia a otro distrito o provincia (ej. Pimentel, La Victoria, José Leonardo Ortiz, Ferreñafe, Reque, Lambayeque).
+   Dictamen esperado: "Incongruencia territorial: Corresponde a jurisdicción distrital externa a Chiclayo Cercado."
+4. SIN_PREDIO: La dirección consigna una urbanización o zona pero sin lote, manzana o predio que permita ubicarla.
+   Dictamen esperado: "Predio no localizado: Consigna zona/habilitación urbana sin manzana ni lote específico."
+5. AMBIGUA: No cuenta con elementos físicos suficientes para la localización cartográfica municipal.
+   Dictamen esperado: "Dirección no cumple con los criterios mínimos de ubicación física catastral."
+
+REGLA OBLIGATORIA:
+Debes responder ÚNICAMENTE con un objeto JSON estricto con la siguiente estructura:
+{
+  "es_valido": false,
+  "categoria_falla": "INCOMPLETA",
+  "observacion_dictamen": "<frase concisa, profesional y estandarizada explicando exactamente el motivo del rechazo>"
+}
+Sin markdown adicional, sin introducciones ni saludos.
+"""
+
+
+def build_user_prompt_for_judge(
+    raw_text: str,
+    extracted_json: Optional[dict] = None,
+    validation_facts: Optional[list] = None,
+) -> str:
+    """Construye el prompt para el Modelo 2 (El Juez) con hechos de validación y rúbrica."""
+    import json
+    facts_str = "\n".join(f"- {f}" for f in (validation_facts or [])) or "- No cumple validación de catastro oficial."
+    ext_str = json.dumps(extracted_json, ensure_ascii=False) if extracted_json else "{}"
+    return (
+        f'Dirección original cruda: "{raw_text}"\n'
+        f"Datos extraídos preliminares: {ext_str}\n"
+        f"Hechos de validación técnica en catálogo:\n{facts_str}\n\n"
+        "Emite el dictamen catastral en formato JSON estricto:"
+    )
+

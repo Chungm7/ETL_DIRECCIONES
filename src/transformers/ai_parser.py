@@ -1078,6 +1078,16 @@ class AIAddressParser:
                     observaciones.append(
                         "Vía pública no identificada en el catálogo maestro de Chiclayo para la numeración municipal o predio registrado."
                     )
+        else:
+            # Si tiene matched_via, verificar que no carezca simultáneamente de número y de predio catastral
+            has_predio_identificable = bool(
+                manzana or lote or slote or eff_block or eff_piso or modulos_result or (len(vias_result) > 1) or is_explicit_corner or ("/" in raw_text)
+            )
+            has_explicit_sn = bool(re.search(r"\bS/?N\b", raw_text, re.IGNORECASE))
+            if not num_via and not has_predio_identificable and not has_explicit_sn:
+                observaciones.append(
+                    "Dirección incompleta: Carece de numeración municipal y de combinación de Manzana/Lote."
+                )
 
         # Integrar notas de la IA o advertencias específicas en el texto
         ai_notes = extraction.observaciones if extraction and extraction.observaciones else None
@@ -1088,9 +1098,34 @@ class AIAddressParser:
         if "NO USAR LA VIA PUBLICA" in raw_text.upper():
             observaciones.append("Advertencia registrada: Restricción de uso de vía pública en la licencia.")
 
-
-
         if observaciones:
+            # PASO 4: El Juez / Observador (Modelo 2) - Invocación secuencial
+            extracted_dict = extraction.model_dump() if extraction else {
+                "tipo_via": tipo_via_detectado,
+                "nom_via": nom_via,
+                "num_via": num_via,
+                "tipo_zona": tipo_zona_detectada,
+                "nom_zona": nom_zona,
+                "manzana": manzana,
+                "lote": lote,
+            }
+            dictamen_observacion = None
+            if hasattr(self.ollama, "judge_address_observation"):
+                try:
+                    res_juez = self.ollama.judge_address_observation(
+                        raw_text=raw_text,
+                        extracted_json=extracted_dict,
+                        validation_facts=observaciones,
+                    )
+                    if isinstance(res_juez, str) and res_juez.strip():
+                        dictamen_observacion = res_juez.strip()
+                except Exception as ex_judge:
+                    logger.warning("Aviso al consultar Modelo 2 Juez: %s", ex_judge)
+
+            final_obs = dictamen_observacion if dictamen_observacion else "; ".join(observaciones)
+            judge_model = getattr(self.ollama, "judge_model_name", None) or getattr(self.ollama, "model_name", "Ollama")
+            metodo_juez = f"Observado por Juez ({judge_model})"
+
             # Caso observado: Se nullifican relaciones para consistencia
             return DireccionDestino(
                 id_licencia=record.id_licencia,
@@ -1107,8 +1142,8 @@ class AIAddressParser:
                 block=None,
                 referencia=None,
                 es_procesado=False,
-                observacion="; ".join(observaciones),
-                metodo_normalizacion=metodo,
+                observacion=final_obs,
+                metodo_normalizacion=metodo_juez,
             )
         else:
             # Caso exitoso: Asociado formalmente a las tablas maestras oficiales

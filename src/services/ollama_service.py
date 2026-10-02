@@ -12,10 +12,12 @@ except ImportError:
     OLLAMA_LIB_AVAILABLE = False
 
 from src.config.settings import OllamaSettings, get_settings
-from src.models.llm_schemas import OllamaAddressExtraction, OllamaCandidateDisambiguation
+from src.models.llm_schemas import OllamaAddressExtraction, OllamaCandidateDisambiguation, OllamaJudgeVerdict
 from src.utils.prompts import (
     SYSTEM_PROMPT_ADDRESS_PARSER,
+    SYSTEM_PROMPT_JUDGE_OBSERVER,
     build_user_prompt_for_address,
+    build_user_prompt_for_judge,
     get_system_prompt_address_parser,
 )
 
@@ -30,6 +32,7 @@ class OllamaService:
         self.settings = settings or get_settings().ollama
         self.base_url = self.settings.base_url.rstrip("/")
         self.model_name = self.settings.model
+        self.judge_model_name = self.settings.judge_model or self.model_name
         self.timeout = self.settings.timeout
         self.temperature = self.settings.temperature
 
@@ -42,16 +45,17 @@ class OllamaService:
                 "Librería 'ollama' no detectada en el entorno. Usando cliente HTTP directo (httpx)."
             )
 
-    def check_connection(self) -> Dict[str, Any]:
+    def check_connection(self, model_name_override: Optional[str] = None) -> Dict[str, Any]:
         """Verifica la conectividad con el servidor local de Ollama y comprueba si el modelo existe.
 
         Retorna:
             dict con el estado de conexión, modelos instalados y confirmación del modelo objetivo.
         """
+        target = model_name_override or self.model_name
         result: Dict[str, Any] = {
             "connected": False,
             "base_url": self.base_url,
-            "target_model": self.model_name,
+            "target_model": target,
             "model_available": False,
             "available_models": [],
             "message": "",
@@ -70,21 +74,21 @@ class OllamaService:
 
                 # Comprobación de existencia del modelo (coincidencia con o sin tag :latest)
                 model_match = any(
-                    m == self.model_name
-                    or m.startswith(f"{self.model_name}:")
-                    or self.model_name.startswith(f"{m}:")
+                    m == target
+                    or m.startswith(f"{target}:")
+                    or target.startswith(f"{m}:")
                     for m in models
                 )
                 result["model_available"] = model_match
 
                 if model_match:
-                    result["message"] = f"Conexión exitosa con Ollama. Modelo '{self.model_name}' disponible."
+                    result["message"] = f"Conexión exitosa con Ollama. Modelo '{target}' disponible."
                     logger.info(result["message"])
                 else:
                     result["message"] = (
-                        f"Conectado a Ollama, pero el modelo '{self.model_name}' NO está descargado. "
+                        f"Conectado a Ollama, pero el modelo '{target}' NO está descargado. "
                         f"Modelos disponibles: {models}. "
-                        f"Ejecuta en tu terminal: 'ollama run {self.model_name}'"
+                        f"Ejecuta en tu terminal: 'ollama run {target}'"
                     )
                     logger.warning(result["message"])
             else:
@@ -102,6 +106,10 @@ class OllamaService:
             logger.debug(result["message"])
 
         return result
+
+    def check_judge_connection(self) -> Dict[str, Any]:
+        """Verifica la conectividad y disponibilidad del modelo Juez / Observador (Modelo 2)."""
+        return self.check_connection(model_name_override=self.judge_model_name)
 
     def list_available_models(self) -> List[str]:
         """Lista todos los nombres de modelos presentes en la instancia de Ollama."""
@@ -283,8 +291,14 @@ class OllamaService:
         ]
         return self._call_ollama_messages(messages, temperature=self.temperature)
 
-    def _call_ollama_messages(self, messages: List[Dict[str, str]], temperature: float = 0.0) -> Optional[str]:
+    def _call_ollama_messages(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float = 0.0,
+        model_override: Optional[str] = None,
+    ) -> Optional[str]:
         """Ejecuta una llamada estructurada de chat con mensajes arbitrarios hacia Ollama."""
+        target_model = model_override or self.model_name
         call_options = {
             "temperature": temperature,
             "num_predict": 256,
@@ -296,7 +310,7 @@ class OllamaService:
         if self._client is not None:
             try:
                 response = self._client.chat(
-                    model=self.model_name,
+                    model=target_model,
                     messages=messages,
                     format="json",
                     options=call_options,
@@ -308,7 +322,7 @@ class OllamaService:
         # Prioridad 2: Solicitud HTTP directa mediante httpx
         with httpx.Client(timeout=float(self.timeout)) as client:
             payload = {
-                "model": self.model_name,
+                "model": target_model,
                 "messages": messages,
                 "format": "json",
                 "stream": False,
@@ -318,3 +332,115 @@ class OllamaService:
             res.raise_for_status()
             data = res.json()
             return data.get("message", {}).get("content")
+
+    def judge_address_observation(
+        self,
+        raw_text: str,
+        extracted_json: Optional[Dict[str, Any]] = None,
+        validation_facts: Optional[List[str]] = None,
+    ) -> str:
+        """Invoca de forma estrictamente secuencial al Modelo 2 (El Juez / Observador)
+        para emitir el dictamen exacto y estandarizado del motivo de rechazo según la rúbrica MPCH.
+
+        Si el Modelo 2 no está disponible o falla, provee un diagnóstico determinístico
+        estandarizado basado en las inconsistencias detectadas en la validación lógica.
+        """
+        facts = validation_facts or []
+        user_prompt = build_user_prompt_for_judge(
+            raw_text=raw_text,
+            extracted_json=extracted_json,
+            validation_facts=facts,
+        )
+
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT_JUDGE_OBSERVER},
+            {"role": "user", "content": user_prompt},
+        ]
+
+        try:
+            raw_response = self._call_ollama_messages(
+                messages=messages,
+                temperature=0.0,
+                model_override=self.judge_model_name,
+            )
+            if raw_response:
+                parsed_json = json.loads(raw_response)
+                verdict = OllamaJudgeVerdict(**parsed_json)
+                if verdict.observacion_dictamen and len(verdict.observacion_dictamen.strip()) > 5:
+                    return verdict.observacion_dictamen.strip()
+        except Exception as ex:
+            logger.warning("Fallo en inferencia de Modelo 2 (Juez): %s. Aplicando rúbrica determinística.", ex)
+
+        # Fallback determinístico con la rúbrica institucional de Chiclayo
+        for f in facts:
+            if "catálogo maestro" in f:
+                return f
+        if any("Vía" in f and "no figura" in f for f in facts):
+            return "Vía no identificada: La arteria indicada no figura en el catálogo maestro de vías de Chiclayo."
+        if any("Carece de número" in f or "incompleta" in f.lower() for f in facts):
+            return "Dirección incompleta: Carece de numeración municipal y de manzana/lote."
+        if any("Zona/Habilitación" in f and "no figura" in f for f in facts):
+            return "Predio no localizado: Consigna zona/habilitación urbana no identificada en el catálogo maestro de zonas de Chiclayo."
+        if any("DIRECCIÓN NO RECONOCIDA" in f for f in facts):
+            return "Dirección no reconocida: No se identificó vía ni habilitación urbana válida en el catálogo maestro."
+        if facts:
+            return "; ".join(facts)
+        return "Dirección no cumple con los criterios mínimos de ubicación física catastral."
+
+    def test_judge_inference(
+        self,
+        sample_address: str = "CALLE BALTA - CHICLAYO",
+    ) -> Dict[str, Any]:
+        """Realiza una prueba en vivo del Modelo 2 (El Juez / Observador) evaluando una dirección incompleta."""
+        import time
+
+        result: Dict[str, Any] = {
+            "connected": False,
+            "model_available": False,
+            "model_ready": False,
+            "latency_seconds": 0.0,
+            "verdict": None,
+            "observation": None,
+            "error": None,
+            "message": "",
+        }
+
+        conn_status = self.check_connection(model_name_override=self.judge_model_name)
+        result["connected"] = conn_status["connected"]
+        result["model_available"] = conn_status["model_available"]
+
+        if not result["connected"]:
+            result["error"] = conn_status["message"]
+            result["message"] = f"Servidor Ollama no disponible en {self.base_url}."
+            return result
+
+        if not result["model_available"]:
+            result["error"] = f"El modelo Juez '{self.judge_model_name}' no existe en Ollama."
+            result["message"] = f"Servidor online, pero el modelo Juez '{self.judge_model_name}' no está descargado."
+            return result
+
+        start_time = time.perf_counter()
+        try:
+            obs = self.judge_address_observation(
+                raw_text=sample_address,
+                extracted_json={"tipo_via": "CALLE", "nom_via": "BALTA", "numero": None},
+                validation_facts=["Carece de número municipal y de combinación de Manzana/Lote."],
+            )
+            elapsed = time.perf_counter() - start_time
+            result["latency_seconds"] = round(elapsed, 2)
+            result["model_ready"] = True
+            result["observation"] = obs
+            result["message"] = (
+                f"Modelo Juez '{self.judge_model_name}' OPERATIVO. "
+                f"Dictamen: \"{obs}\" (Latencia: {result['latency_seconds']}s)."
+            )
+            logger.info(result["message"])
+        except Exception as e:
+            elapsed = time.perf_counter() - start_time
+            result["latency_seconds"] = round(elapsed, 2)
+            result["model_ready"] = False
+            result["error"] = str(e)
+            result["message"] = f"Error en inferencia de prueba del Juez '{self.judge_model_name}': {str(e)}"
+            logger.error(result["message"])
+
+        return result

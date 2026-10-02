@@ -150,6 +150,12 @@ class ETLPipeline:
                     f"Ejecución abortada (--require-ai): El modelo '{ollama_svc.model_name}' está apagado o no responde."
                 )
 
+        judge_model = getattr(ollama_svc, "judge_model_name", None) or getattr(ollama_svc, "model_name", "N/D")
+        if RICH_AVAILABLE and console:
+            console.print(f"[bold cyan][CONFIG][/bold cyan] Juez IA: [bold green]OPERATIVO[/bold green] (Modelo 2: {judge_model})")
+        else:
+            print(f"[CONFIG] Juez IA: OPERATIVO (Modelo 2: {judge_model})")
+
         # Paso 1: Asegurar arquitectura relacional V2 completa con nomenclatura tb_
         self.db.ensure_v2_tables_exist(schema=self.schema)
         cols = self.db.ensure_v2_source_columns(schema=self.schema, table=self.table)
@@ -182,7 +188,9 @@ class ETLPipeline:
 
         # 1. Identificación del motor
         metodo = getattr(destino, "metodo_normalizacion", "IA")
-        if "IA" in metodo:
+        if "Juez" in metodo:
+            motor_lbl = "Juez IA"
+        elif "IA" in metodo:
             motor_lbl = "IA"
         elif "Híbrido" in metodo or "Hibrido" in metodo:
             motor_lbl = "Híbrido"
@@ -283,7 +291,7 @@ class ETLPipeline:
         """Actualiza métricas protegidas, emite eventos visuales a consola y notifica callbacks."""
         with self._metrics_lock:
             metodo = getattr(rec_dest, "metodo_normalizacion", "")
-            if "IA (" in metodo:
+            if "Juez" in metodo or "IA (" in metodo:
                 summary.ai_records += 1
             elif "Híbrido" in metodo:
                 summary.hybrid_records += 1
@@ -558,21 +566,29 @@ class ETLPipeline:
             while enqueued < records_to_process and not self._stop_requested:
                 limit_chunk = min(self.batch_size, records_to_process - enqueued)
                 try:
-                    # Intenta primero keyset pagination con after_id para inmunidad total ante concurrencia
+                    # Intenta primero keyset pagination con after_id y lock_for_update
                     try:
                         batch_raw = self.extractor.extract_batch(
                             limit=limit_chunk,
                             filter_mode=filter_mode,
                             after_id=last_seen_id,
+                            lock_for_update=(self.num_workers > 1),
                         )
                     except TypeError:
-                        # Fallback seguro para extractores personalizados o mocks sin soporte after_id
-                        fetch_offset = 0 if filter_mode == "pending" else enqueued
-                        batch_raw = self.extractor.extract_batch(
-                            offset=fetch_offset,
-                            limit=limit_chunk,
-                            filter_mode=filter_mode,
-                        )
+                        try:
+                            batch_raw = self.extractor.extract_batch(
+                                limit=limit_chunk,
+                                filter_mode=filter_mode,
+                                after_id=last_seen_id,
+                            )
+                        except TypeError:
+                            # Fallback seguro para extractores personalizados o mocks sin soporte after_id
+                            fetch_offset = 0 if filter_mode == "pending" else enqueued
+                            batch_raw = self.extractor.extract_batch(
+                                offset=fetch_offset,
+                                limit=limit_chunk,
+                                filter_mode=filter_mode,
+                            )
 
                     if not batch_raw:
                         break

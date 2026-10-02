@@ -527,3 +527,20 @@ class OllamaCandidateDisambiguation(BaseModel):
         default=None,
         description="Explicación breve del razonamiento semántico para la selección o descarte",
     )
+
+
+class OllamaJudgeVerdict(BaseModel):
+    """Estructura de respuesta de evaluación y dictamen emitida por el Modelo 2 (El Juez / Observador)."""
+    es_valido: bool = Field(
+        default=False,
+        description="True si la dirección es físicamente válida y completa para catastro, False si debe observarse/rechazarse",
+    )
+    categoria_falla: str = Field(
+        default="INCOMPLETA",
+        description="Categoría técnica: INCOMPLETA, INEXISTENTE, INCONGRUENTE, FUERA_JURISDICCION, FORMATO_INVALIDO",
+    )
+    observacion_dictamen: str = Field(
+        default="Dirección no cumple con los criterios mínimos de ubicación física.",
+        description="Texto exacto, conciso y estandarizado del motivo del rechazo u observación catastral",
+    )
+

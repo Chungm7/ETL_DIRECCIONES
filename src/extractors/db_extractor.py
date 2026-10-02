@@ -158,8 +158,9 @@ class DatabaseExtractor(BaseExtractor):
         limit: int = 100,
         filter_mode: str = "pending",
         after_id: Optional[int] = None,
+        lock_for_update: bool = False,
     ) -> List[DireccionOrigen]:
-        """Extrae un lote aplicando filtro de estado para reanudación automática."""
+        """Extrae un lote aplicando filtro de estado para reanudación automática con soporte opcional de row locking."""
         if not SQLALCHEMY_AVAILABLE or not self.db._engine:
             return []
 
@@ -185,12 +186,22 @@ class DatabaseExtractor(BaseExtractor):
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
+        is_postgresql = False
+        try:
+            if self.db._engine and hasattr(self.db._engine, "dialect"):
+                is_postgresql = "postgresql" in str(self.db._engine.dialect.name).lower()
+        except Exception:
+            is_postgresql = False
+
+        lock_clause = "FOR UPDATE SKIP LOCKED" if (lock_for_update and is_postgresql) else ""
+
         query = text(f"""
             SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
             FROM "{self.schema}"."{self.table}"
             {where_clause}
             ORDER BY "{self.id_col}" ASC
-            LIMIT :limit {offset_clause};
+            LIMIT :limit {offset_clause}
+            {lock_clause};
         """)
 
         results: List[DireccionOrigen] = []
@@ -217,3 +228,44 @@ class DatabaseExtractor(BaseExtractor):
             )
 
         return results
+
+    def fetch_next_free_record(
+        self,
+        session,
+        filter_mode: str = "pending",
+    ) -> Optional[DireccionOrigen]:
+        """Obtiene y bloquea a nivel de fila el siguiente registro libre para una instancia concurrente.
+
+        Utiliza 'FOR UPDATE SKIP LOCKED' si el motor es PostgreSQL, garantizando aislamiento
+        estricto entre múltiples workers operando sobre la misma tabla sin colisiones.
+        """
+        cond_pending, cond_valid, cond_observed = self._build_status_conditions()
+        condition = cond_pending if filter_mode == "pending" else (cond_observed if filter_mode == "observed" else "1=1")
+
+        is_postgresql = False
+        try:
+            if self.db._engine and hasattr(self.db._engine, "dialect"):
+                is_postgresql = "postgresql" in str(self.db._engine.dialect.name).lower()
+        except Exception:
+            is_postgresql = False
+
+        lock_clause = "FOR UPDATE SKIP LOCKED" if is_postgresql else ""
+        query = text(f"""
+            SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
+            FROM "{self.schema}"."{self.table}"
+            WHERE {condition}
+            ORDER BY "{self.id_col}" ASC
+            LIMIT 1
+            {lock_clause};
+        """)
+        try:
+            row = session.execute(query).fetchone()
+            if row:
+                return DireccionOrigen(
+                    id_licencia=row.id_val,
+                    emp_direccion=row.dir_val,
+                )
+        except Exception as e:
+            logger.error("Error al obtener registro libre con row-locking: %s", e)
+        return None
+

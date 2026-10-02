@@ -10,7 +10,7 @@ const wiz = {
   step: 1,
   maxStepUnlocked: 1,
 
-  // Paso 1: IA
+  // Paso 1: IA (Modelo 1 - Extractor)
   ai_host: 'localhost',
   ai_port: 11434,
   ai_model: '',
@@ -23,7 +23,11 @@ const wiz = {
     }
   })(),
 
-  // Paso 2: BD
+  // Paso 2: IA (Modelo 2 - Juez / Observador)
+  ai_judge_model: '',
+  aiJudgeVerified: false,
+
+  // Paso 3: BD
   db_host: '',
   db_port: 5432,
   db_name: '',
@@ -32,7 +36,7 @@ const wiz = {
   dbVerified: false,
   availableSchemas: [],
 
-  // Paso 3 & 4: Esquema y Tabla
+  // Paso 4 & 5: Esquema y Tabla
   schema: null,
   availableTables: [],
   table: null,
@@ -40,7 +44,7 @@ const wiz = {
   addr_col: null,
   columns: [],
 
-  // Paso 5: Inspector en Tiempo Real
+  // Paso 6: Inspector en Tiempo Real
   allRecords: [],
   viewMode: 'cards', // 'cards' | 'table'
 
@@ -81,7 +85,7 @@ function tryGoStep(n) {
 }
 
 function goStep(n) {
-  [1, 2, 3, 4, 5].forEach(i => {
+  [1, 2, 3, 4, 5, 6].forEach(i => {
     const el = document.getElementById(`step${i}`);
     if (el) el.classList.toggle('hidden', i !== n);
 
@@ -318,7 +322,186 @@ async function verifyAIConnection() {
   }
 }
 
-// ── PASO 2: Conexión a Base de Datos PostgreSQL ─────────────────────────────
+// ── PASO 2: Configuración del Juez Catastral (Modelo 2 - Observador) ───────────
+function onJudgeModelSelectChange() {
+  const sel = document.getElementById('ai_judge_model_select');
+  const customInp = document.getElementById('ai_judge_model_custom');
+  if (sel && customInp) {
+    if (sel.value === 'custom') {
+      customInp.classList.remove('hidden');
+      customInp.focus();
+    } else {
+      customInp.classList.add('hidden');
+    }
+  }
+}
+
+function useSameModelForJudge() {
+  const extractorModel = wiz.ai_model || document.getElementById('ai_model_select')?.value || '';
+  if (!extractorModel || extractorModel === 'custom') {
+    const customExtractor = (document.getElementById('ai_model_custom')?.value || '').trim();
+    if (!customExtractor) {
+      showDiag('diagJudgeAI', 'warn', 'Extractor no definido', 'Primero verifique o seleccione el Modelo 1 (Extractor) en el Paso 1.');
+      return;
+    }
+    const sel = document.getElementById('ai_judge_model_select');
+    if (sel) sel.value = 'custom';
+    const customInp = document.getElementById('ai_judge_model_custom');
+    if (customInp) {
+      customInp.classList.remove('hidden');
+      customInp.value = customExtractor;
+    }
+  } else {
+    const sel = document.getElementById('ai_judge_model_select');
+    let exists = false;
+    if (sel) {
+      for (let opt of sel.options) {
+        if (opt.value === extractorModel) {
+          sel.value = extractorModel;
+          exists = true;
+          break;
+        }
+      }
+      if (!exists) {
+        const opt = new Option(`${extractorModel} (Extractor)`, extractorModel);
+        sel.add(opt, 0);
+        sel.value = extractorModel;
+      }
+    }
+    const customInp = document.getElementById('ai_judge_model_custom');
+    if (customInp) customInp.classList.add('hidden');
+  }
+  showDiag('diagJudgeAI', 'info', 'Modelo Asignado', `Se configuró el modelo "${wiz.ai_model}" para el Juez. Presione "Verificar Modelo Juez" para confirmar.`);
+}
+
+async function detectJudgeModels() {
+  showDiag('diagJudgeAI', '');
+  const host = wiz.ai_host || (document.getElementById('ai_host')?.value || '').trim() || 'localhost';
+  const port = wiz.ai_port || parseInt(document.getElementById('ai_port')?.value || '') || 11434;
+
+  showDiag('diagJudgeAI', 'info', 'Consultando servidor Ollama...', `Conectando con http://${host}:${port}/api/tags`);
+
+  try {
+    const res = await fetch('/api/detect-models', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port }),
+    });
+    const data = await res.json();
+
+    if (data.connected && data.models && data.models.length > 0) {
+      const sel = document.getElementById('ai_judge_model_select');
+      if (sel) {
+        sel.innerHTML = '';
+        data.models.forEach(m => {
+          const isSelected = m === wiz.ai_model;
+          const opt = new Option(isSelected ? `${m} (Mismo que Extractor)` : m, m);
+          sel.appendChild(opt);
+        });
+        sel.appendChild(new Option('Otro modelo (ingresar manualmente)...', 'custom'));
+
+        if (wiz.ai_model && data.models.includes(wiz.ai_model)) {
+          sel.value = wiz.ai_model;
+        }
+        onJudgeModelSelectChange();
+      }
+      showDiag('diagJudgeAI', 'ok', 'Modelos Detectados', `Se encontraron ${data.models.length} modelo(s) disponibles para el rol de Juez Catastral.`);
+    } else {
+      showDiag('diagJudgeAI', 'warn', 'Sin Modelos', data.message || 'No se encontraron modelos descargados en el servidor Ollama.');
+    }
+  } catch (e) {
+    showDiag('diagJudgeAI', 'error', 'Error al Consultar Ollama', `No fue posible comunicarse con http://${host}:${port}. Detalle: ${e.message}`);
+  }
+}
+
+async function verifyJudgeConnection() {
+  showDiag('diagJudgeAI', '');
+
+  const host = wiz.ai_host || (document.getElementById('ai_host')?.value || '').trim() || 'localhost';
+  const port = wiz.ai_port || parseInt(document.getElementById('ai_port')?.value || '') || 11434;
+  const selVal = document.getElementById('ai_judge_model_select')?.value || '';
+  let judgeModel = selVal;
+
+  if (selVal === 'custom') {
+    judgeModel = (document.getElementById('ai_judge_model_custom')?.value || '').trim();
+  }
+
+  if (!judgeModel) {
+    showDiag('diagJudgeAI', 'warn', 'Modelo No Seleccionado', 'Seleccione un modelo para el Juez Catastral o pulse "Usar el mismo modelo que Extractor".');
+    return;
+  }
+
+  setLoading('btnConnectJudgeAI', 'spinConnectJudgeAI', true);
+
+  try {
+    const res = await fetch('/api/connect-ai-judge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port, judge_model: judgeModel }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      wiz.aiJudgeVerified = false;
+      document.getElementById('btnGoStep3').disabled = true;
+      showDiag('diagJudgeAI', 'error', 'Error de Verificación del Juez', data.detail || 'No se pudo validar el modelo en Ollama.');
+      return;
+    }
+
+    wiz.ai_judge_model = judgeModel;
+    wiz.aiJudgeVerified = true;
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 3);
+
+    const btnNext = document.getElementById('btnGoStep3');
+    if (btnNext) btnNext.disabled = false;
+
+    // Desbloquear tab 3 (Conexión BD)
+    const tab3 = document.getElementById('tab3');
+    if (tab3) tab3.classList.remove('locked');
+
+    showDiag(
+      'diagJudgeAI',
+      'ok',
+      'Juez Catastral Verificado con Éxito',
+      `El Modelo 2 (El Juez) está listo para auditoría y rechazos normados con <strong>${escapeHtml(judgeModel)}</strong>.`,
+      `Modo de Ejecución: <strong>Estrictamente Secuencial</strong> (Hardware Protegido) &nbsp;|&nbsp; Latencia: <strong>${data.latency_ms} ms</strong>`
+    );
+
+  } catch (e) {
+    wiz.aiJudgeVerified = false;
+    document.getElementById('btnGoStep3').disabled = true;
+    showDiag('diagJudgeAI', 'error', 'Error de Red', `No se pudo conectar con Ollama para verificar el modelo Juez: ${e.message}`);
+  } finally {
+    setLoading('btnConnectJudgeAI', 'spinConnectJudgeAI', false);
+  }
+}
+
+async function testJudgeInferenceLive() {
+  showDiag('diagJudgeAI', 'info', 'Ejecutando Juicio Diagnóstico en Vivo...', 'Evaluando dirección incompleta de prueba ("CALLE BALTA - CHICLAYO")...');
+  try {
+    const res = await fetch('/api/test-ai-judge?sample_address=CALLE+BALTA+-+CHICLAYO', {
+      method: 'POST',
+    });
+    const data = await res.json();
+    if (data.success) {
+      showDiag(
+        'diagJudgeAI',
+        'ok',
+        'Dictamen de Prueba Exitoso',
+        `Dirección evaluada: <em>"${escapeHtml(data.input)}"</em><br>` +
+        `⚖️ <strong>Dictamen Oficial emitido por el Juez (${escapeHtml(data.judge_model)}):</strong><br>` +
+        `<span style="color:var(--amber); font-weight:600;">"${escapeHtml(data.observation || data.message)}"</span>`,
+        `Latencia de respuesta: <strong>${data.latency_ms} ms</strong>`
+      );
+    } else {
+      showDiag('diagJudgeAI', 'warn', 'Resultado de Prueba', data.message || 'No se recibió observación estructurada.');
+    }
+  } catch (e) {
+    showDiag('diagJudgeAI', 'error', 'Error en Prueba del Juez', e.message);
+  }
+}
+
+// ── PASO 3: Conexión a Base de Datos PostgreSQL ─────────────────────────────
 async function verifyDBConnection() {
   showDiag('diagDB', '');
 
@@ -348,7 +531,7 @@ async function verifyDBConnection() {
 
     if (!res.ok) {
       wiz.dbVerified = false;
-      document.getElementById('btnGoStep3').disabled = true;
+      document.getElementById('btnGoStep4').disabled = true;
       showDiag('diagDB', 'error', 'Error de Conexión a Base de Datos', data.detail || 'Credenciales no válidas o servidor PostgreSQL no responde.');
       return;
     }
@@ -358,17 +541,17 @@ async function verifyDBConnection() {
     wiz.db_name = dbname;
     wiz.db_user = user;
     wiz.dbVerified = true;
-    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 3);
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
     wiz.availableSchemas = data.schemas || [];
 
     renderSchemaCards(wiz.availableSchemas);
 
-    const btnNext = document.getElementById('btnGoStep3');
+    const btnNext = document.getElementById('btnGoStep4');
     if (btnNext) btnNext.disabled = false;
 
-    // Desbloquear tab 3
-    const tab3 = document.getElementById('tab3');
-    if (tab3) tab3.classList.remove('locked');
+    // Desbloquear tab 4 (Esquema)
+    const tab4 = document.getElementById('tab4');
+    if (tab4) tab4.classList.remove('locked');
 
     showDiag(
       'diagDB',
@@ -380,7 +563,7 @@ async function verifyDBConnection() {
 
   } catch (e) {
     wiz.dbVerified = false;
-    document.getElementById('btnGoStep3').disabled = true;
+    document.getElementById('btnGoStep4').disabled = true;
     showDiag('diagDB', 'error', 'Error de Red PostgreSQL', `No fue posible conectar con el servidor: ${e.message}`);
   } finally {
     setLoading('btnConnectDB', 'spinConnectDB', false);
@@ -440,11 +623,11 @@ async function inspectSchema() {
     renderTableCards(wiz.availableTables);
     document.getElementById('labelSchema').textContent = wiz.schema;
 
-    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
-    const tab4 = document.getElementById('tab4');
-    if (tab4) tab4.classList.remove('locked');
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+    const tab5 = document.getElementById('tab5');
+    if (tab5) tab5.classList.remove('locked');
 
-    goStep(4);
+    goStep(5);
 
   } catch (e) {
     alert('Error de red al consultar tablas: ' + e.message);
@@ -611,21 +794,23 @@ function confirmTable() {
   document.getElementById('summAddr').textContent    = wiz.addr_col;
 
   const elAiModel = document.getElementById('summAiModel');
-  if (elAiModel) elAiModel.textContent = wiz.ai_model || 'Ollama';
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model || 'Ollama'}`;
+  const elJudgeModel = document.getElementById('summJudgeModel');
+  if (elJudgeModel) elJudgeModel.textContent = `Juez: ${wiz.ai_judge_model || wiz.ai_model || 'Ollama'}`;
   const elAiHost = document.getElementById('summAiHost');
   if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
 
   syncNumWorkers(wiz.num_workers || 4);
 
-  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
-  const tab5 = document.getElementById('tab5');
-  if (tab5) tab5.classList.remove('locked');
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 6);
+  const tab6 = document.getElementById('tab6');
+  if (tab6) tab6.classList.remove('locked');
 
-  goStep(5);
+  goStep(6);
   initStep5();
 }
 
-// ── PASO 5: Ejecución y Monitoreo del Inspector Catastral ────────────────────
+// ── PASO 6: Ejecución y Monitoreo del Inspector Catastral ────────────────────
 async function initStep5() {
   try {
     const res  = await fetch('/api/status');
@@ -636,10 +821,16 @@ async function initStep5() {
     const isModelReady = Boolean(ai.installed || ai.model_available);
     const isAiActive   = (ai.connected && isModelReady) || Boolean(wiz.ai_model && (ai.connected || wiz.ai_host));
     const activeModel  = wiz.ai_model || ai.model || 'Ollama';
+    const activeJudge  = wiz.ai_judge_model || data.active_judge_model || activeModel;
+
+    const elAiModel = document.getElementById('summAiModel');
+    if (elAiModel) elAiModel.textContent = `Extractor: ${activeModel}`;
+    const elJudgeModel = document.getElementById('summJudgeModel');
+    if (elJudgeModel) elJudgeModel.textContent = `Juez: ${activeJudge}`;
 
     if (badge) {
       if (isAiActive && activeModel) {
-        badge.innerHTML = `<span class="badge badge-valid"><span class="dot-live"></span>IA Conectada — ${escapeHtml(activeModel)}</span>`;
+        badge.innerHTML = `<span class="badge badge-valid"><span class="dot-live"></span>Extractor: ${escapeHtml(activeModel)}</span> <span class="badge" style="background:#fef3c7; color:#92400e; border:1px solid #fde68a;"><span class="dot-live" style="background:#d97706;"></span>Juez: ${escapeHtml(activeJudge)}</span>`;
       } else {
         badge.innerHTML = `<span class="badge badge-error">IA No Disponible</span>`;
       }
@@ -1577,6 +1768,7 @@ async function startETL() {
     num_workers:  num_workers,
     filter_mode:  filter,
     require_ai:   require_ai,
+    judge_model:  wiz.ai_judge_model || undefined,
     limit,
   };
 
@@ -1596,7 +1788,7 @@ async function startETL() {
     } else {
       const banner = document.getElementById('bannerActiveSession');
       if (banner) banner.classList.remove('hidden');
-      [1, 2, 3, 4].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
+      [1, 2, 3, 4, 5].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
     }
   } catch (e) {
     alert('Error de comunicación: ' + e.message);
@@ -1625,7 +1817,7 @@ function onDone(data) {
   if (dot) dot.style.background = 'var(--slate-400)';
   const banner = document.getElementById('bannerActiveSession');
   if (banner) banner.classList.add('hidden');
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     if (i <= wiz.maxStepUnlocked) document.getElementById(`tab${i}`)?.classList.remove('locked');
   });
 }
@@ -1640,7 +1832,7 @@ function onError(data) {
   if (dot) dot.style.background = 'var(--red)';
   const banner = document.getElementById('bannerActiveSession');
   if (banner) banner.classList.add('hidden');
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     if (i <= wiz.maxStepUnlocked) document.getElementById(`tab${i}`)?.classList.remove('locked');
   });
 }
@@ -1744,12 +1936,13 @@ async function checkInitialServerState() {
 }
 
 function syncWithActiveSession(data) {
-  wiz.maxStepUnlocked = 5;
+  wiz.maxStepUnlocked = 6;
   wiz.schema = data.active_schema || wiz.schema || 'public';
   wiz.table  = data.active_table  || wiz.table  || 'direcciones_actual';
   wiz.id_col = data.id_col || wiz.id_col || 'id_licencia';
   wiz.addr_col = data.address_col || wiz.addr_col || 'emp_direccion';
   wiz.ai_model = data.active_model || (data.ai ? data.ai.model : 'Ollama');
+  wiz.ai_judge_model = data.active_judge_model || (data.ai ? data.ai.judge_model : null) || wiz.ai_model;
   wiz.num_workers = data.num_workers || 4;
 
   syncNumWorkers(wiz.num_workers);
@@ -1759,19 +1952,21 @@ function syncWithActiveSession(data) {
   const elId = document.getElementById('summId');
   const elAddr = document.getElementById('summAddr');
   const elAiModel = document.getElementById('summAiModel');
+  const elJudgeModel = document.getElementById('summJudgeModel');
   const elAiHost = document.getElementById('summAiHost');
 
   if (elSchema) elSchema.textContent = wiz.schema;
   if (elTable) elTable.textContent = wiz.table;
   if (elId) elId.textContent = wiz.id_col;
   if (elAddr) elAddr.textContent = wiz.addr_col;
-  if (elAiModel) elAiModel.textContent = wiz.ai_model;
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
+  if (elJudgeModel) elJudgeModel.textContent = `Juez: ${wiz.ai_judge_model}`;
   if (elAiHost && data.ai && data.ai.base_url) elAiHost.textContent = data.ai.base_url;
 
-  goStep(5);
+  goStep(6);
 
   // Bloquear navegación a pasos de configuración durante la ejecución activa
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     document.getElementById(`tab${i}`)?.classList.add('locked');
   });
 
@@ -1801,12 +1996,13 @@ function syncWithActiveSession(data) {
 }
 
 function syncWithCompletedSession(data) {
-  wiz.maxStepUnlocked = 5;
+  wiz.maxStepUnlocked = 6;
   wiz.schema = data.active_schema || wiz.schema || 'public';
   wiz.table  = data.active_table  || wiz.table  || 'direcciones_actual';
   wiz.id_col = data.id_col || wiz.id_col || 'id_licencia';
   wiz.addr_col = data.address_col || wiz.addr_col || 'emp_direccion';
   wiz.ai_model = data.active_model || (data.ai ? data.ai.model : 'Ollama');
+  wiz.ai_judge_model = data.active_judge_model || (data.ai ? data.ai.judge_model : null) || wiz.ai_model;
   wiz.num_workers = data.num_workers || 4;
 
   syncNumWorkers(wiz.num_workers);
@@ -1816,14 +2012,16 @@ function syncWithCompletedSession(data) {
   const elId = document.getElementById('summId');
   const elAddr = document.getElementById('summAddr');
   const elAiModel = document.getElementById('summAiModel');
+  const elJudgeModel = document.getElementById('summJudgeModel');
 
   if (elSchema) elSchema.textContent = wiz.schema;
   if (elTable) elTable.textContent = wiz.table;
   if (elId) elId.textContent = wiz.id_col;
   if (elAddr) elAddr.textContent = wiz.addr_col;
-  if (elAiModel) elAiModel.textContent = wiz.ai_model;
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
+  if (elJudgeModel) elJudgeModel.textContent = `Juez: ${wiz.ai_judge_model}`;
 
-  goStep(5);
+  goStep(6);
 
   const btnStart = document.getElementById('btnStart');
   const btnStop = document.getElementById('btnStop');
@@ -1845,7 +2043,7 @@ function resetToNewSession() {
     return;
   }
   wiz.maxStepUnlocked = 1;
-  [1, 2, 3, 4, 5].forEach(i => {
+  [1, 2, 3, 4, 5, 6].forEach(i => {
     const tab = document.getElementById(`tab${i}`);
     if (tab) {
       tab.classList.remove('done', 'active');

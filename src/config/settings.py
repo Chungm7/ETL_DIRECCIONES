@@ -209,7 +209,12 @@ class OllamaSettings(BaseSettings):
     model: str = Field(
         default="llama3",
         alias="OLLAMA_MODEL",
-        description="Nombre del modelo LLM ejecutándose localmente",
+        description="Nombre del modelo LLM ejecutándose localmente (Modelo 1: Extractor)",
+    )
+    judge_model: Optional[str] = Field(
+        default=None,
+        alias="OLLAMA_JUDGE_MODEL",
+        description="Nombre del modelo LLM observador/juez (Modelo 2: El Juez). Si es None, reutiliza el Modelo 1",
     )
     timeout: int = Field(
         default=60,

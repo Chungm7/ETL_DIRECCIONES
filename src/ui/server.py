@@ -46,6 +46,7 @@ class ExecutionState:
         self.active_table: str = settings.db.table
         self.num_workers: int = 4
         self.active_model: Optional[str] = None
+        self.active_judge_model: Optional[str] = None
         # Conexiones dinámicas establecidas por el wizard (independientes de .env)
         self.dynamic_db_service: Optional[DatabaseService] = None
         self.dynamic_db_settings: Optional[Any] = None
@@ -80,6 +81,7 @@ class ExecutionState:
         table: str,
         num_workers: int = 4,
         model: Optional[str] = None,
+        judge_model: Optional[str] = None,
     ):
         with self._lock:
             self.is_running = True
@@ -87,6 +89,7 @@ class ExecutionState:
             self.active_table = table
             self.num_workers = max(1, int(num_workers or 1))
             self.active_model = model
+            self.active_judge_model = judge_model
             # No vaciar self.recent_records para preservar el historial acumulado de la sesión
             self.stats = {
                 "status": "RUNNING",
@@ -297,10 +300,19 @@ if STATIC_DIR.exists():
 class AIConnectRequest(BaseModel):
     host: str = Field(default="localhost", description="Host o IP del servidor Ollama")
     port: int = Field(default=11434, description="Puerto de conexión a Ollama")
-    model: str = Field(default="patroclo-artesano-7b:latest", description="Nombre del modelo seleccionado")
+    model: str = Field(default="patroclo-artesano-7b:latest", description="Nombre del modelo seleccionado (Modelo 1 - Extractor)")
+    judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
     timeout: Optional[int] = Field(default=60, description="Timeout en segundos")
     temperature: Optional[float] = Field(default=0.0, description="Temperatura de inferencia")
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de trabajadores concurrentes a Ollama")
+
+
+class AIJudgeConnectRequest(BaseModel):
+    host: str = Field(default="localhost", description="Host o IP del servidor Ollama")
+    port: int = Field(default=11434, description="Puerto de conexión a Ollama")
+    judge_model: str = Field(..., description="Nombre del modelo seleccionado para el Juez / Observador")
+    timeout: Optional[int] = Field(default=60, description="Timeout en segundos")
+    temperature: Optional[float] = Field(default=0.0, description="Temperatura de inferencia")
 
 
 class DetectModelsRequest(BaseModel):
@@ -342,6 +354,7 @@ class StartPipelineRequest(BaseModel):
     filter_mode: Optional[str] = Field(default="pending", description="Modo de filtro: pending, all, observed")
     require_ai: bool = Field(default=True, description="Si es True, falla de inmediato si Ollama no está operativo")
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de peticiones concurrentes a Ollama")
+    judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
 
 
 @app.get("/", response_class=FileResponse)
@@ -383,6 +396,7 @@ async def get_system_status():
         table_counts = {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
     current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or getattr(ollama_svc, "model_name", None) or settings.ollama.model)
+    current_judge_model = state.active_judge_model or getattr(ollama_svc, "judge_model_name", None) or current_model
     ollama_base_url = getattr(ollama_svc, "base_url", settings.ollama.base_url)
 
     return {
@@ -391,6 +405,7 @@ async def get_system_status():
         "active_schema": state.active_schema,
         "active_table": state.active_table,
         "active_model": current_model,
+        "active_judge_model": current_judge_model,
         "num_workers": state.num_workers,
         "has_completed_session": (state.stats.get("status") == "FINISHED" and len(state.recent_records) > 0),
         "available_schemas": db_health.get("available_schemas", ["public"]),
@@ -403,6 +418,7 @@ async def get_system_status():
         "ai": {
             "connected": ai_health.get("connected", False),
             "model": current_model,
+            "judge_model": current_judge_model,
             "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "base_url": ollama_base_url,
@@ -521,6 +537,10 @@ async def wizard_connect_ai(req: AIConnectRequest):
     # Guardar en estado compartido de la sesión
     state.dynamic_ollama_service = ollama_svc
     state.dynamic_ollama_settings = dyn_settings
+    if req.judge_model:
+        dyn_settings.judge_model = req.judge_model
+        ollama_svc.judge_model_name = req.judge_model
+        state.active_judge_model = req.judge_model
     if req.num_workers:
         state.num_workers = max(1, min(16, int(req.num_workers)))
 
@@ -529,12 +549,75 @@ async def wizard_connect_ai(req: AIConnectRequest):
         "host": req.host,
         "port": req.port,
         "model": req.model,
+        "judge_model": state.active_judge_model,
         "num_workers": state.num_workers,
         "model_available": True,
         "available_models": available_models,
         "latency_ms": latency_ms,
         "message": f"Conexión exitosa con Ollama ({req.model}) en {base_url} ({latency_ms} ms)",
     }
+
+
+@app.post("/api/connect-ai-judge")
+async def wizard_connect_ai_judge(req: AIJudgeConnectRequest):
+    """Paso 2 del wizard: prueba y guarda la configuración del Modelo 2 (El Juez / Observador)."""
+    import time
+    base_url = f"http://{req.host}:{req.port}".rstrip("/")
+    target_judge = req.judge_model.strip()
+
+    if state.dynamic_ollama_service:
+        ollama_svc = state.dynamic_ollama_service
+    else:
+        dyn_settings = OllamaSettings(
+            OLLAMA_BASE_URL=base_url,
+            OLLAMA_MODEL=target_judge,
+            OLLAMA_JUDGE_MODEL=target_judge,
+            OLLAMA_TIMEOUT=req.timeout or 60,
+            OLLAMA_TEMPERATURE=req.temperature or 0.0,
+        )
+        ollama_svc = OllamaService(settings=dyn_settings)
+        state.dynamic_ollama_service = ollama_svc
+        state.dynamic_ollama_settings = dyn_settings
+
+    ollama_svc.judge_model_name = target_judge
+    state.active_judge_model = target_judge
+    if state.dynamic_ollama_settings:
+        state.dynamic_ollama_settings.judge_model = target_judge
+
+    t0 = time.perf_counter()
+    health = ollama_svc.check_judge_connection()
+    latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    if not health.get("connected"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo conectar al servidor Ollama en {base_url}. Verifique que Ollama esté ejecutándose."
+        )
+
+    available_models = health.get("available_models", [])
+    model_match = health.get("model_available", False)
+
+    if not model_match:
+        model_list_str = ", ".join(available_models) if available_models else "ninguno"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Conexión con Ollama establecida, pero el modelo Juez '{target_judge}' "
+                f"no está disponible en el servidor. Modelos detectados: [{model_list_str}]."
+            )
+        )
+
+    return {
+        "success": True,
+        "host": req.host,
+        "port": req.port,
+        "judge_model": target_judge,
+        "model_available": True,
+        "available_models": available_models,
+        "latency_ms": latency_ms,
+        "message": f"Modelo Juez '{target_judge}' verificado exitosamente ({latency_ms} ms)",
+    }
+
 
 
 @app.post("/api/connect")
@@ -735,12 +818,52 @@ async def test_ai_connection(sample_address: Optional[str] = None):
         }
 
 
+@app.post("/api/test-ai-judge")
+async def test_ai_judge(sample_address: Optional[str] = None):
+    """Ejecuta una prueba de inferencia de juicio en vivo con el Modelo 2 (El Juez) configurado."""
+    ollama_svc = state.dynamic_ollama_service or OllamaService()
+    test_addr = sample_address or "CALLE BALTA - CHICLAYO"
+
+    health = ollama_svc.check_judge_connection()
+    if not health.get("connected"):
+        return {
+            "success": False,
+            "judge_model": ollama_svc.judge_model_name,
+            "latency_ms": 0,
+            "message": health.get("message", "Ollama fuera de línea"),
+        }
+
+    try:
+        res = ollama_svc.test_judge_inference(sample_address=test_addr)
+        return {
+            "success": res.get("model_ready", False),
+            "judge_model": ollama_svc.judge_model_name,
+            "latency_ms": round(res.get("latency_seconds", 0.0) * 1000, 1),
+            "input": test_addr,
+            "observation": res.get("observation"),
+            "message": res.get("message"),
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "judge_model": ollama_svc.judge_model_name,
+            "latency_ms": 0,
+            "message": f"Error de inferencia del Juez: {e}",
+        }
+
+
 def _run_pipeline_worker(req: StartPipelineRequest):
     """Función que ejecuta el pipeline ETL en un hilo secundario para no bloquear el servidor."""
     settings = get_settings()
     # Usar conexiones y configuraciones dinámicas del wizard si están disponibles
     db_svc = state.dynamic_db_service or DatabaseService()
     ollama_svc = state.dynamic_ollama_service or OllamaService()
+    if req.judge_model:
+        ollama_svc.judge_model_name = req.judge_model
+        state.active_judge_model = req.judge_model
+    elif state.active_judge_model:
+        ollama_svc.judge_model_name = state.active_judge_model
+
     dynamic_db_settings = state.dynamic_db_settings or getattr(db_svc, "settings", None) or settings.db
 
     target_schema = req.schema_name or getattr(dynamic_db_settings, "schema", "public")
@@ -753,7 +876,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         dir_col  = req.address_col or getattr(dynamic_db_settings, "dir_col", "emp_direccion")
 
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
-        state.add_log(f"Motor IA: [{ollama_svc.base_url}] | Modelo: [{ollama_svc.model_name}]")
+        state.add_log(f"Motor IA: [{ollama_svc.base_url}] | Extractor: [{ollama_svc.model_name}] | Juez: [{ollama_svc.judge_model_name}]")
 
         # Construir el extractor con las columnas identificadas por el usuario en el wizard
         custom_extractor = DatabaseExtractor(
@@ -831,6 +954,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             table=target_table,
             num_workers=workers_count,
             model=ollama_svc.model_name,
+            judge_model=ollama_svc.judge_model_name,
         )
         state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()}, Instancias concurrentes: {workers_count})")
 
