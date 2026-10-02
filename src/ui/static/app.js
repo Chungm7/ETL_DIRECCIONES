@@ -42,6 +42,7 @@ const wiz = {
 
   // Paso 5: Inspector en Tiempo Real
   allRecords: [],
+  viewMode: 'cards', // 'cards' | 'table'
 
   // Filtro y Ejecución
   filter_mode: 'pending',
@@ -796,28 +797,55 @@ function updateStats(s) {
 }
 
 function addRecord(r, shouldScroll = true) {
+  // Extraer componentes estructurados con fallback dinámico
+  const rawComponents = Array.isArray(r.componentes) ? r.componentes : [];
+  let mzVal = r.manzana || '';
+  let ltVal = r.lote || '';
+  let sltVal = r.slote || '';
+  let blockVal = r.block || '';
+  let pisoVal = r.piso || '';
+
+  for (const c of rawComponents) {
+    const nom = (c.codi_nombre || '').toUpperCase().trim();
+    if (!mzVal && (nom === 'MANZANA' || nom === 'MZ' || c.codi_id === 1)) mzVal = c.diti_nombre || '';
+    if (!ltVal && (nom === 'LOTE' || nom === 'LT' || c.codi_id === 2)) ltVal = c.diti_nombre || '';
+    if (!sltVal && (nom === 'SUBLOTE' || nom === 'SLT' || c.codi_id === 3)) sltVal = c.diti_nombre || '';
+    if (!blockVal && (nom === 'BLOCK' || nom === 'BLOQUE' || nom === 'TORRE' || c.codi_id === 11)) blockVal = c.diti_nombre || '';
+    if (!pisoVal && (nom === 'PISO' || c.codi_id === 12)) pisoVal = c.diti_nombre || '';
+  }
+
+  const rawVias = Array.isArray(r.vias) ? r.vias : [];
+  const rawModulos = Array.isArray(r.modulos) ? r.modulos : [];
+
   const normRec = {
-    index:        r.index || (wiz.allRecords.length + 1),
-    total:        r.total || 0,
-    id_licencia:  r.id_licencia ?? r.id ?? '—',
-    raw_text:     r.raw_text || r.original_address || r.emp_direccion || '',
-    metodo:       r.metodo || r.method || 'IA',
-    es_procesado: Boolean(r.es_procesado),
-    observacion:  r.observacion || '',
-    success:      r.success !== false,
-    nom_via:      r.nom_via || '',
-    num_via:      r.num_via || '',
-    id_via:       r.id_via || null,
-    tipo_via_name:r.tipo_via_name || r.tipo_via || '',
-    nom_zona:     r.nom_zona || '',
-    id_zona:      r.id_zona || null,
-    tipo_zona_name:r.tipo_zona_name || r.tipo_zona || '',
-    manzana:      r.manzana || '',
-    lote:         r.lote || '',
-    slote:        r.slote || '',
-    referencia:   r.referencia || '',
-    time:         new Date().toLocaleTimeString('es-PE', { hour12: false }),
-    reprocesado:  false,
+    index:          r.index || (wiz.allRecords.length + 1),
+    total:          r.total || 0,
+    id_licencia:    r.id_licencia ?? r.id ?? '—',
+    raw_text:       r.raw_text || r.original_address || r.emp_direccion || '',
+    metodo:         r.metodo || r.method || 'IA',
+    es_procesado:   Boolean(r.es_procesado),
+    observacion:    r.observacion || '',
+    success:        r.success !== false,
+    nom_via:        r.nom_via || '',
+    num_via:        r.num_via || '',
+    id_via:         r.id_via || null,
+    tipo_via_name:  r.tipo_via_name || r.tipo_via || '',
+    nom_zona:       r.nom_zona || '',
+    id_zona:        r.id_zona || null,
+    tipo_zona_name: r.tipo_zona_name || r.tipo_zona || '',
+    manzana:        mzVal,
+    lote:           ltVal,
+    slote:          sltVal,
+    block:          blockVal,
+    piso:           pisoVal,
+    vias:           rawVias,
+    componentes:    rawComponents,
+    modulos:        rawModulos,
+    dire_id:        r.dire_id ?? null,
+    worker_id:      r.worker_id || '',
+    referencia:     r.referencia || r.dire_referencia || '',
+    time:           new Date().toLocaleTimeString('es-PE', { hour12: false }),
+    reprocesado:    false,
   };
 
   const isErr = !normRec.success || normRec.metodo === 'ERROR';
@@ -893,7 +921,8 @@ function filterInspectorRecords(autoScroll = false) {
   wiz.inspectorMotor  = document.getElementById('filterInspectorMotor')?.value || 'all';
 
   const list = document.getElementById('inspectorCardsList');
-  if (!list) return;
+  const tbody = document.getElementById('inspectorTableBody');
+  if (!list && !tbody) return;
 
   const q  = wiz.searchInspector;
   const st = wiz.inspectorStatus;
@@ -904,9 +933,19 @@ function filterInspectorRecords(autoScroll = false) {
       const matchId   = String(r.id_licencia).includes(q);
       const matchRaw  = (r.raw_text || '').toLowerCase().includes(q);
       const matchVia  = (r.nom_via || '').toLowerCase().includes(q);
+      const matchNum  = (r.num_via || '').toLowerCase().includes(q);
       const matchZona = (r.nom_zona || '').toLowerCase().includes(q);
+      const matchMz   = (r.manzana || '').toLowerCase().includes(q);
+      const matchLt   = (r.lote || '').toLowerCase().includes(q);
+      const matchBlk  = (r.block || '').toLowerCase().includes(q);
+      const matchPiso = (r.piso || '').toLowerCase().includes(q);
       const matchObs  = (r.observacion || '').toLowerCase().includes(q);
-      if (!matchId && !matchRaw && !matchVia && !matchZona && !matchObs) return false;
+      const matchViasArr = (r.vias || []).some(v => (v.via_nombre || '').toLowerCase().includes(q) || (v.divi_numero || '').toLowerCase().includes(q));
+      const matchModArr  = (r.modulos || []).some(m => (m.timo_nombre || '').toLowerCase().includes(q) || (m.ditm_nombre || '').toLowerCase().includes(q));
+
+      if (!matchId && !matchRaw && !matchVia && !matchNum && !matchZona && !matchMz && !matchLt && !matchBlk && !matchPiso && !matchObs && !matchViasArr && !matchModArr) {
+        return false;
+      }
     }
 
     if (st === 'valid' && !r.es_procesado) return false;
@@ -925,16 +964,122 @@ function filterInspectorRecords(autoScroll = false) {
     countLabel.textContent = `Mostrando ${filtered.length.toLocaleString()} de ${wiz.allRecords.length.toLocaleString()} registros procesados`;
   }
 
-  if (!filtered.length) {
-    list.innerHTML = `<p style="text-align:center; color:var(--slate-400); padding:40px; font-size:13px;">No hay registros que coincidan con los filtros seleccionados.</p>`;
+  // Renderizar según el modo de vista seleccionado
+  if (wiz.viewMode === 'table') {
+    renderInspectorTable(filtered);
+  } else {
+    if (!filtered.length) {
+      if (list) list.innerHTML = `<p style="text-align:center; color:var(--slate-400); padding:40px; font-size:13px;">No hay registros que coincidan con los filtros seleccionados.</p>`;
+    } else {
+      if (list) list.innerHTML = filtered.map(r => createConciseRecordCard(r)).join('');
+    }
+  }
+
+  if (autoScroll && wiz.autoScroll) {
+    if (wiz.viewMode === 'table') {
+      const tableWrap = document.getElementById('inspectorTableWrap');
+      if (tableWrap) tableWrap.scrollTop = 0;
+    } else {
+      if (list) list.scrollTop = 0;
+    }
+  }
+}
+
+function setInspectorViewMode(mode) {
+  wiz.viewMode = mode;
+  const btnCards = document.getElementById('btnViewCards');
+  const btnTable = document.getElementById('btnViewTable');
+  const cardsList = document.getElementById('inspectorCardsList');
+  const tableWrap = document.getElementById('inspectorTableWrap');
+
+  if (mode === 'table') {
+    btnCards?.classList.remove('active');
+    btnTable?.classList.add('active');
+    cardsList?.classList.add('hidden');
+    tableWrap?.classList.remove('hidden');
+  } else {
+    btnCards?.classList.add('active');
+    btnTable?.classList.remove('active');
+    cardsList?.classList.remove('hidden');
+    tableWrap?.classList.add('hidden');
+  }
+
+  filterInspectorRecords(false);
+}
+
+function renderInspectorTable(records) {
+  const tbody = document.getElementById('inspectorTableBody');
+  if (!tbody) return;
+
+  if (!records.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--slate-400); padding:40px;">No hay registros que coincidan con los filtros seleccionados.</td></tr>`;
     return;
   }
 
-  list.innerHTML = filtered.map(r => createConciseRecordCard(r)).join('');
+  tbody.innerHTML = records.map(r => {
+    const isErr = !r.success || r.metodo === 'ERROR';
+    const isObs = !r.es_procesado && !isErr;
+    const statusBadge = isErr
+      ? `<span class="badge badge-error">ERROR</span>`
+      : (isObs ? `<span class="badge badge-observed">OBSERVADO</span>` : `<span class="badge badge-valid">NORMALIZADO</span>`);
 
-  if (autoScroll && wiz.autoScroll) {
-    list.scrollTop = 0;
-  }
+    let motorBadge = `<span class="badge badge-motor-ai" style="font-size:10px;">IA</span>`;
+    if (r.metodo && (r.metodo.includes('Híbrido') || r.metodo.includes('Hibrido'))) {
+      motorBadge = `<span class="badge badge-motor-hy" style="font-size:10px;">HÍBRIDO</span>`;
+    } else if (r.metodo && !r.metodo.includes('IA')) {
+      motorBadge = `<span class="badge badge-motor-he" style="font-size:10px;">HEURÍSTICO</span>`;
+    }
+
+    // Vías
+    let viasText = '';
+    if (r.vias && r.vias.length > 1) {
+      viasText = r.vias.map(v => `${escapeHtml(v.tipo_via_name || '')} ${escapeHtml(v.via_nombre || '')} ${v.divi_numero ? 'N° ' + escapeHtml(v.divi_numero) : 'S/N'}`.trim()).join(' <span style="color:var(--slate-400); font-weight:700;">con</span> ');
+    } else {
+      const tipo = r.tipo_via_name ? escapeHtml(r.tipo_via_name) + ' ' : '';
+      const nom = escapeHtml(r.nom_via || 'Sin vía');
+      const num = r.num_via ? `N° ${escapeHtml(r.num_via)}` : 'S/N';
+      viasText = `${tipo}${nom} ${num}`;
+    }
+
+    // Zona
+    const zonaText = `${escapeHtml(r.tipo_zona_name ? r.tipo_zona_name + ' ' : '')}${escapeHtml(r.nom_zona || 'Sin zona')}`;
+
+    // Predio
+    const predChips = [];
+    if (r.manzana) predChips.push(`<span class="chip-predio chip-mz">Mz:${escapeHtml(r.manzana)}</span>`);
+    if (r.lote)    predChips.push(`<span class="chip-predio chip-lt">Lt:${escapeHtml(r.lote)}</span>`);
+    if (r.slote)   predChips.push(`<span class="chip-predio chip-slt">Slt:${escapeHtml(r.slote)}</span>`);
+    if (r.block)   predChips.push(`<span class="chip-predio chip-block">Blk:${escapeHtml(r.block)}</span>`);
+    if (r.piso)    predChips.push(`<span class="chip-predio chip-piso">Piso:${escapeHtml(r.piso)}</span>`);
+    const predioText = predChips.length > 0 ? predChips.join('') : '—';
+
+    // Módulos
+    let modText = '—';
+    if (r.modulos && r.modulos.length > 0) {
+      modText = r.modulos.map(m => `${escapeHtml(m.timo_nombre || '')} ${escapeHtml(m.ditm_nombre || '')}`.trim()).join(', ');
+    }
+
+    // Diagnóstico
+    let diagText = '—';
+    if (r.observacion) {
+      const color = isErr ? '#dc2626' : (isObs ? '#d97706' : '#64748b');
+      diagText = `<span style="color:${color}; font-weight:600;">${escapeHtml(r.observacion)}</span>`;
+    }
+
+    return `
+      <tr>
+        <td style="font-family:monospace; font-weight:700;">${r.id_licencia}</td>
+        <td>${statusBadge}</td>
+        <td>${motorBadge}</td>
+        <td style="font-family:monospace; font-size:11.5px; max-width:240px; word-break:break-word;">${escapeHtml(r.raw_text)}</td>
+        <td style="font-weight:600;">${viasText}</td>
+        <td>${zonaText}</td>
+        <td>${predioText}</td>
+        <td style="color:#5b21b6; font-weight:600;">${modText}</td>
+        <td style="font-size:11.5px;">${diagText}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function createConciseRecordCard(r) {
@@ -942,7 +1087,7 @@ function createConciseRecordCard(r) {
   const isObs = !r.es_procesado && !isErr;
   const cardClass = isErr ? 'card-error' : (isObs ? 'card-observed' : 'card-valid');
 
-  // Badge de Estado Institucional (Sin Emojis)
+  // Badges de Estado Institucional (Sin Emojis)
   const statusBadge = isErr
     ? `<span class="badge badge-error">ERROR</span>`
     : (isObs ? `<span class="badge badge-observed">OBSERVADO</span>` : `<span class="badge badge-valid">NORMALIZADO</span>`);
@@ -955,65 +1100,96 @@ function createConciseRecordCard(r) {
     motorBadge = `<span class="badge badge-motor-he">HEURÍSTICO</span>`;
   }
 
-  // Diagnóstico Catastral Sobrio
+  // Diagnóstico Catastral Sobrio y Amplio
   let diagHtml = '';
   if (r.observacion) {
     const diagClass = isErr ? 'diag-err' : 'diag-obs';
     diagHtml = `
       <div class="record-diagnosis ${diagClass}">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:2px;">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
-        <strong>Diagnóstico Catastral:</strong> <span>${escapeHtml(r.observacion)}</span>
+        <div><strong>Diagnóstico Catastral:</strong> <span>${escapeHtml(r.observacion)}</span></div>
       </div>`;
   }
 
-  // Formato conciso de componentes y arquitectura V2
-  const viaName = r.nom_via || 'Sin vía';
-  const numVia = r.num_via ? `N° ${r.num_via}` : 'S/N';
-  const viaChip = r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '';
-
-  // Multi-vías (Esquinas / Intersecciones)
-  let viaLabel = 'Vía';
-  let viaValue = `${escapeHtml(r.tipo_via_name ? r.tipo_via_name + ' ' : '')}${escapeHtml(viaName)} ${escapeHtml(numVia)}`;
-  if (r.vias && r.vias.length > 1) {
-    viaLabel = 'Vías (Esquina)';
-    viaValue = r.vias.map(v => `${escapeHtml(v.tipo_via_name || '')} ${escapeHtml(v.via_nombre || '')} ${v.divi_numero ? 'N° ' + escapeHtml(v.divi_numero) : ''}`.trim()).join(' <span style="color:var(--slate-400); font-weight:700;">con</span> ');
+  // Columna 1: Vías (Principal y Esquinas)
+  let viasHtml = '';
+  const viasArr = (r.vias && r.vias.length > 0) ? r.vias : [];
+  if (viasArr.length > 1) {
+    viasHtml = viasArr.map((v, i) => {
+      const label = i === 0 ? 'Vía 1' : 'Vía 2';
+      const tipo = v.tipo_via_name ? escapeHtml(v.tipo_via_name) + ' ' : '';
+      const nom = escapeHtml(v.via_nombre || 'Sin nombre');
+      const num = v.divi_numero
+        ? `<span class="via-badge-num">N° ${escapeHtml(v.divi_numero)}</span>`
+        : `<span class="via-badge-num" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">S/N</span>`;
+      const idChip = v.via_id ? `<span class="chip-id chip-via">ID: ${v.via_id}</span>` : '';
+      return `<div class="via-entry"><span style="font-size:10px; font-weight:700; color:var(--slate-400);">${label}:</span> <strong>${tipo}${nom}</strong> ${num} ${idChip}</div>`;
+    }).join('<div class="via-corner-divider"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg> Intersección (Esquina)</div>');
+  } else if (viasArr.length === 1) {
+    const v = viasArr[0];
+    const tipo = v.tipo_via_name ? escapeHtml(v.tipo_via_name) + ' ' : '';
+    const nom = escapeHtml(v.via_nombre || r.nom_via || 'Sin vía');
+    const num = v.divi_numero
+      ? `<span class="via-badge-num">N° ${escapeHtml(v.divi_numero)}</span>`
+      : (r.num_via ? `<span class="via-badge-num">N° ${escapeHtml(r.num_via)}</span>` : `<span class="via-badge-num" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">S/N</span>`);
+    const idChip = v.via_id ? `<span class="chip-id chip-via">ID: ${v.via_id}</span>` : (r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '');
+    viasHtml = `<div class="via-entry"><strong>${tipo}${nom}</strong> ${num} ${idChip}</div>`;
+  } else {
+    const tipo = r.tipo_via_name ? escapeHtml(r.tipo_via_name) + ' ' : '';
+    const nom = escapeHtml(r.nom_via || 'Sin vía');
+    const num = r.num_via
+      ? `<span class="via-badge-num">N° ${escapeHtml(r.num_via)}</span>`
+      : `<span class="via-badge-num" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">S/N</span>`;
+    const idChip = r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '';
+    viasHtml = `<div class="via-entry"><strong>${tipo}${nom}</strong> ${num} ${idChip}</div>`;
   }
 
-  const zonaName = r.nom_zona || 'Sin zona';
+  // Columna 2: Zona Catastral
+  const zonaTipo = r.tipo_zona_name ? escapeHtml(r.tipo_zona_name) + ' ' : '';
+  const zonaNom = escapeHtml(r.nom_zona || 'Sin zona');
   const zonaChip = r.id_zona ? `<span class="chip-id chip-zona">ID: ${r.id_zona}</span>` : '';
+  const zonaHtml = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${zonaTipo}${zonaNom}</strong> ${zonaChip}</div>`;
 
-  // Catastro (componentes urbanos / rurales)
-  let catastroText = 'N/D';
-  if (r.componentes && r.componentes.length > 0) {
-    catastroText = r.componentes.map(c => `${escapeHtml(c.codi_nombre || '')}: ${escapeHtml(c.diti_nombre || '')}`).join(' | ');
-  } else if (r.manzana || r.lote) {
-    catastroText = `Mz: ${r.manzana || '-'} | Lt: ${r.lote || '-'}${r.slote ? ' | Slt: ' + r.slote : ''}`;
+  // Columna 3: Predio Catastral (Componentes Núcleo)
+  const predioChips = [];
+  if (r.manzana) predioChips.push(`<span class="chip-predio chip-mz">Mz: ${escapeHtml(r.manzana)}</span>`);
+  if (r.lote)    predioChips.push(`<span class="chip-predio chip-lt">Lt: ${escapeHtml(r.lote)}</span>`);
+  if (r.slote)   predioChips.push(`<span class="chip-predio chip-slt">Slt: ${escapeHtml(r.slote)}</span>`);
+  if (r.block)   predioChips.push(`<span class="chip-predio chip-block">Block: ${escapeHtml(r.block)}</span>`);
+  if (r.piso)    predioChips.push(`<span class="chip-predio chip-piso">Piso: ${escapeHtml(r.piso)}</span>`);
+
+  if (Array.isArray(r.componentes)) {
+    for (const c of r.componentes) {
+      const cnom = (c.codi_nombre || '').toUpperCase().trim();
+      if (!['MANZANA','MZ','LOTE','LT','SUBLOTE','SLT','BLOCK','BLOQUE','TORRE','PISO'].includes(cnom) && ![1,2,3,11,12].includes(c.codi_id)) {
+        predioChips.push(`<span class="chip-predio" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">${escapeHtml(c.codi_nombre || 'COMP')}: ${escapeHtml(c.diti_nombre || '')}</span>`);
+      }
+    }
   }
+  const predioHtml = predioChips.length > 0
+    ? `<div style="display:flex; flex-wrap:wrap; gap:2px;">${predioChips.join('')}</div>`
+    : `<span style="color:var(--slate-400); font-size:12px;">Sin componentes prediales</span>`;
 
-  // Módulos inmobiliarios (interior, dpto, puerta, stand, etc.)
-  let moduloItem = '';
-  if (r.modulos && r.modulos.length > 0) {
-    const modText = r.modulos.map(m => `${escapeHtml(m.timo_nombre || '')} ${escapeHtml(m.ditm_nombre || '')}`.trim()).join(', ');
-    moduloItem = `<div class="breakdown-item"><span class="breakdown-lbl">Módulo(s)</span> <span class="breakdown-val" style="color:#2563eb; font-weight:600;">${modText}</span></div>`;
-  }
+  // Columna 4: Módulos Inmobiliarios
+  const modArr = Array.isArray(r.modulos) ? r.modulos : [];
+  const modHtml = modArr.length > 0
+    ? `<div style="display:flex; flex-wrap:wrap; gap:2px;">${modArr.map(m => `<span class="chip-mod">${escapeHtml(m.timo_nombre || 'MOD')}: ${escapeHtml(m.ditm_nombre || '')}</span>`).join('')}</div>`
+    : `<span style="color:var(--slate-400); font-size:12px;">Sin módulos</span>`;
 
-  const refItem = r.referencia
-    ? `<div class="breakdown-item"><span class="breakdown-lbl">Referencia</span> <span class="breakdown-val" style="color:var(--mpch-navy);">${escapeHtml(r.referencia)}</span></div>`
-    : '';
+  // Columna 5: Referencia
+  const refHtml = r.referencia
+    ? `<span class="chip-ref-text">${escapeHtml(r.referencia)}</span>`
+    : `<span style="color:var(--slate-400); font-size:12px;">—</span>`;
 
-  // Chip de ID V2 normalizado si existe
+  // Metadatos
   const direIdChip = r.dire_id
     ? `<span class="chip-id" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">DIRE_ID: ${r.dire_id}</span>`
     : '';
-
-  // Badge de Reintento / Actualización si aplica
   const reproBadge = r.reprocesado
     ? `<span class="badge" style="background:var(--slate-100); color:var(--mpch-navy); border:1px solid var(--slate-300); font-size:10px;">REPROCESADO</span>`
     : '';
-
-  // Badge de Instancia IA / Concurrencia
   const workerBadge = r.worker_id
     ? `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700; font-size:10px;">${escapeHtml(r.worker_id)}</span>`
     : '';
@@ -1044,23 +1220,27 @@ function createConciseRecordCard(r) {
         <span class="val-entrada">"${escapeHtml(r.raw_text)}"</span>
       </div>
 
-      <div class="record-breakdown">
-        <div class="breakdown-item">
-          <span class="breakdown-lbl">${viaLabel}</span>
-          <span class="breakdown-val">${viaValue}</span>
-          ${viaChip}
+      <div class="catastro-matrix">
+        <div class="matrix-col">
+          <span class="matrix-lbl">Vía(s) Normalizada(s)</span>
+          <div class="matrix-val">${viasHtml}</div>
         </div>
-        <div class="breakdown-item">
-          <span class="breakdown-lbl">Zona</span>
-          <span class="breakdown-val">${escapeHtml(r.tipo_zona_name ? r.tipo_zona_name + ' ' : '')}${escapeHtml(zonaName)}</span>
-          ${zonaChip}
+        <div class="matrix-col">
+          <span class="matrix-lbl">Zona / Hab. Urbana</span>
+          <div class="matrix-val">${zonaHtml}</div>
         </div>
-        <div class="breakdown-item">
-          <span class="breakdown-lbl">Catastro</span>
-          <span class="breakdown-val">${escapeHtml(catastroText)}</span>
+        <div class="matrix-col">
+          <span class="matrix-lbl">Predio Catastral</span>
+          <div class="matrix-val">${predioHtml}</div>
         </div>
-        ${moduloItem}
-        ${refItem}
+        <div class="matrix-col">
+          <span class="matrix-lbl">Módulo(s)</span>
+          <div class="matrix-val">${modHtml}</div>
+        </div>
+        <div class="matrix-col">
+          <span class="matrix-lbl">Referencia</span>
+          <div class="matrix-val">${refHtml}</div>
+        </div>
       </div>
 
       ${diagHtml}
@@ -1072,13 +1252,28 @@ function copySingleRecord(idLicencia) {
   const rec = wiz.allRecords.find(r => r.id_licencia == idLicencia);
   if (!rec) return;
 
-  const viaDesc = `${rec.tipo_via_name ? rec.tipo_via_name + ' ' : ''}${rec.nom_via || ''} ${rec.num_via ? 'N° ' + rec.num_via : 'S/N'}`.trim();
+  let viaDesc = `${rec.tipo_via_name ? rec.tipo_via_name + ' ' : ''}${rec.nom_via || ''} ${rec.num_via ? 'N° ' + rec.num_via : 'S/N'}`.trim();
+  if (rec.vias && rec.vias.length > 1) {
+    viaDesc = rec.vias.map(v => `${v.tipo_via_name || ''} ${v.via_nombre || ''} ${v.divi_numero ? 'N° ' + v.divi_numero : 'S/N'}`.trim()).join(' con ');
+  }
   const zonaDesc = `${rec.tipo_zona_name ? rec.tipo_zona_name + ' ' : ''}${rec.nom_zona || ''}`.trim();
-  const catText = (rec.manzana || rec.lote) ? `Mz: ${rec.manzana || '-'} | Lt: ${rec.lote || '-'}${rec.slote ? ' | Slt: ' + rec.slote : ''}` : '';
+  const predParts = [];
+  if (rec.manzana) predParts.push(`Mz: ${rec.manzana}`);
+  if (rec.lote) predParts.push(`Lt: ${rec.lote}`);
+  if (rec.slote) predParts.push(`Slt: ${rec.slote}`);
+  if (rec.block) predParts.push(`Block: ${rec.block}`);
+  if (rec.piso) predParts.push(`Piso: ${rec.piso}`);
+  const catText = predParts.join(' | ');
+
+  let modText = '';
+  if (rec.modulos && rec.modulos.length > 0) {
+    modText = rec.modulos.map(m => `${m.timo_nombre || ''} ${m.ditm_nombre || ''}`.trim()).join(', ');
+  }
+
   const estado = (!rec.success || rec.metodo === 'ERROR') ? 'ERROR' : (rec.es_procesado ? 'NORMALIZADO' : 'OBSERVADO');
 
-  const text = `ID: ${rec.id_licencia} | Entrada: "${rec.raw_text}" | Vía: ${viaDesc || 'N/D'} | Zona: ${zonaDesc || 'N/D'}${catText ? ' | ' + catText : ''} | Estado: ${estado}${rec.observacion ? ' | Diagnóstico: ' + rec.observacion : ''}`;
-  navigator.clipboard.writeText(text);
+  const text = `ID: ${rec.id_licencia} | Entrada: "${rec.raw_text}" | Vía: ${viaDesc || 'N/D'} | Zona: ${zonaDesc || 'N/D'}${catText ? ' | ' + catText : ''}${modText ? ' | Módulos: ' + modText : ''} | Estado: ${estado}${rec.observacion ? ' | Diagnóstico: ' + rec.observacion : ''}`;
+  navigator.clipboard.writeText(text).catch(() => {});
 }
 
 let currentExportDataSource = 'db'; // 'db' o 'view'
@@ -1188,7 +1383,7 @@ function renderExportModalCounts() {
 }
 
 async function executeExport(scope, format) {
-  const isDb = (currentExportDataSource === 'db');
+  const isDb = (currentExportDataSource === 'db') && Boolean(wiz.schema && wiz.table);
   const schema = wiz.schema || 'public';
   const table = wiz.table || 'direcciones_actual';
 

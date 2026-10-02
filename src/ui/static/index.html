@@ -207,13 +207,14 @@
       color: #ffffff;
     }
 
-    /* ── Contenedor Principal ── */
+    /* ── Contenedor Principal (Lienzo Ampliado) ── */
     main {
       flex: 1;
-      max-width: 960px;
+      max-width: min(96vw, 1560px);
       width: 100%;
-      margin: 24px auto;
-      padding: 0 20px;
+      margin: 20px auto;
+      padding: 0 24px;
+      box-sizing: border-box;
     }
 
     .panel {
@@ -663,36 +664,106 @@
       word-break: break-all;
     }
 
-    .record-breakdown {
+    /* ── Matriz Catastral Enriquecida ── */
+    .catastro-matrix {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 8px;
-      font-size: 12px;
+      grid-template-columns: 2.2fr 1.6fr 1.6fr 1.3fr 1.3fr;
+      gap: 10px;
+      margin-top: 8px;
     }
-    .breakdown-item {
-      background: #ffffff;
+    @media (max-width: 1280px) {
+      .catastro-matrix {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+    }
+    .matrix-col {
+      background: var(--slate-50);
       border: 1px solid var(--slate-200);
       border-radius: 6px;
-      padding: 6px 10px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .matrix-lbl {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
     }
-    .breakdown-lbl {
-      font-size: 10.5px;
-      font-weight: 600;
-      color: var(--slate-500);
-      text-transform: uppercase;
-    }
-    .breakdown-val {
+    .matrix-val {
+      font-size: 12.5px;
       font-weight: 600;
       color: var(--slate-800);
-      text-align: right;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.4;
+      word-break: normal;
+    }
+    .via-entry {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 2px;
+    }
+    .via-badge-num {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: monospace;
+      padding: 1px 6px;
+      border-radius: 4px;
       white-space: nowrap;
     }
+    .via-corner-divider {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--slate-400);
+      text-transform: uppercase;
+      margin: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .chip-predio {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: monospace;
+      margin: 1px 3px 2px 0;
+    }
+    .chip-mz { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .chip-lt { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .chip-slt { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .chip-block { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+    .chip-piso { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .chip-mod {
+      background: #ede9fe;
+      color: #5b21b6;
+      border: 1px solid #ddd6fe;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      display: inline-flex;
+      margin: 1px 3px 2px 0;
+    }
+    .chip-ref-text {
+      color: var(--slate-700);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
     .chip-id {
       font-size: 10px;
       font-family: monospace;
@@ -704,13 +775,15 @@
     .chip-zona { background: #dcfce7; color: #166534; }
 
     .record-diagnosis {
-      margin-top: 8px;
-      padding: 6px 10px;
+      margin-top: 10px;
+      padding: 8px 12px;
       border-radius: 6px;
       font-size: 12px;
       display: flex;
-      align-items: center;
-      gap: 6px;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.45;
+      word-break: break-word;
     }
     .record-diagnosis.diag-obs {
       background: var(--amber-bg);
@@ -721,6 +794,73 @@
       background: var(--red-bg);
       border: 1px solid var(--red-border);
       color: #991b1b;
+    }
+
+    /* ── Vista Tabla Compacta del Inspector ── */
+    .table-inspector-wrap {
+      max-height: 580px;
+      overflow: auto;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      background: #ffffff;
+      box-shadow: var(--shadow-sm);
+    }
+    table.table-inspector {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+    table.table-inspector th {
+      background: var(--mpch-navy);
+      color: #ffffff;
+      padding: 10px 12px;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      white-space: nowrap;
+      border-bottom: 2px solid var(--mpch-gold);
+    }
+    table.table-inspector td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--slate-100);
+      vertical-align: top;
+      color: var(--slate-800);
+    }
+    table.table-inspector tr:hover td {
+      background: #f8fafc;
+    }
+
+    /* ── Controles de Vista del Inspector ── */
+    .view-toggle-wrap {
+      display: inline-flex;
+      background: var(--slate-200);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .view-toggle-btn {
+      border: none;
+      background: transparent;
+      padding: 4px 10px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--slate-600);
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.12s;
+    }
+    .view-toggle-btn:hover {
+      color: var(--slate-900);
+    }
+    .view-toggle-btn.active {
+      background: #ffffff;
+      color: var(--mpch-navy);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      font-weight: 700;
     }
 
     /* ── Tabla de Previsualización ── */
@@ -814,9 +954,10 @@
       gap: 10px;
     }
 
-    /* ── Modal de Exportación Catastral ── */
+    /* ── Modal de Exportación Catastral (Ampliación) ── */
     .modal-dialog-export {
-      max-width: 600px;
+      max-width: 780px;
+      width: 95%;
     }
     .modal-icon-badge-export {
       background: var(--blue-bg);
@@ -923,6 +1064,117 @@
       font-weight: 700;
       box-shadow: var(--shadow-sm);
     }
+
+    /* ── Franja Armónica de Controles (Paso 5) ── */
+    .control-panel-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .params-strip {
+      background: var(--slate-50);
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    .param-box {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .param-box label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--slate-600);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin: 0;
+    }
+    .param-box input, .param-box select {
+      padding: 5px 8px;
+      font-size: 12px;
+      border: 1px solid var(--slate-300);
+      border-radius: 5px;
+      background: #ffffff;
+      color: var(--slate-800);
+      font-weight: 600;
+      min-width: 75px;
+    }
+    .actions-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-top: 4px;
+    }
+    .actions-cluster-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .actions-cluster-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-export-hub {
+      background: var(--mpch-navy);
+      color: #ffffff;
+      border: 1px solid var(--mpch-navy);
+      padding: 7px 14px;
+      font-size: 12.5px;
+      font-weight: 700;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 4px rgba(12, 35, 64, 0.15);
+    }
+    .btn-export-hub:hover {
+      background: var(--mpch-navy-light);
+      transform: translateY(-1px);
+    }
+    .quick-export-pills {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--slate-300);
+      border-radius: 6px;
+      background: #ffffff;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    .quick-dl-btn {
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.12s;
+      border-right: 1px solid var(--slate-200);
+    }
+    .quick-dl-btn:last-child {
+      border-right: none;
+    }
+    .quick-dl-btn.dl-excel { color: #059669; }
+    .quick-dl-btn.dl-excel:hover { background: #ecfdf5; }
+    .quick-dl-btn.dl-csv { color: #475569; }
+    .quick-dl-btn.dl-csv:hover { background: #f1f5f9; }
+    .quick-dl-btn.dl-json { color: #2563eb; }
+    .quick-dl-btn.dl-json:hover { background: #eff6ff; }
 
     /* ── Spinners y Utilidades ── */
     .spinner {
@@ -1308,62 +1560,95 @@
       </div>
     </div>
 
-    <!-- Panel de Control y Ejecución -->
-    <div class="panel">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-        <div>
-          <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px;">
-            Control de Procesamiento Catastral
-          </div>
-          <div style="font-size:12px; color:var(--slate-500); margin-top:2px;" id="statusLabel">
-            Listo para iniciar
+    <!-- Panel de Control y Ejecución Armónico -->
+    <div class="panel" style="padding: 20px 24px;">
+      <div class="control-panel-wrap">
+        <!-- Encabezado del Panel -->
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px; display:flex; align-items:center; gap:8px;">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Control de Procesamiento Catastral</span>
+            </div>
+            <div style="font-size:12px; color:var(--slate-500); margin-top:3px;" id="statusLabel">
+              Listo para iniciar
+            </div>
           </div>
         </div>
 
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="field" style="margin:0; min-width:80px;">
-            <label for="inp_limit" style="font-size:11px;">Límite</label>
-            <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:12.5px;" />
+        <!-- Franja 1: Parámetros Técnicos Alineados -->
+        <div class="params-strip">
+          <div class="param-box">
+            <label for="inp_limit">Límite</label>
+            <input type="number" id="inp_limit" placeholder="Sin límite" min="1" />
           </div>
-          <div class="field" style="margin:0; min-width:80px;">
-            <label for="inp_batch" style="font-size:11px;" title="Cantidad de registros extraídos y confirmados en la BD por ciclo de trabajo (Paginación interna). Por defecto: 50.">
-              Lote <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Cantidad de registros leídos de la BD por consulta (Paginación interna). Por defecto: 50">(?)</span>
+          <div class="param-box">
+            <label for="inp_batch" title="Cantidad de registros extraídos y confirmados en la BD por ciclo de trabajo. Por defecto: 50.">
+              Lote BD <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Registros por lote SQL">(?)</span>
             </label>
-            <input type="number" id="inp_batch" value="50" min="1" max="100" style="padding:6px 8px; font-size:12.5px;" title="Registros por paquete de consulta SQL (1-100)" />
+            <input type="number" id="inp_batch" value="50" min="1" max="100" />
           </div>
-          <div class="field" style="margin:0; min-width:85px;">
-            <label for="inp_num_workers" style="font-size:11px;" title="Número de hilos o instancias concurrentes que procesan contra Ollama en paralelo.">
-              Instancias <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Instancias concurrentes de IA (1 a 16)">(?)</span>
+          <div class="param-box">
+            <label for="inp_num_workers" title="Número de hilos o instancias concurrentes que procesan contra Ollama en paralelo.">
+              Instancias IA <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Instancias paralelas de IA (1-16)">(?)</span>
             </label>
-            <input type="number" id="inp_num_workers" value="2" min="1" max="16" style="padding:6px 8px; font-size:12.5px;" title="Instancias paralelas de IA (1-16)" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
+            <input type="number" id="inp_num_workers" value="2" min="1" max="16" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
           </div>
-          <div class="field" style="margin:0;">
-            <label for="inp_filter" style="font-size:11px;">Filtro</label>
-            <select id="inp_filter" style="padding:6px 8px; font-size:12.5px;">
+          <div class="param-box">
+            <label for="inp_filter">Filtro de Proceso</label>
+            <select id="inp_filter">
               <option value="pending">Pendientes</option>
               <option value="all">Todos los registros</option>
               <option value="observed">Solo Observados</option>
             </select>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; padding-bottom:5px;">
-            <input type="checkbox" id="inp_require_ai" checked style="width:15px; height:15px; cursor:pointer;" />
-            <label for="inp_require_ai" style="font-size:12px; font-weight:600; color:var(--slate-700); cursor:pointer; white-space:nowrap;">Requiere IA</label>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:14px;">
+            <input type="checkbox" id="inp_require_ai" checked style="width:16px; height:16px; cursor:pointer;" />
+            <label for="inp_require_ai" style="font-size:12px; font-weight:700; color:var(--slate-700); cursor:pointer; margin:0; text-transform:none;">Requiere IA</label>
+          </div>
+        </div>
+
+        <!-- Franja 2: Clúster Armónico de Acciones de Ejecución y Exportación -->
+        <div class="actions-strip">
+          <div class="actions-cluster-left">
+            <button class="btn btn-green" id="btnStart" onclick="startETL()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Iniciar Normalización</span>
+            </button>
+            <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
+              <span>Detener</span>
+            </button>
+            <button class="btn btn-ghost" id="btnChangeTable" onclick="goStep(3)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              <span>Cambiar tabla</span>
+            </button>
+            <button class="btn btn-ghost" id="btnNewSession" onclick="resetToNewSession()" title="Reiniciar el asistente desde el Paso 1 para configurar otra base o modelo">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Nueva Sesión</span>
+            </button>
           </div>
 
-          <button class="btn btn-green" id="btnStart" onclick="startETL()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Iniciar Normalización</span>
-          </button>
-          <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
-            <span>Detener</span>
-          </button>
-          <button class="btn btn-ghost" id="btnChangeTable" onclick="goStep(3)">
-            <span>Cambiar tabla</span>
-          </button>
-          <button class="btn btn-ghost" id="btnNewSession" onclick="resetToNewSession()" title="Reiniciar el asistente desde el Paso 1 para configurar otra base o modelo">
-            <span>Nueva Sesión</span>
-          </button>
+          <div class="actions-cluster-right">
+            <button class="btn-export-hub" id="btnMainExport" onclick="openExportModal()" title="Abrir Centro de Descargas y Exportación Catastral">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Centro de Exportación</span>
+            </button>
+            <div class="quick-export-pills" title="Descarga rápida de registros procesados con 1 solo clic">
+              <button type="button" class="quick-dl-btn dl-excel" onclick="executeExport('processed', 'excel')" title="Descarga rápida Excel (.xlsx)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>XLSX</span>
+              </button>
+              <button type="button" class="quick-dl-btn dl-csv" onclick="executeExport('processed', 'csv')" title="Descarga rápida CSV">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>CSV</span>
+              </button>
+              <button type="button" class="quick-dl-btn dl-json" onclick="executeExport('processed', 'json')" title="Descarga rápida JSON V2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                <span>JSON</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1393,10 +1678,20 @@
           </div>
         </div>
 
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--slate-700); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; margin-right:4px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="view-toggle-wrap">
+            <button class="view-toggle-btn active" id="btnViewCards" onclick="setInspectorViewMode('cards')" title="Vista enriquecida de tarjetas con matriz catastral">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <span>Tarjetas</span>
+            </button>
+            <button class="view-toggle-btn" id="btnViewTable" onclick="setInspectorViewMode('table')" title="Vista tabular compacta estilo hoja de cálculo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              <span>Tabla</span>
+            </button>
+          </div>
+          <label style="font-size:12px; color:var(--slate-700); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
             <input type="checkbox" id="chkAutoScroll" checked onchange="toggleAutoScroll(this.checked)" />
-            Seguir en vivo (auto-scroll)
+            <span>Auto-scroll</span>
           </label>
           <button class="btn btn-action" id="btnOpenExportModal" style="padding:5px 12px; font-size:12px; font-weight:600;" onclick="openExportModal()" title="Exportar registros en Excel o CSV desde la Base de Datos o la Vista Actual">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1441,6 +1736,32 @@
         <p style="text-align:center; color:var(--slate-400); padding:40px; font-size:13px;" id="emptyInspectorMsg">
           Los registros procesados aparecerán aquí en tiempo real a medida que avance el pipeline.
         </p>
+      </div>
+
+      <!-- Vista Tabular Compacta Alternativa -->
+      <div id="inspectorTableWrap" class="table-inspector-wrap hidden">
+        <table class="table-inspector">
+          <thead>
+            <tr>
+              <th style="width:70px;">ID</th>
+              <th style="width:105px;">Estado</th>
+              <th style="width:90px;">Motor</th>
+              <th style="min-width:180px;">Entrada Registrada</th>
+              <th style="min-width:200px;">Vía(s) Normalizada(s)</th>
+              <th style="min-width:160px;">Zona Catastral</th>
+              <th style="min-width:170px;">Predio (Mz / Lt / Block / Piso)</th>
+              <th style="min-width:120px;">Módulo(s)</th>
+              <th style="min-width:220px;">Diagnóstico / Observación</th>
+            </tr>
+          </thead>
+          <tbody id="inspectorTableBody">
+            <tr>
+              <td colspan="9" style="text-align:center; color:var(--slate-400); padding:40px;">
+                Los registros procesados aparecerán aquí en tiempo real a medida que avance el pipeline.
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
