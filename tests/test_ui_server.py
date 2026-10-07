@@ -554,7 +554,8 @@ def test_api_export_db_csv_observed_endpoint(client):
         content = response.content.decode("utf-8-sig")
         assert "102" in content
         assert "OBSERVADO" in content
-        assert "Vía no encontrada en catálogo oficial" in content
+        assert "Diagnostico_Observacion" not in content
+        assert "Vía no encontrada en catálogo oficial" not in content
         mock_fetch.assert_called_once()
 
 

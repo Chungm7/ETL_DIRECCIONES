@@ -69,7 +69,7 @@ def test_two_model_sequential_flow_valid_address_never_calls_judge():
 
 def test_two_model_sequential_flow_incomplete_address_calls_judge_sequentially():
     """Garantiza que ante direcciones incompletas (ej. falta de número y predio),
-    el Paso 3 rechaza y se invoca secuencialmente al Modelo 2 (El Juez) con la rúbrica.
+    el pipeline rechaza de forma segura (es_procesado=False, observacion=None) y NO invoca al Juez.
     """
     mock_ollama = MagicMock(spec=OllamaService)
     mock_ollama.model_name = "patroclo-artesano-7b:latest"
@@ -87,30 +87,22 @@ def test_two_model_sequential_flow_incomplete_address_calls_judge_sequentially()
         referencia=None,
     )
 
-    # El Modelo 2 emite un dictamen normado
-    veredicto_esperado = "Dirección incompleta: Carece de numeración municipal o lote catastral en la vía Balta."
-    mock_ollama.judge_address_observation.return_value = veredicto_esperado
-
     parser = AIAddressParser(ollama_service=mock_ollama)
     record = DireccionOrigen(id_licencia=202, emp_direccion="CALLE JOSE BALTA - CHICLAYO")
     dest = parser.parse(record)
 
-    # Registro observado
+    # Registro no procesado de forma segura
     assert dest.es_procesado is False
-    # El dictamen del Juez debe ser registrado en la observación
-    assert dest.observacion == veredicto_esperado
+    assert dest.observacion is None
+    assert dest.vias == []
 
-    # El Juez debe ser invocado exactamente una vez
-    mock_ollama.judge_address_observation.assert_called_once()
-    call_kwargs = mock_ollama.judge_address_observation.call_args[1]
-    assert "CALLE JOSE BALTA - CHICLAYO" in call_kwargs["raw_text"]
-    assert "validation_facts" in call_kwargs
-    assert any("Dirección incompleta" in fact for fact in call_kwargs["validation_facts"])
+    # El Juez no debe ser invocado (arquitectura de un solo modelo seguro)
+    mock_ollama.judge_address_observation.assert_not_called()
 
 
 def test_two_model_sequential_flow_nonexistent_street_calls_judge():
-    """Verifica que una vía inexistente en Chiclayo sea rechazada en el Paso 3
-    y evaluada por el Juez para dictaminar su observación oficial.
+    """Verifica que una vía inexistente en Chiclayo sea rechazada de forma segura (es_procesado=False)
+    sin invocar al Juez ni inventar observaciones de IA.
     """
     mock_ollama = MagicMock(spec=OllamaService)
     mock_ollama.model_name = "patroclo-artesano-7b:latest"
@@ -127,16 +119,14 @@ def test_two_model_sequential_flow_nonexistent_street_calls_judge():
         referencia=None,
     )
 
-    dictamen_juez = "Dirección incoherente: La vía 'KRYPTON FANTASMA INEXISTENTE' no pertenece a la nomenclatura oficial de Chiclayo."
-    mock_ollama.judge_address_observation.return_value = dictamen_juez
-
     parser = AIAddressParser(ollama_service=mock_ollama)
     record = DireccionOrigen(id_licencia=303, emp_direccion="AVENIDA KRYPTON FANTASMA INEXISTENTE 999")
     dest = parser.parse(record)
 
     assert dest.es_procesado is False
-    assert dest.observacion == dictamen_juez
-    mock_ollama.judge_address_observation.assert_called_once()
+    assert dest.observacion is None
+    assert dest.vias == []
+    mock_ollama.judge_address_observation.assert_not_called()
 
 
 def test_api_connect_ai_judge_success(client):

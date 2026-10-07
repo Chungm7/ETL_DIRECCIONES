@@ -25,6 +25,10 @@ class DireccionOrigen(BaseModel):
         default=None,
         description="Observación previa registrada (xxxx_observacion_ia)"
     )
+    dire_esquema: Optional[str] = Field(default=None, description="Esquema de origen registrado en tb_direccion")
+    dire_tabla: Optional[str] = Field(default=None, description="Tabla de origen registrada en tb_direccion")
+    dire_tabla_id: Optional[int] = Field(default=None, description="PK de la tabla origen registrada en tb_direccion")
+    dire_valor_origen: Optional[str] = Field(default=None, description="Texto crudo almacenado en tb_direccion")
     valor_1: Optional[int] = Field(default=None, description="Parámetro referencial de negocio 1 (xxxx_valor_1)")
     valor_2: Optional[int] = Field(default=None, description="Parámetro referencial de negocio 2 (xxxx_valor_2)")
     valor_3: Optional[int] = Field(default=None, description="Parámetro referencial de negocio 3 (xxxx_valor_3)")
@@ -35,22 +39,24 @@ class DireccionOrigen(BaseModel):
         if not isinstance(data, dict):
             return data
 
-        # Mapear xxxx_id a id_licencia si aplica
+        # Mapear xxxx_id o dire_tabla_id a id_licencia si aplica
         if "id_licencia" not in data:
-            for k in ("xxxx_id", "id", "id_direccion", "codigo"):
+            for k in ("dire_tabla_id", "xxxx_id", "id", "id_direccion", "codigo", "dire_id"):
                 if k in data and data[k] is not None:
                     data["id_licencia"] = int(data[k])
                     break
 
-        # Mapear xxxx_direccion_original a emp_direccion si aplica
+        # Mapear xxxx_direccion_original o dire_valor_origen a emp_direccion si aplica
         if "emp_direccion" not in data or data["emp_direccion"] is None:
-            for k in ("xxxx_direccion_original", "direccion", "dir", "raw_text", "texto_direccion"):
+            for k in ("dire_valor_origen", "xxxx_direccion_original", "direccion", "dir", "raw_text", "texto_direccion"):
                 if k in data and data[k] is not None:
                     data["emp_direccion"] = str(data[k])
                     break
 
         if "es_procesado" not in data:
-            if "xxxx_es_procesado" in data:
+            if "dire_es_procesado" in data and data["dire_es_procesado"] is not None:
+                data["es_procesado"] = bool(data["dire_es_procesado"])
+            elif "xxxx_es_procesado" in data:
                 data["es_procesado"] = bool(data["xxxx_es_procesado"])
 
         if "observacion_ia" not in data:

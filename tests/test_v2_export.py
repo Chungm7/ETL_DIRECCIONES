@@ -105,8 +105,8 @@ def sample_v2_records():
 
 
 def test_v2_export_headers_length_and_order():
-    """Verifica que las cabeceras contengan exactamente las 26 columnas limpias (sin IDs técnicos) relacionales V2."""
-    assert len(V2_EXPORT_HEADERS) == 26
+    """Verifica que las cabeceras contengan exactamente las 25 columnas limpias (sin IDs técnicos ni observaciones de IA) relacionales V2."""
+    assert len(V2_EXPORT_HEADERS) == 25
     expected_order = [
         "ID",
         "ID_Direccion",
@@ -132,10 +132,10 @@ def test_v2_export_headers_length_and_order():
         "Todos_Los_Modulos",
         "Referencia",
         "Metodo_Normalizacion",
-        "Diagnostico_Observacion",
         "Fecha_Hora_Proceso",
     ]
     assert V2_EXPORT_HEADERS == expected_order
+    assert "Diagnostico_Observacion" not in V2_EXPORT_HEADERS
 
 
 def test_extract_v2_export_row_multi_via(sample_v2_records):
@@ -168,13 +168,13 @@ def test_extract_v2_export_row_multi_via(sample_v2_records):
 
 
 def test_extract_v2_export_row_observed(sample_v2_records):
-    """Verifica que un registro observado conserve su diagnóstico y deje en blanco campos relacionales."""
+    """Verifica que un registro observado no incluya diagnóstico/observación y deje en blanco campos relacionales."""
     row = extract_v2_export_row(sample_v2_records[1])
     assert row["ID"] == 1002
     assert row["ID_Direccion"] == ""
     assert row["Estado"] == "OBSERVADO"
     assert row["Via_Principal_Nombre"] == ""
-    assert "no figura en el catálogo maestro" in row["Diagnostico_Observacion"]
+    assert "Diagnostico_Observacion" not in row
 
 
 def test_extract_v2_export_row_legacy_fallback(sample_v2_records):
@@ -243,13 +243,13 @@ def test_build_dynamic_export_headers():
 
 def test_generate_excel_report_structure(sample_v2_records):
     """Verifica que generate_excel_report cree el archivo binario con columnas dinámicas y con cabeceras explícitas."""
-    # 1. Con cabeceras estándar explícitas (26 columnas)
+    # 1. Con cabeceras estándar explícitas (25 columnas)
     buf_std = generate_excel_report(sample_v2_records, headers=V2_EXPORT_HEADERS)
     assert isinstance(buf_std, io.BytesIO)
     wb_std = openpyxl.load_workbook(io.BytesIO(buf_std.getvalue()))
     ws_std = wb_std.active
-    assert ws_std.max_column == 26
-    header_cells_std = [ws_std.cell(row=1, column=col).value for col in range(1, 27)]
+    assert ws_std.max_column == 25
+    header_cells_std = [ws_std.cell(row=1, column=col).value for col in range(1, 26)]
     assert header_cells_std == V2_EXPORT_HEADERS
 
     # 2. Con cabeceras dinámicas (adaptadas automáticamente a sample_v2_records: 2 vías, 2 módulos, 1 componente extra)
@@ -335,6 +335,8 @@ def test_generate_json_report_hierarchy(sample_v2_records):
     # Retrocompatibilidad
     assert d1["nom_via"] == "SAN JOSE"
     assert d1["es_procesado"] is True
+    assert "diagnostico_observacion" not in d1
+    assert "observacion" not in d1
 
 
 def test_endpoints_export_excel_csv_json(client, sample_v2_records):

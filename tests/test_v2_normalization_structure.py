@@ -187,7 +187,7 @@ class TestV2AIParserAndDestino:
         mock_ollama.parse_address_with_ai.return_value = fake_llm
         parser = AIAddressParser(ollama_service=mock_ollama)
 
-        origen = DireccionOrigen(id_licencia=1002, emp_direccion="CA SAN JOSE 550 STAND 12 INT B")
+        origen = DireccionOrigen(id_licencia=1002, emp_direccion="CA SAN JOSE 550 STAND 12 INT B CERCA A REAL PLAZA")
         dest = parser.parse(origen)
 
         assert len(dest.modulos) == 2

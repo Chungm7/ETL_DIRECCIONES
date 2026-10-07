@@ -18,7 +18,7 @@ except ImportError:
 
 
 class DatabaseExtractor(BaseExtractor):
-    """Extrae únicamente las dos columnas necesarias desde el esquema y tabla emisora configurados."""
+    """Extrae registros desde la tabla de origen configurada o directamente desde public.tb_direccion."""
 
     def __init__(
         self,
@@ -27,9 +27,13 @@ class DatabaseExtractor(BaseExtractor):
         table: Optional[str] = None,
         id_col: Optional[str] = None,
         dir_col: Optional[str] = None,
+        source_mode: str = "source_table",
+        target_catalog_schema: str = "public",
     ):
         self.db = db_service or DatabaseService()
         settings = get_settings().db
+        self.source_mode = source_mode  # "source_table" o "central_tb_direccion"
+        self.target_catalog_schema = target_catalog_schema
         self.schema = schema or settings.schema
         self.table = table or settings.table
         self.id_col = id_col or settings.id_col
@@ -41,6 +45,13 @@ class DatabaseExtractor(BaseExtractor):
 
     def _inspect_columns(self) -> None:
         """Inspecciona dinámicamente las columnas de la tabla para alinear nombres y filtros."""
+        if self.source_mode == "central_tb_direccion":
+            self.id_col = "dire_id"
+            self.dir_col = "dire_valor_origen"
+            self.col_es_procesado = "dire_es_procesado"
+            self._columns_inspected = True
+            return
+
         if self._columns_inspected or not SQLALCHEMY_AVAILABLE or not self.db._engine:
             return
         try:
@@ -79,35 +90,40 @@ class DatabaseExtractor(BaseExtractor):
             logger.debug("Aviso al inspeccionar columnas en extractor %s.%s: %s", self.schema, self.table, e)
 
     def _build_status_conditions(self) -> tuple:
-        """Retorna las cláusulas SQL para pendientes, válidos y observados."""
+        """Retorna las cláusulas SQL para pendientes, válidos y observados/rechazados según semántica tri-state."""
+        if self.source_mode == "central_tb_direccion":
+            cond_pending = '"dire_es_procesado" IS NULL'
+            cond_valid = '"dire_es_procesado" IS TRUE'
+            cond_observed = '"dire_es_procesado" = FALSE'
+            return cond_pending, cond_valid, cond_observed
+
         self._inspect_columns()
 
-        # Condición de pendientes:
-        # 1. Si es_procesado es NULL -> pendiente
-        # 2. Si es_procesado es FALSE pero ni dire_id ni observación están llenos -> pendiente (sin procesar aún)
-        if self.col_observacion and self.col_dire_id:
-            cond_pending = f'("{self.col_es_procesado}" IS NULL OR ("{self.col_es_procesado}" = FALSE AND "{self.col_dire_id}" IS NULL AND ("{self.col_observacion}" IS NULL OR TRIM("{self.col_observacion}") = \'\')))'
-            cond_observed = f'("{self.col_es_procesado}" = FALSE AND "{self.col_observacion}" IS NOT NULL AND TRIM("{self.col_observacion}") != \'\')'
-        elif self.col_observacion:
-            cond_pending = f'("{self.col_es_procesado}" IS NULL OR ("{self.col_es_procesado}" = FALSE AND ("{self.col_observacion}" IS NULL OR TRIM("{self.col_observacion}") = \'\')))'
-            cond_observed = f'("{self.col_es_procesado}" = FALSE AND "{self.col_observacion}" IS NOT NULL AND TRIM("{self.col_observacion}") != \'\')'
-        else:
-            cond_pending = f'"{self.col_es_procesado}" IS NULL'
-            cond_observed = f'"{self.col_es_procesado}" = FALSE'
-
+        cond_pending = f'"{self.col_es_procesado}" IS NULL'
         cond_valid = f'"{self.col_es_procesado}" IS TRUE'
+        cond_observed = f'"{self.col_es_procesado}" = FALSE'
+
         return cond_pending, cond_valid, cond_observed
 
     def get_total_records(self) -> int:
-        """Obtiene la cantidad total de registros en la tabla emisora."""
+        """Obtiene la cantidad total de registros en la tabla emisora o en tb_direccion."""
         if not SQLALCHEMY_AVAILABLE or not self.db._engine:
             logger.warning("Base de datos no inicializada. Retornando 0 registros.")
             return 0
 
-        query = text(f'SELECT COUNT(*) FROM "{self.schema}"."{self.table}";')
+        if self.source_mode == "central_tb_direccion":
+            query = text(f"""
+                SELECT COUNT(*) FROM "{self.target_catalog_schema}"."tb_direccion"
+                WHERE "dire_esquema" = :schema AND "dire_tabla" = :table;
+            """)
+            params = {"schema": self.schema, "table": self.table}
+        else:
+            query = text(f'SELECT COUNT(*) FROM "{self.schema}"."{self.table}";')
+            params = {}
+
         try:
             with self.db.get_session() as session:
-                count = session.execute(query).scalar()
+                count = session.execute(query, params).scalar()
                 return int(count or 0)
         except Exception as e:
             logger.debug(
@@ -122,17 +138,31 @@ class DatabaseExtractor(BaseExtractor):
 
         cond_pending, cond_valid, cond_observed = self._build_status_conditions()
 
-        query = text(f"""
-            SELECT 
-                COUNT(*) AS total,
-                COUNT(*) FILTER (WHERE {cond_pending}) AS pendientes,
-                COUNT(*) FILTER (WHERE {cond_valid}) AS validos,
-                COUNT(*) FILTER (WHERE {cond_observed}) AS observados
-            FROM "{self.schema}"."{self.table}";
-        """)
+        if self.source_mode == "central_tb_direccion":
+            query = text(f"""
+                SELECT 
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE {cond_pending}) AS pendientes,
+                    COUNT(*) FILTER (WHERE {cond_valid}) AS validos,
+                    COUNT(*) FILTER (WHERE {cond_observed}) AS observados
+                FROM "{self.target_catalog_schema}"."tb_direccion"
+                WHERE "dire_esquema" = :schema AND "dire_tabla" = :table;
+            """)
+            params = {"schema": self.schema, "table": self.table}
+        else:
+            query = text(f"""
+                SELECT 
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE {cond_pending}) AS pendientes,
+                    COUNT(*) FILTER (WHERE {cond_valid}) AS validos,
+                    COUNT(*) FILTER (WHERE {cond_observed}) AS observados
+                FROM "{self.schema}"."{self.table}";
+            """)
+            params = {}
+
         try:
             with self.db.get_session() as session:
-                row = session.execute(query).fetchone()
+                row = session.execute(query, params).fetchone()
                 if row:
                     return {
                         "total": int(row.total or 0),
@@ -169,6 +199,11 @@ class DatabaseExtractor(BaseExtractor):
         conditions = []
         params: Dict[str, Any] = {"limit": limit}
 
+        if self.source_mode == "central_tb_direccion":
+            conditions.append('"dire_esquema" = :schema AND "dire_tabla" = :table')
+            params["schema"] = self.schema
+            params["table"] = self.table
+
         if filter_mode == "pending":
             conditions.append(cond_pending)
         elif filter_mode == "observed":
@@ -176,8 +211,10 @@ class DatabaseExtractor(BaseExtractor):
         elif filter_mode == "valid":
             conditions.append(cond_valid)
 
+        id_field = "dire_id" if self.source_mode == "central_tb_direccion" else self.id_col
+
         if after_id is not None:
-            conditions.append(f'"{self.id_col}" > :after_id')
+            conditions.append(f'"{id_field}" > :after_id')
             params["after_id"] = after_id
             offset_clause = ""
         else:
@@ -195,26 +232,56 @@ class DatabaseExtractor(BaseExtractor):
 
         lock_clause = "FOR UPDATE SKIP LOCKED" if (lock_for_update and is_postgresql) else ""
 
-        query = text(f"""
-            SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
-            FROM "{self.schema}"."{self.table}"
-            {where_clause}
-            ORDER BY "{self.id_col}" ASC
-            LIMIT :limit {offset_clause}
-            {lock_clause};
-        """)
+        if self.source_mode == "central_tb_direccion":
+            query = text(f"""
+                SELECT 
+                    "dire_id" AS id_val,
+                    "dire_valor_origen" AS dir_val,
+                    "dire_tabla_id",
+                    "dire_esquema",
+                    "dire_tabla",
+                    "dire_es_procesado"
+                FROM "{self.target_catalog_schema}"."tb_direccion"
+                {where_clause}
+                ORDER BY "dire_id" ASC
+                LIMIT :limit {offset_clause}
+                {lock_clause};
+            """)
+        else:
+            query = text(f"""
+                SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
+                FROM "{self.schema}"."{self.table}"
+                {where_clause}
+                ORDER BY "{self.id_col}" ASC
+                LIMIT :limit {offset_clause}
+                {lock_clause};
+            """)
 
         results: List[DireccionOrigen] = []
         try:
             with self.db.get_session() as session:
                 rows = session.execute(query, params).fetchall()
                 for row in rows:
-                    results.append(
-                        DireccionOrigen(
-                            id_licencia=row.id_val,
-                            emp_direccion=row.dir_val,
+                    if self.source_mode == "central_tb_direccion":
+                        results.append(
+                            DireccionOrigen(
+                                id_licencia=row.dire_tabla_id or row.id_val,
+                                emp_direccion=row.dir_val,
+                                dire_id=row.id_val,
+                                dire_esquema=row.dire_esquema,
+                                dire_tabla=row.dire_tabla,
+                                dire_tabla_id=row.dire_tabla_id,
+                                dire_valor_origen=row.dir_val,
+                                es_procesado=bool(row.dire_es_procesado) if row.dire_es_procesado is not None else False,
+                            )
                         )
-                    )
+                    else:
+                        results.append(
+                            DireccionOrigen(
+                                id_licencia=row.id_val,
+                                emp_direccion=row.dir_val,
+                            )
+                        )
         except Exception as e:
             logger.error(
                 "Error al extraer lote de %s.%s (offset=%d, limit=%d, filter=%s, after_id=%s): %s",
@@ -234,13 +301,9 @@ class DatabaseExtractor(BaseExtractor):
         session,
         filter_mode: str = "pending",
     ) -> Optional[DireccionOrigen]:
-        """Obtiene y bloquea a nivel de fila el siguiente registro libre para una instancia concurrente.
-
-        Utiliza 'FOR UPDATE SKIP LOCKED' si el motor es PostgreSQL, garantizando aislamiento
-        estricto entre múltiples workers operando sobre la misma tabla sin colisiones.
-        """
+        """Obtiene y bloquea a nivel de fila el siguiente registro libre para una instancia concurrente."""
         cond_pending, cond_valid, cond_observed = self._build_status_conditions()
-        condition = cond_pending if filter_mode == "pending" else (cond_observed if filter_mode == "observed" else "1=1")
+        base_condition = cond_pending if filter_mode == "pending" else (cond_observed if filter_mode == "observed" else "1=1")
 
         is_postgresql = False
         try:
@@ -250,21 +313,53 @@ class DatabaseExtractor(BaseExtractor):
             is_postgresql = False
 
         lock_clause = "FOR UPDATE SKIP LOCKED" if is_postgresql else ""
-        query = text(f"""
-            SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
-            FROM "{self.schema}"."{self.table}"
-            WHERE {condition}
-            ORDER BY "{self.id_col}" ASC
-            LIMIT 1
-            {lock_clause};
-        """)
+
+        if self.source_mode == "central_tb_direccion":
+            query = text(f"""
+                SELECT 
+                    "dire_id" AS id_val,
+                    "dire_valor_origen" AS dir_val,
+                    "dire_tabla_id",
+                    "dire_esquema",
+                    "dire_tabla",
+                    "dire_es_procesado"
+                FROM "{self.target_catalog_schema}"."tb_direccion"
+                WHERE "dire_esquema" = :schema AND "dire_tabla" = :table AND {base_condition}
+                ORDER BY "dire_id" ASC
+                LIMIT 1
+                {lock_clause};
+            """)
+            params = {"schema": self.schema, "table": self.table}
+        else:
+            query = text(f"""
+                SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val
+                FROM "{self.schema}"."{self.table}"
+                WHERE {base_condition}
+                ORDER BY "{self.id_col}" ASC
+                LIMIT 1
+                {lock_clause};
+            """)
+            params = {}
+
         try:
-            row = session.execute(query).fetchone()
+            row = session.execute(query, params).fetchone()
             if row:
-                return DireccionOrigen(
-                    id_licencia=row.id_val,
-                    emp_direccion=row.dir_val,
-                )
+                if self.source_mode == "central_tb_direccion":
+                    return DireccionOrigen(
+                        id_licencia=row.dire_tabla_id or row.id_val,
+                        emp_direccion=row.dir_val,
+                        dire_id=row.id_val,
+                        dire_esquema=row.dire_esquema,
+                        dire_tabla=row.dire_tabla,
+                        dire_tabla_id=row.dire_tabla_id,
+                        dire_valor_origen=row.dir_val,
+                        es_procesado=bool(row.dire_es_procesado) if row.dire_es_procesado is not None else False,
+                    )
+                else:
+                    return DireccionOrigen(
+                        id_licencia=row.id_val,
+                        emp_direccion=row.dir_val,
+                    )
         except Exception as e:
             logger.error("Error al obtener registro libre con row-locking: %s", e)
         return None

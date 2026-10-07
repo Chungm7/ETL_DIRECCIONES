@@ -67,9 +67,11 @@ class ETLPipeline:
         on_record_processed: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_progress_update: Optional[Callable[[Any], None]] = None,
         num_workers: Optional[int] = None,
+        source_mode: str = "source_table",
     ):
         settings = get_settings()
         self.mode = "in_place"
+        self.source_mode = source_mode  # "source_table" o "central_tb_direccion"
         self.schema = schema or settings.db.schema
         self.table = table or settings.db.table
         self.batch_size = batch_size or settings.etl.batch_size
@@ -87,24 +89,26 @@ class ETLPipeline:
         # Mapeo dinámico de configuración de base de datos
         db_settings = getattr(self.db, "settings", None) or settings.db
 
-        # Extractor (extrae de la tabla de direcciones en el esquema configurado)
+        # Extractor (extrae de la tabla de direcciones o desde tb_direccion central)
         self.extractor = extractor or DatabaseExtractor(
             db_service=self.db,
             schema=self.schema,
             table=self.table,
             id_col=getattr(db_settings, "id_col", "id_licencia"),
             dir_col=getattr(db_settings, "dir_col", "emp_direccion"),
+            source_mode=self.source_mode,
         )
 
         # Transformer
         self.transformer = transformer or PipelineTransformer()
 
-        # Loader (actualiza in-place en la misma tabla y esquema conservando los IDs originales)
+        # Loader (persiste sobre tb_direccion central o in-place en la tabla fuente)
         self.loader = loader or DatabaseLoader(
             db_service=self.db,
             schema=self.schema,
             table=self.table,
             mode="in_place",
+            source_mode=self.source_mode,
             db_settings=db_settings,
         )
 
@@ -157,6 +161,18 @@ class ETLPipeline:
             print(f"[CONFIG] Juez IA: OPERATIVO (Modelo 2: {judge_model})")
 
         # Paso 1: Asegurar arquitectura relacional V2 completa con nomenclatura tb_
+        if self.source_mode == "central_tb_direccion":
+            self.db.ensure_v2_tables_exist(schema="public")
+            self.db.ensure_tb_direccion_columns(schema="public")
+            CatalogMatcher.sync_with_db(self.db, "public")
+            msg = f"[CONFIG] BD: Catastro Central public.tb_direccion listo para normalización de [{self.schema}.{self.table}]"
+            if RICH_AVAILABLE and console:
+                console.print(f"[bold cyan][CONFIG][/bold cyan] BD: [bold green]Catastro Central public.tb_direccion listo[/bold green] para [{self.schema}.{self.table}]")
+            else:
+                print(msg)
+            sys.stdout.flush()
+            return
+
         self.db.ensure_v2_tables_exist(schema=self.schema)
         cols = self.db.ensure_v2_source_columns(schema=self.schema, table=self.table)
 

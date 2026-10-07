@@ -93,6 +93,33 @@ class AIAddressParser:
                         nom_zona = None
                         heuristica_aplicada = True
 
+            # Guardrail de Duplicidad Homónima (Vía duplicada como Zona):
+            if nom_via and nom_zona:
+                v_clean_r = re.sub(r"\b(?:AV\.?|AVENIDA|CA\.?|CALLE|JR\.?|JIRON|PJE\.?|PASAJE)\b", "", nom_via, flags=re.IGNORECASE).strip().upper()
+                z_clean_r = re.sub(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?)\b", "", nom_zona, flags=re.IGNORECASE).strip().upper()
+                vt = CatalogMatcher._extract_sig_tokens(v_clean_r, is_via=True)
+                zt = CatalogMatcher._extract_sig_tokens(z_clean_r, is_via=False)
+                if vt and zt and (vt.issubset(zt) or zt.issubset(vt)) and not re.search(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?)\b", raw_text, re.IGNORECASE):
+                    logger.warning("Descartando nom_zona '%s' por duplicidad homónima con nom_via '%s'", nom_zona, nom_via)
+                    nom_zona = None
+                    tipo_zona_detectada = None
+                    heuristica_aplicada = True
+
+            # Guardrail Anti-Alucinación para Referencia preliminar provista por IA:
+            if referencia:
+                ref_clean_toks = [
+                    t for t in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]+", referencia.upper())
+                    if len(t) > 2 and t not in (
+                        "DEL", "LOS", "LAS", "POR", "CON", "PARA", "SIN", "FRENTE", "CERCA", "COSTADO",
+                        "ENTRE", "CRUCE", "ESQ", "ESQUINA", "PISO", "BLOCK", "LOTE", "MANZANA"
+                    )
+                ]
+                r_upper_raw = raw_text.upper()
+                if ref_clean_toks and not any(t in r_upper_raw for t in ref_clean_toks):
+                    logger.warning("Descartando referencia alucinada por IA: '%s' no presente en '%s'", referencia, raw_text)
+                    referencia = None
+                    heuristica_aplicada = True
+
         # 2.5 Respaldo para vías emblemáticas con fechas o números cuando nom_via está vacío o truncado
         if not nom_via or nom_via.upper() in ("ENERO", "OCTUBRE", "JULIO", "MAYO", "NOVIEMBRE", "ABRIL", "FEBRERO", "JUNIO", "ENSAYOS"):
             known_date_streets = [
@@ -572,13 +599,38 @@ class AIAddressParser:
             # Caso 2: Cruzada de vías (Intersección en esquina asignada a zona, ej: CA. ARICA N 1028 - HEROES CIVILES N 178)
             # Solo aplica si NINGUNA de las dos entidades corresponde a una zona oficial
             elif v_as_via and z_as_via and not v_as_zona and not z_as_zona and not zona_has_zone_prefix:
-                cross_ref = f"ESQ. {z_as_via.get('nom_via', nom_zona)}"
-                if not referencia:
-                    referencia = cross_ref
-                elif cross_ref not in referencia:
-                    referencia = f"{cross_ref} - {referencia}".strip(" -")
-                nom_zona = None
-                heuristica_aplicada = True
+                z_via_name = z_as_via.get("nom_via", nom_zona)
+                v_via_name = v_as_via.get("nom_via", nom_via)
+
+                # Blindaje 1: No pueden ser la misma vía física ni variantes homónimas (ej. PEDRO RUIZ y PEDRO RUIZ GALLO)
+                is_same_artery = (
+                    v_as_via.get("id") == z_as_via.get("id")
+                    or z_via_name.upper() in v_via_name.upper()
+                    or v_via_name.upper() in z_via_name.upper()
+                )
+
+                # Blindaje 2: Los tokens distintivos de la segunda vía deben estar físicamente en raw_text
+                z_via_tokens = CatalogMatcher._extract_sig_tokens(z_via_name, is_via=True)
+                raw_has_z_tokens = bool(z_via_tokens and z_via_tokens.issubset(CatalogMatcher._extract_sig_tokens(raw_text, is_via=True)))
+
+                # Blindaje 3: Debe haber evidencia de intersección o multiplicidad en raw_text
+                has_corner_evidence = bool(
+                    re.search(r"\b(?:ESQ(?:UINA)?|CON|CRUCE|\bY\b|/)\b", raw_text, re.IGNORECASE)
+                    or (" - " in raw_text and any(z_via_name.upper() in p.strip().upper() or p.strip().upper() in z_via_name.upper() for p in raw_text.split(" - ")))
+                )
+
+                if not is_same_artery and raw_has_z_tokens and has_corner_evidence:
+                    cross_ref = f"ESQ. {z_via_name}"
+                    if not referencia:
+                        referencia = cross_ref
+                    elif cross_ref not in referencia:
+                        referencia = f"{cross_ref} - {referencia}".strip(" -")
+                    nom_zona = None
+                    heuristica_aplicada = True
+                else:
+                    # No es una esquina real: nom_zona fue un candidato o duplicado espurio
+                    nom_zona = None
+                    heuristica_aplicada = True
             elif can_swap:
                 if not v_as_via and v_as_zona and not z_as_zona and not via_has_via_prefix:
                     nom_via, nom_zona = nom_zona, nom_via
@@ -680,11 +732,40 @@ class AIAddressParser:
             if nom_zona and nom_zona.upper() in referencia:
                 referencia = re.sub(re.escape(nom_zona), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
             if nom_via and nom_via.upper() in referencia:
-                referencia = re.sub(re.escape(nom_via), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+                if re.match(r"^(?:ESQ\.?|ESQUINA|CON|CRUCE)\s*", referencia, re.IGNORECASE):
+                    referencia = None
+                else:
+                    referencia = re.sub(re.escape(nom_via), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+            if referencia:
+                if re.match(r"^(?:ESQ\.?|ESQUINA\.?|CON|CRUCE|FRENTE|CERCA|A\s+LA\s+ALTURA)\s*$", referencia, re.IGNORECASE):
+                    referencia = None
+                elif len(referencia.strip()) <= 2 and not re.search(r"\d", referencia):
+                    referencia = None
             if not referencia:
                 referencia = None
 
         # Sanitización de num_via: Aislar subunidades residuales (BLOCK, DPTO, INT, STAND, letras de puerta, etc.)
+        # y filtrado anti-kilómetro (un kilometraje en carretera ej. KM. 790 NUNCA es numeración municipal de puerta)
+        m_raw_km = re.search(r"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*(\d+(?:\.\d+)?)\b", raw_text, re.IGNORECASE)
+        if m_raw_km:
+            km_num = m_raw_km.group(1).lstrip("0") or m_raw_km.group(1)
+            km_full = f"KM. {km_num}"
+            if not referencia or km_full not in referencia.upper():
+                referencia = f"{referencia} - {km_full}".strip(" -") if referencia else km_full
+            if num_via:
+                clean_nv = str(num_via).strip().lstrip("0")
+                if clean_nv == km_num or re.search(rf"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*{re.escape(str(num_via).strip())}\b", raw_text, re.IGNORECASE):
+                    logger.info("num_via '%s' descartado por corresponder a punto kilométrico (KM %s)", num_via, km_num)
+                    num_via = None
+
+        if num_via and re.search(r"\b(?:KM\.?|KILOMETRO)\b", str(num_via), re.IGNORECASE):
+            m_sub_k = re.search(r"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*(\d+(?:\.\d+)?)\b", str(num_via), re.IGNORECASE)
+            if m_sub_k:
+                k_val = f"KM. {m_sub_k.group(1)}"
+                if not referencia or k_val not in referencia.upper():
+                    referencia = f"{referencia} - {k_val}".strip(" -") if referencia else k_val
+            num_via = None
+
         if num_via:
             num_via_str = str(num_via).strip()
             m_sub = re.search(r"\b(BLOCK\s+[A-Z0-9\-]+|DPTO\.?\s*[A-Z0-9\-]+|INT\.?\s*[A-Z0-9\-]+|TIENDA\s*[A-Z0-9\-]+|TDA\.?\s*[A-Z0-9\-]+|STAND\s*[A-Z0-9\-]+|OF\.?\s*[A-Z0-9\-]+)\b", num_via_str, re.IGNORECASE)
@@ -775,6 +856,11 @@ class AIAddressParser:
         )
         if extraction and extraction.vias and len(extraction.vias) > 1:
             for ev in extraction.vias:
+                ev_num_clean = ev.numero
+                if ev.numero and m_raw_km:
+                    clean_ev_num = str(ev.numero).strip().lstrip("0")
+                    if clean_ev_num == km_num or re.search(rf"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*{re.escape(str(ev.numero).strip())}\b", raw_text, re.IGNORECASE):
+                        ev_num_clean = None
                 ev_t_id = CatalogMatcher.match_tipo_via(ev.tipo_via) if ev.tipo_via else None
                 ev_matched = CatalogMatcher.match_physical_via(
                     ev.nombre,
@@ -784,7 +870,7 @@ class AIAddressParser:
                 if ev_matched:
                     vias_result.append({
                         "via_id": ev_matched["id"],
-                        "divi_numero": ev.numero or num_via or "S/N",
+                        "divi_numero": ev_num_clean or num_via or "S/N",
                         "divi_orden": ev.orden or (len(vias_result) + 1),
                         "via_nombre": ev_matched["nom_via"],
                         "tipo_via": ev_matched.get("id_tipo_via") or ev_t_id or id_tipo_via,
@@ -1118,8 +1204,35 @@ class AIAddressParser:
             )
             # Remover residuos de puntuación y espacios
             clean_referencia = re.sub(r"\s+", " ", clean_referencia).strip(" -/,.:;")
+
+            # Descartar prefijos huérfanos o residuos de 1-2 letras
+            if clean_referencia:
+                if re.match(r"^(?:ESQ\.?|ESQUINA\.?|CON|CRUCE|FRENTE|CERCA|A\s+LA\s+ALTURA)\s*$", clean_referencia, re.IGNORECASE):
+                    clean_referencia = None
+                elif len(clean_referencia.strip()) <= 2 and not re.search(r"\d", clean_referencia):
+                    clean_referencia = None
+
+            # Guardrail Anti-Alucinación Final para Referencia:
+            # Comprobar que los tokens informativos de clean_referencia aparezcan en raw_text
+            if clean_referencia:
+                ref_words = [
+                    w for w in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]+", clean_referencia.upper())
+                    if len(w) > 2 and w not in (
+                        "DEL", "LOS", "LAS", "POR", "CON", "PARA", "SIN", "FRENTE", "CERCA",
+                        "COSTADO", "ENTRE", "CRUCE", "ESQ", "ESQUINA", "SECTOR", "KM", "PISO", "BLOCK"
+                    )
+                ]
+                r_upper = raw_text.upper()
+                if ref_words and not any(w in r_upper for w in ref_words):
+                    logger.warning("Descartando clean_referencia alucinada: '%s' no figura en '%s'", clean_referencia, raw_text)
+                    clean_referencia = None
+
             if not clean_referencia:
                 clean_referencia = None
+
+        is_arterial_highway = bool(
+            matched_via and re.search(r"\b(?:PANAMERICANA|CARRETERA|AUTOPISTA)\b", matched_via.get("nom_via", ""), re.IGNORECASE)
+        )
 
         if two_vias_conflict:
             observaciones.append(
@@ -1144,10 +1257,17 @@ class AIAddressParser:
                     clean_referencia = f"{clean_referencia} - {mall_ref}".strip(" -") if clean_referencia else mall_ref
                 nom_zona = None
                 zona_detectada_en_texto = False
-            elif matched_via and (num_via or vias_result or is_explicit_corner):
-                # Vía oficial 100% confirmada con numeración municipal o esquina:
-                # Una zona que no figura en el catálogo maestro (ej. sector informal o vecino) se conserva como referencia y NO invalida la dirección
-                sec_ref = f"Sector/Zona: {nom_zona}"
+            elif (
+                matched_via
+                and (num_via or vias_result or is_explicit_corner)
+                and not (manzana or lote)
+                and not is_arterial_highway
+                and not re.search(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?|ASENTAMIENTO\s+HUMANO|UPIS|CONJ\.?\s*HAB\.?)\b", str(nom_zona), re.IGNORECASE)
+                and not re.search(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?|ASENTAMIENTO\s+HUMANO|UPIS|CONJ\.?\s*HAB\.?)\b", raw_text, re.IGNORECASE)
+            ):
+                # Vía urbana oficial 100% confirmada con numeración municipal o esquina (SIN manzana/lote, NO carretera, y sin urbanización formal no catalogada):
+                # Un sector informal o vecinal secundario se conserva como referencia y NO invalida la dirección
+                sec_ref = f"Sector: {nom_zona}"
                 clean_referencia = f"{clean_referencia} - {sec_ref}".strip(" -") if clean_referencia else sec_ref
                 nom_zona = None
                 zona_detectada_en_texto = False
@@ -1156,6 +1276,20 @@ class AIAddressParser:
                 if matched_via:
                     det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})."
                 observaciones.append(det_zona)
+
+        # Regla de Integridad Predial Catastral: Manzana y Lote exigen estrictamente Habilitación Urbana catalogada en Chiclayo
+        if (manzana or lote) and not matched_zona:
+            det_mz = "Predio catastral con Manzana/Lote no ubicable: Requiere una Habilitación Urbana o Zona oficial validada en el catálogo maestro de Chiclayo."
+            if nom_zona and nom_zona not in " ".join(observaciones):
+                det_mz += f" (Zona declarada '{nom_zona}' no figura en el catálogo)."
+            if not any(det_mz in obs for obs in observaciones):
+                observaciones.append(det_mz)
+
+        # Regla de Carreteras / Vías Arteriales: No pueden normalizarse sin numeración de puerta ni habilitación urbana
+        if is_arterial_highway and not matched_zona and (not num_via or num_via == "S/N"):
+            obs_hwy = f"Vía arterial o carretera ('{matched_via['nom_via']}') sin numeración municipal de puerta ni habilitación urbana catalogada en Chiclayo."
+            if not any(obs_hwy in obs for obs in observaciones):
+                observaciones.append(obs_hwy)
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:
             observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
@@ -1254,34 +1388,9 @@ class AIAddressParser:
             observaciones.append("Advertencia registrada: Restricción de uso de vía pública en la licencia.")
 
         if observaciones:
-            # PASO 4: El Juez / Observador (Modelo 2) - Invocación secuencial
-            extracted_dict = extraction.model_dump() if extraction else {
-                "tipo_via": tipo_via_detectado,
-                "nom_via": nom_via,
-                "num_via": num_via,
-                "tipo_zona": tipo_zona_detectada,
-                "nom_zona": nom_zona,
-                "manzana": manzana,
-                "lote": lote,
-            }
-            dictamen_observacion = None
-            if hasattr(self.ollama, "judge_address_observation"):
-                try:
-                    res_juez = self.ollama.judge_address_observation(
-                        raw_text=raw_text,
-                        extracted_json=extracted_dict,
-                        validation_facts=observaciones,
-                    )
-                    if isinstance(res_juez, str) and res_juez.strip():
-                        dictamen_observacion = res_juez.strip()
-                except Exception as ex_judge:
-                    logger.warning("Aviso al consultar Modelo 2 Juez: %s", ex_judge)
-
-            final_obs = dictamen_observacion if dictamen_observacion else "; ".join(observaciones)
-            judge_model = getattr(self.ollama, "judge_model_name", None) or getattr(self.ollama, "model_name", "Ollama")
-            metodo_juez = f"Observado por Juez ({judge_model})"
-
-            # Caso observado: Se nullifican relaciones para consistencia
+            # Caso no procesable / rechazado: Regla de oro 100% segura.
+            # No se invoca un segundo modelo ni se genera texto de observación por IA.
+            # Se devuelven relaciones vacías, es_procesado=False y observacion=None.
             return DireccionDestino(
                 id_licencia=record.id_licencia,
                 dire_id=None,
@@ -1297,8 +1406,8 @@ class AIAddressParser:
                 block=None,
                 referencia=None,
                 es_procesado=False,
-                observacion=final_obs,
-                metodo_normalizacion=metodo_juez,
+                observacion=None,
+                metodo_normalizacion="No normalizado (Incoherente / Incompleto)",
             )
         else:
             # Caso exitoso: Asociado formalmente a las tablas maestras oficiales

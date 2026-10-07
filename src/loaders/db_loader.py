@@ -33,11 +33,15 @@ class DatabaseLoader(BaseLoader):
         schema: Optional[str] = None,
         table: Optional[str] = None,
         mode: str = "in_place",
+        source_mode: str = "source_table",
+        target_catalog_schema: str = "public",
         db_settings: Optional[Any] = None,
     ):
         self.db = db_service or DatabaseService()
         self.settings = db_settings or getattr(self.db, "settings", None) or get_settings().db
         self.mode = mode
+        self.source_mode = source_mode  # "source_table" o "central_tb_direccion"
+        self.target_catalog_schema = target_catalog_schema
         self.schema = schema or self.settings.schema
         self.table = table or self.settings.table
 
@@ -111,6 +115,9 @@ class DatabaseLoader(BaseLoader):
             logger.warning("Base de datos no disponible. Omitiendo persistencia.")
             return 0
 
+        if self.source_mode == "central_tb_direccion":
+            return self._load_central_tb_direccion(records)
+
         if self._target_cols is None:
             self._inspect_structure()
 
@@ -118,6 +125,122 @@ class DatabaseLoader(BaseLoader):
             return self._load_v2(records)
         else:
             return self._load_in_place_legacy(records)
+
+    def _load_central_tb_direccion(self, records: List[DireccionDestino]) -> int:
+        """Persistencia sobre public.tb_direccion para el flujo desacoplado.
+        No modifica la tabla fuente emisora pues ya está enlazada por FK.
+        """
+        try:
+            with self.db.get_session() as session:
+                for rec in records:
+                    dire_id = rec.dire_id or rec.id_licencia
+                    clean_estado = "A" if (rec.dire_estado in ("A", "ACT") or not rec.dire_estado) else str(rec.dire_estado)[:3]
+
+                    if rec.es_procesado:
+                        # 1. Actualizar tb_direccion como normalizado exitoso
+                        upd_dir_sql = text(f"""
+                            UPDATE "{self.target_catalog_schema}"."tb_direccion" SET
+                                zona_id = :zona_id,
+                                dire_referencia = :dire_referencia,
+                                dire_estado = :dire_estado,
+                                dire_es_procesado = TRUE,
+                                fecha_proceso = CURRENT_TIMESTAMP
+                            WHERE dire_id = :dire_id;
+                        """)
+                        session.execute(upd_dir_sql, {
+                            "zona_id": rec.zona_id,
+                            "dire_referencia": rec.dire_referencia,
+                            "dire_estado": clean_estado,
+                            "dire_id": dire_id,
+                        })
+
+                        # 2. Insertar vías asociadas
+                        if rec.vias:
+                            ins_via_sql = text(f"""
+                                INSERT INTO "{self.target_catalog_schema}"."tb_direccion_via" (
+                                    dire_id, via_id, divi_numero, divi_orden, divi_estado
+                                ) VALUES (
+                                    :dire_id, :via_id, :divi_numero, :divi_orden, :divi_estado
+                                )
+                                ON CONFLICT (dire_id, via_id) DO UPDATE SET
+                                    divi_numero = EXCLUDED.divi_numero,
+                                    divi_orden = EXCLUDED.divi_orden;
+                            """)
+                            for idx, v in enumerate(rec.vias, start=1):
+                                via_id = v.get("via_id")
+                                if via_id is not None:
+                                    session.execute(ins_via_sql, {
+                                        "dire_id": dire_id,
+                                        "via_id": via_id,
+                                        "divi_numero": str(v.get("divi_numero") or "").strip() or None,
+                                        "divi_orden": v.get("divi_orden", idx),
+                                        "divi_estado": "A",
+                                    })
+
+                        # 3. Insertar componentes catastrales
+                        if rec.componentes:
+                            ins_comp_sql = text(f"""
+                                INSERT INTO "{self.target_catalog_schema}"."tb_contenido_componente_direccion" (
+                                    dire_id, codi_id, diti_nombre, diti_estado
+                                ) VALUES (
+                                    :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                )
+                                ON CONFLICT (dire_id, codi_id) DO UPDATE SET
+                                    diti_nombre = EXCLUDED.diti_nombre;
+                            """)
+                            for c in rec.componentes:
+                                codi_id = c.get("codi_id")
+                                diti_nombre = c.get("diti_nombre")
+                                if codi_id is not None and diti_nombre:
+                                    session.execute(ins_comp_sql, {
+                                        "dire_id": dire_id,
+                                        "codi_id": codi_id,
+                                        "diti_nombre": str(diti_nombre).strip().upper(),
+                                        "diti_estado": "A",
+                                    })
+
+                        # 4. Insertar módulos inmobiliarios
+                        if rec.modulos:
+                            ins_mod_sql = text(f"""
+                                INSERT INTO "{self.target_catalog_schema}"."tb_direccion_tipo_modulo" (
+                                    dire_id, timo_id, ditm_nombre, ditm_estado
+                                ) VALUES (
+                                    :dire_id, :timo_id, :ditm_nombre, :ditm_estado
+                                )
+                                ON CONFLICT (dire_id, timo_id, ditm_nombre) DO UPDATE SET
+                                    ditm_estado = EXCLUDED.ditm_estado;
+                            """)
+                            for m in rec.modulos:
+                                timo_id = m.get("timo_id")
+                                ditm_nombre = m.get("ditm_nombre")
+                                if timo_id is not None and ditm_nombre:
+                                    clean_ditm = str(ditm_nombre).strip().upper()
+                                    session.execute(ins_mod_sql, {
+                                        "dire_id": dire_id,
+                                        "timo_id": timo_id,
+                                        "ditm_nombre": clean_ditm,
+                                        "ditm_estado": "A",
+                                    })
+                    else:
+                        # Rechazado / Incoherente: dire_es_procesado = FALSE, fecha_proceso = NOW(), sin componentes
+                        upd_dir_sql = text(f"""
+                            UPDATE "{self.target_catalog_schema}"."tb_direccion" SET
+                                zona_id = NULL,
+                                dire_referencia = NULL,
+                                dire_es_procesado = FALSE,
+                                fecha_proceso = CURRENT_TIMESTAMP
+                            WHERE dire_id = :dire_id;
+                        """)
+                        session.execute(upd_dir_sql, {"dire_id": dire_id})
+
+            logger.debug(
+                "Lote de %d registros normalizados persistido directamente en %s.tb_direccion",
+                len(records), self.target_catalog_schema
+            )
+            return len(records)
+        except Exception as e:
+            logger.error("Error en persistencia central sobre tb_direccion: %s", e)
+            return 0
 
     def _load_v2(self, records: List[DireccionDestino]) -> int:
         """Persistencia relacional V2 atómica en tb_direccion, tb_direccion_via,

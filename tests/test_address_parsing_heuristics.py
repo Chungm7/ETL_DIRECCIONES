@@ -71,7 +71,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertIsNone(destino.num_via)
         self.assertIsNone(destino.id_zona)
         self.assertIsNone(destino.referencia)
-        self.assertIn("TRINDIAD", destino.observacion)
+        self.assertIsNone(destino.observacion)
 
     def test_parse_reference_frente_al_parque(self):
         """Verifica que referencias espaciales no contaminen la vía o la zona y se validen con catastro."""
@@ -218,8 +218,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertFalse(destino.es_procesado)
         self.assertIsNone(destino.id_via)
         self.assertIsNone(destino.id_zona)
-        self.assertIsNotNone(destino.observacion)
-        self.assertIn("PIMENTEL", destino.observacion)
+        self.assertIsNone(destino.observacion)
 
     def test_parse_san_nicolas_las_americas_hyphen_and_attached_number(self):
         """Verifica que 'SAN NICOLAS-LAS AMERICAS705' despegue el guion y número y homologue vía y zona."""

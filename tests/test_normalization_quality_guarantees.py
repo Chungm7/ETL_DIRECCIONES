@@ -152,7 +152,7 @@ def test_clean_numbering_letter_suffix():
 
 
 def test_uncataloged_via_is_accurately_observed():
-    """Verifica que una vía que no está en el catálogo sea observada con diagnóstico exacto."""
+    """Verifica que una vía que no está en el catálogo sea rechazada de forma segura (es_procesado=False)."""
     parser = AIAddressParser()
     rec = DireccionOrigen(
         id_licencia=99999,
@@ -160,7 +160,8 @@ def test_uncataloged_via_is_accurately_observed():
     )
     res = parser.parse(rec)
     assert res.es_procesado is False
-    assert "catálogo maestro" in res.observacion.lower()
+    assert res.vias == []
+    assert res.observacion is None
 
 
 def test_official_synonyms_resolution():
@@ -249,4 +250,136 @@ def test_diego_ferre_miguel_de_cervantes_resolution():
     assert res.num_via == "300"
     assert res.referencia is not None
     assert "M" in res.referencia and "10" in res.referencia
+
+
+def test_case_id_230_panamericana_km_uncataloged_zone_rejected():
+    """Caso ID 230: 'MZ. E LOTE 17 URB. NOR ORIENTE PANAMERICANA NORTE KM. 790 - CHICLAYO '.
+    Garantiza:
+    1. KM. 790 NUNCA se asigne como num_via (790).
+    2. Urb. Nor Oriente (no catalogada en Chiclayo) con Mz/Lt NUNCA se apruebe.
+    3. es_procesado sea estrictamente False y no se inserte en tb_direccion (vias y componentes vacíos).
+    4. observacion sea None (sin guardar textos en BD).
+    """
+    mock_ollama = MagicMock()
+    mock_ollama.model_name = "llama3:latest"
+    mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+        tipo_via_detectado="AVENIDA",
+        nom_via="PANAMERICANA NORTE",
+        num_via="790",
+        tipo_zona_detectada="URBANIZACION",
+        nom_zona="NOR ORIENTE",
+        manzana="E",
+        lote="17",
+        referencia=None,
+    )
+    parser = AIAddressParser(mock_ollama)
+
+    rec = DireccionOrigen(
+        id_licencia=230,
+        emp_direccion="MZ. E LOTE 17 URB. NOR ORIENTE PANAMERICANA NORTE KM. 790 - CHICLAYO ",
+    )
+    res = parser.parse(rec)
+
+    assert res.es_procesado is False, "Error: Registro ID 230 no debe ser normalizado"
+    assert res.vias == []
+    assert res.componentes == []
+    assert res.modulos == []
+    assert res.dire_id is None
+    assert res.num_via is None or res.num_via != "790"
+    assert res.observacion is None
+
+
+def test_predio_mz_lt_without_cataloged_zone_rejected():
+    """Garantiza que cualquier predio con Manzana/Lote cuya zona no figure en el catálogo sea rechazado."""
+    mock_ollama = MagicMock()
+    mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+        tipo_via_detectado="CALLE",
+        nom_via="SAN JOSE",
+        num_via=None,
+        tipo_zona_detectada="URBANIZACION",
+        nom_zona="URB TOTALMENTE INEXISTENTE 999",
+        manzana="A",
+        lote="1",
+    )
+    parser = AIAddressParser(mock_ollama)
+
+    rec = DireccionOrigen(
+        id_licencia=9991,
+        emp_direccion="MZ. A LOTE 1 URB TOTALMENTE INEXISTENTE 999 - CHICLAYO",
+    )
+    res = parser.parse(rec)
+
+    assert res.es_procesado is False
+    assert res.vias == []
+    assert res.componentes == []
+
+
+def test_anti_kilometer_rule_on_highways():
+    """Garantiza que KM 15 en una carretera no se tome como numeración municipal de puerta."""
+    parser = AIAddressParser()
+    rec = DireccionOrigen(
+        id_licencia=9992,
+        emp_direccion="CARRETERA A PIMENTEL KM. 15",
+    )
+    res = parser.parse(rec)
+
+    assert res.es_procesado is False
+    assert res.num_via != "15"
+
+
+def test_case_pedro_ruiz_never_hallucinates_esq_gallo():
+    """Garantiza que 'AV. PEDRO RUIZ N 1000 - CHICLAYO' nunca alucine 'ESQ. GALLO' en referencia.
+    Vía oficial debe ser Avenida Pedro Ruiz (ID 2921), número 1000, referencia None.
+    """
+    mock_ollama = MagicMock()
+    mock_ollama.model_name = "llama3:latest"
+    # Simular que el LLM intenta duplicar la vía en nom_zona o alucinar GALLO
+    mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+        tipo_via_detectado="AVENIDA",
+        nom_via="PEDRO RUIZ",
+        num_via="1000",
+        tipo_zona_detectada=None,
+        nom_zona="PEDRO RUIZ GALLO",
+        referencia=None,
+    )
+    parser = AIAddressParser(mock_ollama)
+
+    rec = DireccionOrigen(
+        id_licencia=319,
+        emp_direccion="AV. PEDRO RUIZ N 1000 - CHICLAYO",
+    )
+    res = parser.parse(rec)
+
+    assert res.es_procesado is True
+    assert res.id_via == 2921
+    assert res.nom_via == "PEDRO RUIZ"
+    assert res.num_via == "1000"
+    assert res.nom_zona is None
+    assert res.referencia is None, f"Referencia espuria detectada: {res.referencia}"
+
+
+def test_reference_anti_hallucination_guardrail():
+    """Garantiza que cualquier referencia alucinada por la IA que no figure en raw_text sea descartada."""
+    mock_ollama = MagicMock()
+    mock_ollama.model_name = "llama3:latest"
+    mock_ollama.parse_address_with_ai.return_value = OllamaAddressExtraction(
+        tipo_via_detectado="CALLE",
+        nom_via="SAN JOSE",
+        num_via="450",
+        referencia="FRENTE AL PARQUE DE LAS LEYENDAS",
+    )
+    parser = AIAddressParser(mock_ollama)
+
+    rec = DireccionOrigen(
+        id_licencia=9993,
+        emp_direccion="CA. SAN JOSE 450 - CHICLAYO",
+    )
+    res = parser.parse(rec)
+
+    assert res.es_procesado is True
+    assert res.nom_via == "SAN JOSE"
+    assert res.num_via == "450"
+    assert res.referencia is None, f"Referencia alucinada no fue descartada: {res.referencia}"
+
+
 

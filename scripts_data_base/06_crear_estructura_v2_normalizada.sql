@@ -114,7 +114,13 @@ CREATE TABLE IF NOT EXISTS tb_direccion (
     dire_id             BIGSERIAL NOT NULL,
     zona_id             BIGINT,
     dire_referencia     VARCHAR(500),
-    dire_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    dire_esquema        VARCHAR(500),
+    dire_tabla          VARCHAR(500),
+    dire_tabla_id       BIGINT,
+    dire_valor_origen   VARCHAR(500),
+    dire_es_procesado   BOOLEAN,
+    fecha_proceso       TIMESTAMP,
 
     CONSTRAINT pk_tb_direccion PRIMARY KEY (dire_id),
     CONSTRAINT fk_tb_direccion_zona 
@@ -124,13 +130,21 @@ CREATE TABLE IF NOT EXISTS tb_direccion (
         ON DELETE SET NULL
 );
 
-COMMENT ON TABLE tb_direccion IS 'Entidad central que consolida la dirección normalizada, su zona oficial e hitos espaciales.';
+COMMENT ON TABLE tb_direccion IS 'Entidad central que consolida la dirección normalizada, su procedencia cruda y estado de procesamiento.';
 COMMENT ON COLUMN tb_direccion.dire_id IS 'Identificador secuencial único de la dirección normalizada.';
 COMMENT ON COLUMN tb_direccion.zona_id IS 'Clave foránea hacia tb_zona. Permite NULL si el predio no posee zona registrada.';
 COMMENT ON COLUMN tb_direccion.dire_referencia IS 'Hito espacial o comercial de orientación urbana (ej. CERCA AL SENATI, FRENTE AL PARQUE).';
-COMMENT ON COLUMN tb_direccion.dire_estado IS 'Estado del registro: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_direccion.dire_estado IS 'Estado del registro: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_direccion.dire_esquema IS 'Nombre del esquema de base de datos de origen.';
+COMMENT ON COLUMN tb_direccion.dire_tabla IS 'Nombre de la tabla de origen.';
+COMMENT ON COLUMN tb_direccion.dire_tabla_id IS 'Clave primaria del registro en la tabla de origen.';
+COMMENT ON COLUMN tb_direccion.dire_valor_origen IS 'Texto crudo original de la dirección extraída de la fuente.';
+COMMENT ON COLUMN tb_direccion.dire_es_procesado IS 'Semántica Tri-State: NULL = Pendiente | TRUE = Normalizado 100% Certeza | FALSE = Rechazado / Incoherente.';
+COMMENT ON COLUMN tb_direccion.fecha_proceso IS 'Marca de tiempo en que el ETL procesó el registro.';
 
 CREATE INDEX IF NOT EXISTS idx_tb_direccion_zona ON tb_direccion (zona_id);
+CREATE INDEX IF NOT EXISTS idx_tb_direccion_proc ON tb_direccion (dire_esquema, dire_tabla, dire_es_procesado);
+CREATE INDEX IF NOT EXISTS idx_tb_direccion_origen_lookup ON tb_direccion (dire_esquema, dire_tabla, dire_tabla_id);
 
 -- -----------------------------------------------------------------------------
 -- 6. Tabla Intermedia: DIRECCIÓN - VÍAS (tb_direccion_via - Esquinas e Intersecciones)

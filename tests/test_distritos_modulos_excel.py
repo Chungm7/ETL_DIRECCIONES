@@ -96,14 +96,8 @@ def test_external_district_is_observed():
         rec = DireccionOrigen(id_licencia=888, emp_direccion=raw)
         dest = parser.parse(rec)
 
-        assert dest.es_procesado is False, f"Debe ser observada por jurisdicción externa: {raw}"
-        assert dest.observacion is not None, f"Debe contener motivo para: {raw}"
-        assert "jurisdicción distrital externa" in dest.observacion.lower(), (
-            f"El motivo debe señalar jurisdicción distrital externa para '{raw}'. Obtenido: '{dest.observacion}'"
-        )
-        assert dist_esperado.lower() in dest.observacion.lower(), (
-            f"El motivo debe mencionar el distrito '{dist_esperado}'. Obtenido: '{dest.observacion}'"
-        )
+        assert dest.es_procesado is False, f"Debe ser rechazada por jurisdicción externa: {raw}"
+        assert dest.observacion is None, "La observación generada por IA fue eliminada; debe ser None"
 
 
 def test_interior_module_is_not_sublote():
@@ -244,28 +238,27 @@ def test_predio_mz_lt_without_via_normalizes():
 
 
 def test_confusing_records_remain_observed_with_clear_diagnosis():
-    """Direcciones ininteligibles, confusas o sin datos mínimos deben mantenerse observadas con diagnóstico claro."""
+    """Direcciones ininteligibles, confusas o sin datos mínimos deben mantenerse no procesadas."""
     parser = AIAddressParser(ollama_service=None)
 
     # 1. Dirección incompleta (vía sin número y sin predio)
     rec_inc = DireccionOrigen(id_licencia=991, emp_direccion="CALLE ELIAS AGUIRRE - CHICLAYO")
     dest_inc = parser.parse(rec_inc)
     assert dest_inc.es_procesado is False
-    assert "incompleta" in dest_inc.observacion.lower()
-    assert "numeración" in dest_inc.observacion.lower() or "número" in dest_inc.observacion.lower()
+    assert dest_inc.observacion is None
 
     # 2. Vía inexistente / no identificada
     rec_inv = DireccionOrigen(id_licencia=992, emp_direccion="CA. ARTERIA INEXISTENTE N 999 - CHICLAYO")
     dest_inv = parser.parse(rec_inv)
     assert dest_inv.es_procesado is False
-    assert "no figura" in dest_inv.observacion.lower() or "no identificada" in dest_inv.observacion.lower()
+    assert dest_inv.observacion is None
 
 
 def test_record_61_corner_detection_and_unclear_module_observed():
     """ID 61: 'AV. JOSE BALTA N 155 ESQ. CA. COLON TDA. METRO-LOCAL 1116'.
     1. Debe rechazar módulos falsos ('METRO', 'LOCAL').
     2. Al tener módulo comercial no redactado claramente ('TDA. METRO-LOCAL'),
-       debe ser OBSERVADA por el Juez sin inventar módulos.
+       debe ser NO PROCESADA (es_procesado=False) sin inventar módulos.
     """
     parser = AIAddressParser(ollama_service=None)
     rec_61 = DireccionOrigen(
@@ -274,11 +267,10 @@ def test_record_61_corner_detection_and_unclear_module_observed():
     )
     dest_61 = parser.parse(rec_61)
 
-    assert dest_61.es_procesado is False, f"ID 61 debe ser OBSERVADA: {dest_61}"
+    assert dest_61.es_procesado is False, f"ID 61 debe ser NO PROCESADA: {dest_61}"
     assert dest_61.modulos == [], f"ID 61 no debe contener módulos falsos: {dest_61.modulos}"
-    assert dest_61.observacion is not None
-    assert "no redactado claramente" in dest_61.observacion.lower() or "ambigua o comercial" in dest_61.observacion.lower()
-    assert "Observado por Juez" in dest_61.metodo_normalizacion
+    assert dest_61.observacion is None
+    assert "No normalizado" in dest_61.metodo_normalizacion
 
 
 def test_valid_module_at_corner_normalizes_cleanly():
@@ -330,8 +322,8 @@ def test_ambiguous_commercial_modules_always_observed():
     for c in cases:
         rec = DireccionOrigen(id_licencia=997, emp_direccion=c)
         dest = parser.parse(rec)
-        assert dest.es_procesado is False, f"Debe observarse: {c}"
+        assert dest.es_procesado is False, f"Debe no procesarse: {c}"
         assert dest.modulos == []
-        assert "no redactado claramente" in dest.observacion.lower() or "ambigua o comercial" in dest.observacion.lower()
+        assert dest.observacion is None
 
 

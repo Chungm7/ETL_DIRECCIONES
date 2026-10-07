@@ -19,7 +19,12 @@ La **Versión 2.0** del sistema de normalización de la **Municipalidad Provinci
    - `tb_direccion_tipo_modulo` $\rightarrow$ `ditm_`
    - Tabla fuente/negocio (`tb_xxx`) $\rightarrow$ `xxxx_`
 3. **Indicador de Estado:** Todos los catálogos y relaciones contienen un campo de estado `varchar(3) DEFAULT 'ACT'`.
-4. **Desacoplamiento Total de la Fuente:** La tabla de negocio (`tb_xxx`) preserva la cadena original intacta (`xxxx_direccion_original`) y solo almacena la clave foránea `dire_id` hacia `tb_direccion` cuando el registro ha sido normalizado exitosamente (`xxxx_es_procesado = TRUE`). En caso de observación o rechazo, `dire_id` permanece en `NULL` y se describe el dictamen técnico en `xxxx_observacion_ia`.
+4. **Desacoplamiento Total de la Fuente y Semántica Tri-State Estricta:** La tabla de negocio (`tb_xxx`) preserva la cadena original intacta (`xxxx_direccion_original`) y opera bajo tres estados:
+   - `xxxx_es_procesado = NULL`: Registro pendiente de evaluación por el pipeline.
+   - `xxxx_es_procesado = TRUE`: Normalización 100% confirmada contra el catastro oficial de Chiclayo; almacena la clave foránea `dire_id` hacia `tb_direccion` y sus tablas hijas.
+   - `xxxx_es_procesado = FALSE`: Registro rechazado / no normalizado ante la menor duda o incoherencia (sin vía oficial, sin número y sin predio, distrito externo o módulo ambiguo). `dire_id` permanece estrictamente en `NULL` y no se inserta ninguna fila en las tablas de `tb_direccion`.
+5. **Regla de Oro Catastral:** Se eliminó el 2do modelo de IA (Juez) y las observaciones redactadas por LLM. El pipeline opera con un único Extractor Seguro y validación lógica rigurosa. Solo pasa a verde lo 100% seguro.
+6. **Especificación DBML Oficial:** Se dispone del archivo ejecutable [modelo_normalizacion_mpch_v2.dbml](file:///home/victorchung/IdeaProjects/ETL_MIGRACION_MPCH/docs/modelo_normalizacion_mpch_v2.dbml) para importación directa en dbdocs.io y dbdiagram.io.
 
 ---
 
@@ -114,10 +119,9 @@ erDiagram
 
     tb_xxx {
         bigint xxxx_id PK "Llave primaria del sistema emisor"
-        bigint dire_id FK "FK hacia tb_direccion (NULL si es observado)"
+        bigint dire_id FK "FK hacia tb_direccion (Solo asignada si es_procesado = TRUE, NULL si FALSE o NULL)"
         varchar xxxx_direccion_original "Cadena cruda original inmutable"
-        boolean xxxx_es_procesado "TRUE = Exitoso | FALSE = Observado"
-        text xxxx_observacion_ia "Dictamen o inconsistencia de la IA"
+        boolean xxxx_es_procesado "Tri-State: NULL = Pendiente | TRUE = Normalizado 100% Certeza | FALSE = Rechazado / Incoherente"
         bigint xxxx_valor_1 "Llave foránea o código 1 de negocio"
         bigint xxxx_valor_2 "Llave foránea o código 2 de negocio"
         bigint xxxx_valor_3 "Llave foránea o código 3 de negocio"

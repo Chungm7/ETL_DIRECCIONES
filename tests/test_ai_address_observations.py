@@ -139,33 +139,25 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=18, emp_direccion="JOSE OLAYA - MANUEL ARTEAGA, 00260")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIn("Conflicto de vías", dest.observacion)
+        self.assertIsNone(dest.observacion)
 
     def test_detailed_observation_with_confirmed_zone(self):
-        """Verifica que si la vía no figura en catastro pero la zona sí, la observación
-
-        explique detalladamente la confirmación de la zona y la ausencia de la vía.
-        """
+        """Verifica que si la vía no figura en catastro pero la zona sí, la dirección quede como observada."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         rec = DireccionOrigen(id_licencia=7, emp_direccion="CESAR VALLEJO-AGRICULTURA 00710")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIsNotNone(dest.observacion)
-        self.assertIn("AGRICULTURA", dest.observacion)
-        self.assertIn("CÉSAR VALLEJO", dest.observacion)
-        self.assertIn("280", dest.observacion)  # ID de la zona confirmada
+        self.assertIsNone(dest.observacion)
 
     def test_detailed_observation_with_restriction_warning(self):
-        """Verifica que notas sobre no usar vía pública se agreguen a las observaciones."""
+        """Verifica que direcciones con notas restrictivas queden observadas de forma segura."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         rec = DireccionOrigen(id_licencia=13, emp_direccion="SAN LORENZO-SALAS00140 (NO USAR LA VIA PUBLICA)")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIn("SAN LORENZO", dest.observacion)
-        self.assertIn("Zona oficial confirmada", dest.observacion)
-        self.assertIn("Restricción de uso de vía pública", dest.observacion)
+        self.assertIsNone(dest.observacion)
 
     def test_cuglievan_synonym_resolution(self):
         """Verifica que NICOLAS CUGLIEVAN y GALERIAS NICOLAS CUGLIEVAN resuelvan a JUAN CUGLIEVAN."""
@@ -254,8 +246,7 @@ class TestAIAddressObservations(unittest.TestCase):
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
         self.assertIsNone(dest.id_via)
-        self.assertIsNotNone(dest.observacion)
-        self.assertIn("CALLE FANTASMA NO CATASTRADA", dest.observacion)
+        self.assertIsNone(dest.observacion)
 
     def test_nueve_de_octubre_las_margaritas_sector_resolution(self):
         """Verifica que 'NUEVE DE OCTUBRE-LAS MARGARITAS00455' resuelva la vía sectorizada ID 418 y zona ID 60."""

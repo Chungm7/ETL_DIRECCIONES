@@ -1034,6 +1034,9 @@ class DatabaseService:
         # Asegurar restricción PK compuesta en tb_direccion_tipo_modulo
         self.ensure_modulo_pk_constraint(target_schema)
 
+        # Asegurar columnas desacopladas e índices en tb_direccion
+        self.ensure_tb_direccion_columns(target_schema)
+
         # Asegurar que todas las columnas *_estado sean VARCHAR(3)
         self.ensure_estado_columns_varchar3(target_schema)
 
@@ -1197,7 +1200,222 @@ class DatabaseService:
             res["tb_via_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_via";')).scalar() or 0
             res["tb_zona_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_zona";')).scalar() or 0
 
-        return res
+    def ensure_tb_direccion_columns(self, schema: Optional[str] = None) -> bool:
+        """Asegura que tb_direccion contenga las columnas de procedencia cruda y tri-state
+        (dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, fecha_proceso)
+        junto con los índices para reanudación y consulta rápida.
+        """
+        target_schema = schema or "public"
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return False
+
+        if not self.table_exists("tb_direccion", target_schema):
+            return False
+
+        cols_to_add = [
+            ("dire_esquema", "VARCHAR(500)"),
+            ("dire_tabla", "VARCHAR(500)"),
+            ("dire_tabla_id", "BIGINT"),
+            ("dire_valor_origen", "VARCHAR(500)"),
+            ("dire_es_procesado", "BOOLEAN"),
+            ("fecha_proceso", "TIMESTAMP"),
+        ]
+
+        try:
+            with self.get_session() as session:
+                for col_name, col_type in cols_to_add:
+                    session.execute(text(f"""
+                        ALTER TABLE "{target_schema}"."tb_direccion"
+                        ADD COLUMN IF NOT EXISTS "{col_name}" {col_type};
+                    """))
+
+                # Crear índices para reanudación eficiente
+                session.execute(text(f"""
+                    CREATE INDEX IF NOT EXISTS idx_tb_direccion_proc
+                    ON "{target_schema}"."tb_direccion" (dire_esquema, dire_tabla, dire_es_procesado);
+                """))
+                session.execute(text(f"""
+                    CREATE INDEX IF NOT EXISTS idx_tb_direccion_origen_lookup
+                    ON "{target_schema}"."tb_direccion" (dire_esquema, dire_tabla, dire_tabla_id);
+                """))
+            return True
+        except Exception as e:
+            logger.debug("Aviso al asegurar columnas en %s.tb_direccion: %s", target_schema, e)
+            return False
+
+    def migrate_source_table_to_tb_direccion(
+        self,
+        source_schema: str,
+        source_table: str,
+        id_col: str,
+        addr_col: str,
+        drop_source_col: bool = False,
+        batch_size: int = 1000,
+        target_catalog_schema: str = "public",
+    ) -> Dict[str, Any]:
+        """Fase A (Pre-migración e Ingesta):
+        Migra todas las direcciones crudas desde una tabla fuente hacia public.tb_direccion,
+        vincula dire_id en la tabla fuente mediante FK, y opcionalmente elimina la columna
+        de texto original de la tabla fuente para desacoplamiento definitivo.
+        """
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return {"success": False, "error": "No hay conexión a base de datos disponible."}
+
+        self.ensure_v2_tables_exist(target_catalog_schema)
+        self.ensure_tb_direccion_columns(target_catalog_schema)
+
+        try:
+            with self.get_session() as session:
+                # 1. Asegurar columna dire_id en la tabla fuente
+                session.execute(text(f"""
+                    ALTER TABLE "{source_schema}"."{source_table}"
+                    ADD COLUMN IF NOT EXISTS "dire_id" BIGINT;
+                """))
+
+                # Asegurar restricción FK si no existe
+                fk_name = f"fk_{source_table}_tb_direccion"[:63]
+                has_fk = session.execute(text("""
+                    SELECT 1 FROM pg_constraint WHERE conname = :conname;
+                """), {"conname": fk_name}).scalar()
+                if not has_fk:
+                    try:
+                        session.execute(text(f"""
+                            ALTER TABLE "{source_schema}"."{source_table}"
+                            ADD CONSTRAINT "{fk_name}"
+                            FOREIGN KEY ("dire_id") REFERENCES "{target_catalog_schema}"."tb_direccion"("dire_id")
+                            ON UPDATE CASCADE ON DELETE SET NULL;
+                        """))
+                    except Exception as ex_fk:
+                        logger.debug("Aviso al crear FK %s: %s", fk_name, ex_fk)
+
+                # 2. Conteo de registros totales y ya vinculados
+                total_source = session.execute(text(f"""
+                    SELECT COUNT(*) FROM "{source_schema}"."{source_table}";
+                """)).scalar() or 0
+
+                already_linked = session.execute(text(f"""
+                    SELECT COUNT(*) FROM "{source_schema}"."{source_table}"
+                    WHERE "dire_id" IS NOT NULL;
+                """)).scalar() or 0
+
+                # 3. Migrar en lotes registros que no tienen dire_id
+                migrated_count = 0
+                while True:
+                    rows = session.execute(text(f"""
+                        SELECT "{id_col}" AS id_val, "{addr_col}" AS addr_val
+                        FROM "{source_schema}"."{source_table}"
+                        WHERE "dire_id" IS NULL AND "{addr_col}" IS NOT NULL
+                        ORDER BY "{id_col}" ASC
+                        LIMIT :batch_size;
+                    """), {"batch_size": batch_size}).fetchall()
+
+                    if not rows:
+                        break
+
+                    for r in rows:
+                        id_val = r[0]
+                        addr_val = str(r[1] or "").strip()
+                        if not addr_val:
+                            continue
+
+                        # Insertar en tb_direccion conservando procedencia y semántica tri-state (NULL)
+                        new_dire_id = session.execute(text(f"""
+                            INSERT INTO "{target_catalog_schema}"."tb_direccion" (
+                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_valor_origen, dire_es_procesado, dire_estado, fecha_proceso
+                            ) VALUES (
+                                :esq, :tab, :tab_id, :val_orig, NULL, 'ACT', NULL
+                            ) RETURNING dire_id;
+                        """), {
+                            "esq": source_schema,
+                            "tab": source_table,
+                            "tab_id": id_val,
+                            "val_orig": addr_val[:500],
+                        }).scalar()
+
+                        # Vincular en tabla fuente
+                        session.execute(text(f"""
+                            UPDATE "{source_schema}"."{source_table}"
+                            SET "dire_id" = :dire_id
+                            WHERE "{id_col}" = :id_val;
+                        """), {"dire_id": new_dire_id, "id_val": id_val})
+
+                        migrated_count += 1
+
+                # 4. Eliminación opcional de la columna de texto original
+                column_dropped = False
+                if drop_source_col:
+                    try:
+                        session.execute(text(f"""
+                            ALTER TABLE "{source_schema}"."{source_table}"
+                            DROP COLUMN IF EXISTS "{addr_col}";
+                        """))
+                        column_dropped = True
+                        logger.info(
+                            "Columna '%s' eliminada de %s.%s tras migración desacoplada exitosa.",
+                            addr_col, source_schema, source_table
+                        )
+                    except Exception as ex_drop:
+                        logger.warning("No se pudo eliminar columna %s en %s.%s: %s", addr_col, source_schema, source_table, ex_drop)
+
+                return {
+                    "success": True,
+                    "source_schema": source_schema,
+                    "source_table": source_table,
+                    "total_source": total_source,
+                    "already_linked": already_linked,
+                    "migrated": migrated_count,
+                    "column_dropped": column_dropped,
+                }
+        except Exception as e:
+            logger.error("Error en migración de tabla fuente a tb_direccion: %s", e)
+            return {"success": False, "error": str(e)}
+
+    def get_ingested_sources_overview(self, catalog_schema: str = "public") -> List[Dict[str, Any]]:
+        """Retorna el listado de combinaciones (esquema, tabla) ingestadas en tb_direccion
+        junto con sus estadísticas de progreso catastral (total, pendientes, normalizados, rechazados).
+        """
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return []
+
+        if not self.table_exists("tb_direccion", catalog_schema):
+            return []
+
+        self.ensure_tb_direccion_columns(catalog_schema)
+
+        sql = text(f"""
+            SELECT 
+                dire_esquema,
+                dire_tabla,
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS NULL) AS pendientes,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS TRUE) AS normalizados,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS FALSE) AS rechazados,
+                MAX(fecha_proceso) AS ultima_fecha
+            FROM "{catalog_schema}"."tb_direccion"
+            WHERE dire_esquema IS NOT NULL AND dire_tabla IS NOT NULL
+            GROUP BY dire_esquema, dire_tabla
+            ORDER BY dire_esquema, dire_tabla;
+        """)
+        try:
+            with self.get_session() as session:
+                rows = session.execute(sql).fetchall()
+                results = []
+                for r in rows:
+                    last_dt = r[6].isoformat() if r[6] else None
+                    results.append({
+                        "dire_esquema": r[0],
+                        "dire_tabla": r[1],
+                        "total": int(r[2] or 0),
+                        "pendientes": int(r[3] or 0),
+                        "normalizados": int(r[4] or 0),
+                        "rechazados": int(r[5] or 0),
+                        "ultima_fecha": last_dt,
+                    })
+                return results
+        except Exception as e:
+            logger.debug("Aviso al consultar fuentes ingestadas en %s.tb_direccion: %s", catalog_schema, e)
+            return []
 
     def execute_sql_file(self, file_path: str, target_schema: Optional[str] = None) -> bool:
         """Ejecuta un script SQL en la base de datos, configurando el search_path si se provee."""

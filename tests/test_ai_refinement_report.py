@@ -54,8 +54,7 @@ class TestAIRefinementReport(unittest.TestCase):
 
         # Debe observarse con claridad al ser un puesto de mercado sin calle pública
         self.assertFalse(res.es_procesado)
-        self.assertIsNotNone(res.observacion)
-        self.assertNotIn("MCDONALD", res.observacion.upper())
+        self.assertIsNone(res.observacion)
 
     def test_id_240_elvira_garcia_y_garcia_no_two_vias_conflict(self):
         """Caso ID 240: 'AV. ELVIRA GARCIA Y GARCIA N 418'

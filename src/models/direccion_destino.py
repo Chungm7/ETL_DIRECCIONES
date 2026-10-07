@@ -1,6 +1,7 @@
 """Representación normalizada y consolidada para la arquitectura relacional V2 de Chiclayo."""
 
 import re
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field, model_validator
 
@@ -29,6 +30,29 @@ class DireccionDestino(BaseModel):
         max_length=3,
         description="Estado de la dirección: A (Activo), I (Inactivo), E (Eliminado)",
     )
+    dire_esquema: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Esquema de origen (ej. licencias, rentas, catastro)",
+    )
+    dire_tabla: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Nombre de la tabla de origen (ej. tb_licencia, tb_contribuyente)",
+    )
+    dire_tabla_id: Optional[int] = Field(
+        default=None,
+        description="Clave primaria del registro en la tabla de origen",
+    )
+    dire_valor_origen: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Cadena de texto cruda original extraída de la fuente",
+    )
+    fecha_proceso: Optional[datetime] = Field(
+        default=None,
+        description="Marca de tiempo en que el ETL procesó el registro",
+    )
 
     # Relación de Vías (soporta 1 vía o múltiples en esquina/intersección)
     # Cada elemento es un dict: {"via_id": int, "divi_numero": str, "divi_orden": int, "via_nombre": str, "tipo_via": int}
@@ -51,9 +75,9 @@ class DireccionDestino(BaseModel):
         description="Lista de dependencias y módulos en tb_direccion_tipo_modulo",
     )
 
-    es_procesado: bool = Field(
-        default=False,
-        description="TRUE si la dirección fue validada y vinculada a catastro; FALSE si fue observada",
+    es_procesado: Optional[bool] = Field(
+        default=None,
+        description="NULL: Pendiente sin procesar | TRUE: Normalizado 100% exitoso | FALSE: Rechazado / Erróneo",
     )
     observacion: Optional[str] = Field(
         default=None,

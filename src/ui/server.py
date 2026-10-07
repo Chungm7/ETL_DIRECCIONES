@@ -360,6 +360,15 @@ class InspectTableRequest(BaseModel):
     address_col: Optional[str] = Field(default=None, description="Columna con la dirección completa")
 
 
+class MigrateSourceTableRequest(BaseModel):
+    schema_name: str = Field(..., description="Nombre del esquema origen (ej. licencias)")
+    table_name: str = Field(..., description="Nombre de la tabla origen (ej. tb_licencia)")
+    id_col: str = Field(..., description="Columna ID / PK de la tabla origen")
+    address_col: str = Field(..., description="Columna con la dirección completa no estructurada")
+    drop_source_column: bool = Field(default=False, description="Si es True, elimina la columna de dirección en la tabla origen tras migrar")
+    batch_size: Optional[int] = Field(default=1000, description="Tamaño de lote para migración")
+
+
 class StartPipelineRequest(BaseModel):
     schema_name: str = Field(default_factory=lambda: get_settings().db.schema, description="Esquema destino en PostgreSQL")
     table_name: str = Field(default_factory=lambda: get_settings().db.table, description="Nombre de tabla de direcciones")
@@ -371,6 +380,7 @@ class StartPipelineRequest(BaseModel):
     require_ai: bool = Field(default=True, description="Si es True, falla de inmediato si Ollama no está operativo")
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de peticiones concurrentes a Ollama")
     judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
+    source_mode: Optional[str] = Field(default="central_tb_direccion", description="Modo de fuente: 'central_tb_direccion' o 'source_table'")
 
 
 @app.get("/", response_class=FileResponse)
@@ -412,8 +422,20 @@ async def get_system_status():
         table_counts = {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
     current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or getattr(ollama_svc, "model_name", None) or settings.ollama.model)
-    current_judge_model = state.active_judge_model or getattr(ollama_svc, "judge_model_name", None) or current_model
     ollama_base_url = getattr(ollama_svc, "base_url", settings.ollama.base_url)
+
+    # Extraer host y port de ollama_base_url para la UI
+    ai_host = "localhost"
+    ai_port = 11434
+    try:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(ollama_base_url)
+        if parsed_url.hostname:
+            ai_host = parsed_url.hostname
+        if parsed_url.port:
+            ai_port = parsed_url.port
+    except Exception:
+        pass
 
     return {
         "running": state.is_running,
@@ -421,10 +443,22 @@ async def get_system_status():
         "active_schema": state.active_schema,
         "active_table": state.active_table,
         "active_model": current_model,
-        "active_judge_model": current_judge_model,
         "num_workers": state.num_workers,
         "has_completed_session": (state.stats.get("status") == "FINISHED" and len(state.recent_records) > 0),
         "available_schemas": db_health.get("available_schemas", ["public"]),
+        "defaults": {
+            "db_host": getattr(settings.db, "host", "localhost"),
+            "db_port": getattr(settings.db, "port", 5432),
+            "db_name": getattr(settings.db, "database", "bd_mpch"),
+            "db_user": getattr(settings.db, "user", "postgres"),
+            "db_schema": getattr(settings.db, "schema", "public"),
+            "db_table": getattr(settings.db, "table", "direcciones_actual"),
+            "db_id_col": getattr(settings.db, "id_col", "id_licencia"),
+            "db_addr_col": getattr(settings.db, "dir_col", "emp_direccion"),
+            "ai_host": ai_host,
+            "ai_port": ai_port,
+            "ai_model": current_model,
+        },
         "db": {
             "connected": db_health.get("connected", False),
             "schema": db_health.get("schema", state.active_schema),
@@ -434,7 +468,6 @@ async def get_system_status():
         "ai": {
             "connected": ai_health.get("connected", False),
             "model": current_model,
-            "judge_model": current_judge_model,
             "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "base_url": ollama_base_url,
@@ -782,12 +815,24 @@ async def wizard_inspect_table(req: InspectTableRequest):
         )
         status_counts = extractor.get_status_counts()
 
+        # Comprobar si ya fue migrada a catastro central (tb_direccion)
+        central_extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema=req.schema_name,
+            table=req.table_name,
+            source_mode="central_tb_direccion",
+        )
+        central_counts = central_extractor.get_status_counts()
+        is_ingested = central_counts.get("total", 0) > 0
+
         return {
             "schema": req.schema_name,
             "table": req.table_name,
             "id_col": id_col,
             "address_col": address_col,
             "counts": status_counts,
+            "central_counts": central_counts,
+            "is_ingested": is_ingested,
             "preview": preview,
         }
     except Exception as e:
@@ -795,6 +840,46 @@ async def wizard_inspect_table(req: InspectTableRequest):
             status_code=400,
             detail=f"Error al inspeccionar tabla '{req.schema_name}.{req.table_name}': {str(e)}"
         )
+
+
+@app.post("/api/migrate-source-table")
+async def wizard_migrate_source_table(req: MigrateSourceTableRequest):
+    """Paso 4A: Migra direcciones crudas desde la tabla origen a public.tb_direccion,
+    vincula dire_id en la tabla origen mediante FK, y opcionalmente elimina la columna
+    de texto original para desacoplamiento definitivo.
+    """
+    db_svc = state.dynamic_db_service or DatabaseService()
+    try:
+        res = db_svc.migrate_source_table_to_tb_direccion(
+            source_schema=req.schema_name,
+            source_table=req.table_name,
+            id_col=req.id_col,
+            addr_col=req.address_col,
+            drop_source_col=req.drop_source_column,
+            batch_size=req.batch_size or 1000,
+        )
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Error durante la migración"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error al migrar tabla fuente a tb_direccion: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ingested-sources")
+async def get_ingested_sources():
+    """Retorna el listado de tablas y esquemas ya migrados a public.tb_direccion
+    para permitir reanudar o iniciar la normalización directa sin volver a migrar.
+    """
+    db_svc = state.dynamic_db_service or DatabaseService()
+    try:
+        sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
+        return {"success": True, "sources": sources}
+    except Exception as e:
+        logger.debug("Aviso al consultar fuentes ingestadas: %s", e)
+        return {"success": False, "sources": [], "error": str(e)}
 
 
 @app.post("/api/test-ai")
@@ -892,7 +977,8 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         dir_col  = req.address_col or getattr(dynamic_db_settings, "dir_col", "emp_direccion")
 
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
-        state.add_log(f"Motor IA: [{ollama_svc.base_url}] | Extractor: [{ollama_svc.model_name}] | Juez: [{ollama_svc.judge_model_name}]")
+        source_mode = req.source_mode or "central_tb_direccion"
+        state.add_log(f"Modo de origen: [{source_mode}]")
 
         # Construir el extractor con las columnas identificadas por el usuario en el wizard
         custom_extractor = DatabaseExtractor(
@@ -901,6 +987,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             table=target_table,
             id_col=id_col,
             dir_col=dir_col,
+            source_mode=source_mode,
         )
 
         # Construir el transformador con el servicio de IA dinámico
@@ -916,6 +1003,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             schema=target_schema,
             table=target_table,
             mode="in_place",
+            source_mode=source_mode,
             db_settings=dynamic_db_settings,
         )
 
@@ -934,6 +1022,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             loader=custom_loader,
             on_record_processed=state.add_record,
             num_workers=workers_count,
+            source_mode=source_mode,
         )
         state.pipeline = pipeline
 
@@ -1081,7 +1170,6 @@ V2_EXPORT_HEADERS = [
     "Todos_Los_Modulos",
     "Referencia",
     "Metodo_Normalizacion",
-    "Diagnostico_Observacion",
     "Fecha_Hora_Proceso",
 ]
 
@@ -1223,11 +1311,10 @@ def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[st
             ])
         headers.append("Todos_Los_Modulos")
 
-    # Metadatos del proceso y diagnóstico
+    # Metadatos del proceso
     headers.extend([
         "Referencia",
         "Metodo_Normalizacion",
-        "Diagnostico_Observacion",
         "Fecha_Hora_Proceso",
     ])
 
@@ -1480,10 +1567,7 @@ def extract_v2_export_row(
     # 26. Método de Normalización
     metodo = r.get("metodo") or r.get("metodo_normalizacion") or "IA"
 
-    # 27. Diagnóstico / Observación
-    observacion = r.get("observacion") or ""
-
-    # 28. Fecha / Hora de Proceso
+    # 27. Fecha / Hora de Proceso
     fecha_hora = r.get("time") or r.get("fecha_hora") or ""
     if not fecha_hora or fecha_hora == "-":
         fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -1508,7 +1592,6 @@ def extract_v2_export_row(
         "Todos_Los_Modulos": todos_los_modulos,
         "Referencia": referencia,
         "Metodo_Normalizacion": metodo,
-        "Diagnostico_Observacion": observacion,
         "Fecha_Hora_Proceso": fecha_hora,
     }
     row.update(row_vias_data)
@@ -1792,11 +1875,9 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
             "referencia": row_dict["Referencia"] or None,
             "dire_referencia": row_dict["Referencia"] or None,
             "metodo_normalizacion": row_dict["Metodo_Normalizacion"],
-            "diagnostico_observacion": row_dict["Diagnostico_Observacion"] or None,
             "fecha_hora_proceso": row_dict["Fecha_Hora_Proceso"],
             # Accesores directos de compatibilidad
             "es_procesado": (row_dict["Estado"] == "NORMALIZADO"),
-            "observacion": row_dict["Diagnostico_Observacion"],
             "nom_via": row_dict["Via_Principal_Nombre"] or None,
             "tipo_via_name": row_dict["Via_Principal_Tipo"] or None,
             "num_via": row_dict["Via_Principal_Numero"] or None,
@@ -1993,7 +2074,6 @@ def fetch_db_records_for_export(
             f'd."{c_slote}" AS slote' if c_slote else "NULL AS slote",
             f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
             f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
-            f'd."{c_observacion}" AS observacion' if c_observacion else "NULL AS observacion",
         ]
 
         join_clauses = []
@@ -2108,7 +2188,6 @@ def fetch_db_records_for_export(
                 "componentes": [],
                 "modulos": [],
                 "es_procesado": bool(es_proc) if es_proc is not None else False,
-                "observacion": r.get("observacion") or "",
                 "estado": estado,
                 "metodo": metodo,
                 "success": True,
