@@ -573,8 +573,8 @@ def test_fetch_db_records_for_export_standard_table_resolution():
     from src.ui.server import fetch_db_records_for_export
 
     db = DatabaseService()
-    if not db.check_connection().get("connected"):
-        pytest.skip("Base de datos PostgreSQL local no disponible")
+    if not db.check_connection().get("connected") or not (db.table_exists("direcciones_actual", schema="public") or db.table_exists("direcciones", schema="public")):
+        pytest.skip("Tabla de direcciones legacy no disponible en PostgreSQL local")
 
     # Prueba con nombre alternativo 'direcciones' que debe auto-resolver a 'direcciones_actual'
     records_proc = fetch_db_records_for_export(db, schema="public", table="direcciones", scope="all")
@@ -592,8 +592,8 @@ def test_api_export_db_end_to_end_real_db(client):
     """Verifica el endpoint /api/export-db end-to-end con la base de datos real."""
     from src.services.db_service import DatabaseService
     db = DatabaseService()
-    if not db.check_connection().get("connected"):
-        pytest.skip("Base de datos PostgreSQL local no disponible")
+    if not db.check_connection().get("connected") or not db.table_exists("direcciones_actual", schema="public"):
+        pytest.skip("Tabla direcciones_actual no disponible en PostgreSQL local")
 
     # Descarga en CSV con scope all
     res_csv = client.get("/api/export-db?schema=public&table=direcciones_actual&scope=all&format=csv")

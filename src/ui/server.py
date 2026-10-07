@@ -712,40 +712,75 @@ async def wizard_connect(req: ConnectRequest):
 
 @app.post("/api/inspect-schema")
 async def wizard_inspect_schema(req: InspectSchemaRequest):
-    """Paso 2 del wizard: lista tablas del esquema seleccionado con columnas y cantidad de filas."""
+    """Paso 3 del wizard: lista tablas del esquema seleccionado con columnas y cantidad de filas estimadas/exactas."""
     db_svc = state.dynamic_db_service or DatabaseService()
 
     try:
         from sqlalchemy import text as sa_text
         tables_info = []
         with db_svc.get_session() as session:
-            # Consultar tablas del esquema
+            # 1. Detectar si es PostgreSQL para estimación ultra-rápida vía pg_class
+            is_postgres = False
+            try:
+                dialect_name = db_svc._engine.dialect.name if db_svc._engine else ""
+                is_postgres = (dialect_name == "postgresql")
+            except Exception:
+                pass
+
+            counts_by_table: Dict[str, int] = {}
+            if is_postgres:
+                try:
+                    rel_rows = session.execute(sa_text("""
+                        SELECT c.relname, GREATEST(0, c.reltuples::bigint)
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = :schema AND c.relkind = 'r';
+                    """), {"schema": req.schema_name}).fetchall()
+                    for rname, rcount in rel_rows:
+                        counts_by_table[str(rname)] = int(rcount)
+                except Exception as ex_cnt:
+                    logger.debug("Aviso al consultar reltuples de pg_class en %s: %s", req.schema_name, ex_cnt)
+                    session.rollback()
+
+            # 2. Obtener todas las columnas del esquema en una sola consulta agrupada
+            cols_by_table: Dict[str, list] = {}
+            try:
+                col_rows = session.execute(sa_text("""
+                    SELECT table_name, column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = :schema
+                    ORDER BY table_name, ordinal_position;
+                """), {"schema": req.schema_name}).fetchall()
+                for tname, cname, ctype in col_rows:
+                    if tname not in cols_by_table:
+                        cols_by_table[tname] = []
+                    cols_by_table[tname].append({"name": str(cname), "type": str(ctype)})
+            except Exception as ex_cols:
+                logger.warning("Aviso al consultar columnas agrupadas de %s: %s", req.schema_name, ex_cols)
+                session.rollback()
+
+            # 3. Listar tablas base del esquema
             rows = session.execute(sa_text("""
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = :schema
-                  AND table_type = 'BASE TABLE'
+                  AND table_type IN ('BASE TABLE', 'TABLE')
                 ORDER BY table_name;
             """), {"schema": req.schema_name}).fetchall()
 
             for (tname,) in rows:
-                # Obtener columnas de cada tabla
-                col_rows = session.execute(sa_text("""
-                    SELECT column_name, data_type
-                    FROM information_schema.columns
-                    WHERE table_schema = :schema AND table_name = :table
-                    ORDER BY ordinal_position;
-                """), {"schema": req.schema_name, "table": tname}).fetchall()
+                columns = cols_by_table.get(tname, [])
+                count_val = counts_by_table.get(tname, -1)
 
-                columns = [{"name": c[0], "type": c[1]} for c in col_rows]
-
-                # Obtener conteo de filas
-                try:
-                    count_val = session.execute(
-                        sa_text(f'SELECT COUNT(*) FROM "{req.schema_name}"."{tname}";')
-                    ).scalar() or 0
-                except Exception:
-                    count_val = -1
+                # Si no es postgres (ej. SQLite en tests) o no se obtuvo conteo, contar de forma aislada
+                if count_val == -1 and not is_postgres:
+                    try:
+                        with session.begin_nested():
+                            count_val = session.execute(
+                                sa_text(f'SELECT COUNT(*) FROM "{tname}";')
+                            ).scalar() or 0
+                    except Exception:
+                        count_val = -1
 
                 tables_info.append({
                     "name": tname,
@@ -758,6 +793,7 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
             "tables": tables_info,
         }
     except Exception as e:
+        logger.error("Error inspeccionando esquema '%s': %s", req.schema_name, e)
         raise HTTPException(status_code=400, detail=f"Error inspeccionando esquema '{req.schema_name}': {str(e)}")
 
 

@@ -716,7 +716,30 @@ async function previewTable() {
   }
 }
 
-async function migrateSourceTable() {
+// ── Modos de Flujo (Bifurcación: Ingesta vs Normalización) ──
+function switchWorkflowMode(mode) {
+  const cardMigrate = document.getElementById('cardModeMigrate');
+  const cardResume  = document.getElementById('cardModeResume');
+  const viewMigrate = document.getElementById('viewModeMigrate');
+  const viewResume  = document.getElementById('viewModeResume');
+
+  if (mode === 'resume') {
+    cardResume?.classList.add('selected');
+    cardMigrate?.classList.remove('selected');
+    viewMigrate?.classList.add('hidden');
+    viewResume?.classList.remove('hidden');
+    loadIngestedSources();
+  } else {
+    cardMigrate?.classList.add('selected');
+    cardResume?.classList.remove('selected');
+    viewMigrate?.classList.remove('hidden');
+    viewResume?.classList.add('hidden');
+  }
+}
+
+let pendingMigrationConfig = null;
+
+function openMigrationConfirmModal() {
   const id_col   = document.getElementById('sel_id_col')?.value || wiz.id_col;
   const addr_col = document.getElementById('sel_addr_col')?.value || wiz.addr_col;
   const dropCol  = document.getElementById('chkDropSourceCol')?.checked || false;
@@ -726,56 +749,97 @@ async function migrateSourceTable() {
     return;
   }
 
-  if (dropCol && !confirm(`¿Está seguro de eliminar la columna '${addr_col}' de la tabla '${wiz.schema}.${wiz.table}' tras migrar?\n\nLas direcciones crudas quedarán respaldadas de forma íntegra y segura en public.tb_direccion.`)) {
-    return;
+  pendingMigrationConfig = {
+    schema_name: wiz.schema,
+    table_name: wiz.table,
+    id_col: id_col,
+    address_col: addr_col,
+    drop_source_column: dropCol,
+  };
+
+  document.getElementById('modalMigrateSchemaText').textContent = wiz.schema;
+  document.getElementById('modalMigrateTableText').textContent = wiz.table;
+  document.getElementById('modalMigrateIdColText').textContent = id_col;
+  document.getElementById('modalMigrateAddrColText').textContent = addr_col;
+
+  const dropBadge = document.getElementById('modalMigrateDropColBadge');
+  if (dropBadge) {
+    if (dropCol) {
+      dropBadge.innerHTML = `<span class="badge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:700;">Sí, eliminar columna en origen</span>`;
+    } else {
+      dropBadge.innerHTML = `<span class="badge" style="background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; font-weight:700;">No, conservar columna</span>`;
+    }
   }
 
-  const btn = document.getElementById('btnMigrateSource');
-  if (btn) btn.disabled = true;
+  document.getElementById('modalConfirmMigrationOverlay').classList.remove('hidden');
+}
 
-  const resDiv = document.getElementById('migrationResult');
-  if (resDiv) {
-    resDiv.classList.remove('hidden');
-    resDiv.innerHTML = `<span style="color:#2563eb;">Migrando registros crudos a public.tb_direccion... por favor espere.</span>`;
-  }
+function closeMigrationConfirmModal() {
+  document.getElementById('modalConfirmMigrationOverlay').classList.add('hidden');
+}
+
+async function executeConfirmedMigration() {
+  closeMigrationConfirmModal();
+  if (!pendingMigrationConfig) return;
+
+  const progressOverlay = document.getElementById('modalMigrationProgressOverlay');
+  progressOverlay.classList.remove('hidden');
 
   try {
     const res = await fetch('/api/migrate-source-table', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        schema_name: wiz.schema,
-        table_name: wiz.table,
-        id_col: id_col,
-        address_col: addr_col,
-        drop_source_column: dropCol,
-      }),
+      body: JSON.stringify(pendingMigrationConfig),
     });
     const data = await res.json();
+
+    progressOverlay.classList.add('hidden');
+
     if (!res.ok) {
       alert('Error en la migración: ' + (data.detail || data.error || 'Error desconocido'));
-      if (resDiv) resDiv.innerHTML = `<span style="color:#dc2626;">Error: ${escapeHtml(data.detail || data.error)}</span>`;
       return;
     }
 
-    if (resDiv) {
-      resDiv.innerHTML = `
-        <span style="color:#059669; font-weight:600;">
-          ✓ Migración exitosa: ${data.migrated} registros nuevos migrados a public.tb_direccion. 
-          (${data.already_linked} vinculados previamente). 
-          ${data.column_dropped ? 'Columna de origen eliminada con éxito.' : 'Columna de origen conservada.'}
-        </span>
-      `;
-    }
+    // Cargar datos en el modal de resultado
+    document.getElementById('resMigrateTotalSource').textContent = (data.total_source || 0).toLocaleString();
+    const totalLinked = ((data.already_linked || 0) + (data.migrated || 0));
+    document.getElementById('resMigrateLinked').textContent = totalLinked.toLocaleString();
+    document.getElementById('resMigrateUnlinked').textContent = (data.remaining_unlinked || 0).toLocaleString();
+    document.getElementById('resMigrateColDropped').textContent = data.column_dropped ? 'Eliminada (Seguro)' : 'Conservada';
 
-    // Actualizar vista previa y lista de fuentes
+    // Abrir modal de resultado
+    document.getElementById('modalMigrationResultOverlay').classList.remove('hidden');
+
+    // Refrescar tablas y fuentes en background
     await previewTable();
     await loadIngestedSources();
+
   } catch (e) {
-    alert('Error de red al migrar tabla: ' + e.message);
-  } finally {
-    if (btn) btn.disabled = false;
+    progressOverlay.classList.add('hidden');
+    alert('Error de red al ejecutar migración: ' + e.message);
   }
+}
+
+function migrateAnotherTable() {
+  document.getElementById('modalMigrationResultOverlay').classList.add('hidden');
+  document.querySelectorAll('#tableCards .card-item').forEach(c => c.classList.remove('selected'));
+  document.getElementById('colConfig')?.classList.add('hidden');
+  document.getElementById('previewSection')?.classList.add('hidden');
+  document.getElementById('btnConfirmTable').disabled = true;
+  wiz.table = null;
+  wiz.columns = [];
+  switchWorkflowMode('migrate');
+}
+
+function resumeFromJustMigrated() {
+  document.getElementById('modalMigrationResultOverlay').classList.add('hidden');
+  if (pendingMigrationConfig) {
+    resumeFromCentralSource(pendingMigrationConfig.schema_name, pendingMigrationConfig.table_name);
+  }
+}
+
+async function migrateSourceTable() {
+  openMigrationConfirmModal();
 }
 
 async function loadIngestedSources() {

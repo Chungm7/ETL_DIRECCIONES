@@ -3,6 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from datetime import datetime
 from contextlib import contextmanager
 
 from src.config.settings import DatabaseSettings, get_settings
@@ -1264,99 +1265,182 @@ class DatabaseService:
         self.ensure_v2_tables_exist(target_catalog_schema)
         self.ensure_tb_direccion_columns(target_catalog_schema)
 
+        src_table_ref = f'"{source_schema}"."{source_table}"' if source_schema else f'"{source_table}"'
+        target_dir_ref = f'"{target_catalog_schema}"."tb_direccion"' if (target_catalog_schema and target_catalog_schema not in ("", "main")) else '"tb_direccion"'
+
         try:
             with self.get_session() as session:
                 # 1. Asegurar columna dire_id en la tabla fuente
-                session.execute(text(f"""
-                    ALTER TABLE "{source_schema}"."{source_table}"
-                    ADD COLUMN IF NOT EXISTS "dire_id" BIGINT;
-                """))
-
-                # Asegurar restricción FK si no existe
-                fk_name = f"fk_{source_table}_tb_direccion"[:63]
-                has_fk = session.execute(text("""
-                    SELECT 1 FROM pg_constraint WHERE conname = :conname;
-                """), {"conname": fk_name}).scalar()
-                if not has_fk:
-                    try:
+                try:
+                    if self._engine and self._engine.dialect.name == "postgresql":
                         session.execute(text(f"""
-                            ALTER TABLE "{source_schema}"."{source_table}"
-                            ADD CONSTRAINT "{fk_name}"
-                            FOREIGN KEY ("dire_id") REFERENCES "{target_catalog_schema}"."tb_direccion"("dire_id")
-                            ON UPDATE CASCADE ON DELETE SET NULL;
+                            ALTER TABLE {src_table_ref}
+                            ADD COLUMN IF NOT EXISTS "dire_id" BIGINT;
                         """))
-                    except Exception as ex_fk:
-                        logger.debug("Aviso al crear FK %s: %s", fk_name, ex_fk)
+                    else:
+                        session.execute(text(f"""
+                            ALTER TABLE {src_table_ref}
+                            ADD COLUMN "dire_id" INTEGER;
+                        """))
+                except Exception as ex_col:
+                    logger.debug("Columna dire_id ya existía o aviso en %s: %s", src_table_ref, ex_col)
+
+                # Asegurar restricción FK si no existe en PostgreSQL
+                if self._engine and self._engine.dialect.name == "postgresql":
+                    fk_name = f"fk_{source_table}_tb_direccion"[:63]
+                    has_fk = session.execute(text("""
+                        SELECT 1 FROM pg_constraint WHERE conname = :conname;
+                    """), {"conname": fk_name}).scalar()
+                    if not has_fk:
+                        try:
+                            session.execute(text(f"""
+                                ALTER TABLE {src_table_ref}
+                                ADD CONSTRAINT "{fk_name}"
+                                FOREIGN KEY ("dire_id") REFERENCES {target_dir_ref}("dire_id")
+                                ON UPDATE CASCADE ON DELETE SET NULL;
+                            """))
+                        except Exception as ex_fk:
+                            logger.debug("Aviso al crear FK %s: %s", fk_name, ex_fk)
 
                 # 2. Conteo de registros totales y ya vinculados
                 total_source = session.execute(text(f"""
-                    SELECT COUNT(*) FROM "{source_schema}"."{source_table}";
+                    SELECT COUNT(*) FROM {src_table_ref};
                 """)).scalar() or 0
 
                 already_linked = session.execute(text(f"""
-                    SELECT COUNT(*) FROM "{source_schema}"."{source_table}"
+                    SELECT COUNT(*) FROM {src_table_ref}
                     WHERE "dire_id" IS NOT NULL;
                 """)).scalar() or 0
 
-                # 3. Migrar en lotes registros que no tienen dire_id
+                # 3. Migrar la TOTALIDAD de registros que no tienen dire_id
                 migrated_count = 0
-                while True:
-                    rows = session.execute(text(f"""
-                        SELECT "{id_col}" AS id_val, "{addr_col}" AS addr_val
-                        FROM "{source_schema}"."{source_table}"
-                        WHERE "dire_id" IS NULL AND "{addr_col}" IS NOT NULL
-                        ORDER BY "{id_col}" ASC
-                        LIMIT :batch_size;
-                    """), {"batch_size": batch_size}).fetchall()
+                is_postgres = False
+                try:
+                    dialect_name = self._engine.dialect.name if self._engine else ""
+                    is_postgres = (dialect_name == "postgresql")
+                except Exception:
+                    pass
 
-                    if not rows:
-                        break
-
-                    for r in rows:
-                        id_val = r[0]
-                        addr_val = str(r[1] or "").strip()
-                        if not addr_val:
-                            continue
-
-                        # Insertar en tb_direccion conservando procedencia y semántica tri-state (NULL)
-                        new_dire_id = session.execute(text(f"""
+                if is_postgres:
+                    # En PostgreSQL: Ejecución atómica masiva vía CTE por lotes de 5,000
+                    # Las direcciones vacías/NULL se registran con dire_es_procesado = FALSE y fecha_proceso = CURRENT_TIMESTAMP
+                    # Las direcciones con texto se registran con dire_es_procesado = NULL (pendientes para IA)
+                    # Ambas reciben su dire_id vinculado en la tabla fuente sin dejar ningún registro en NULL
+                    effective_batch = max(1000, batch_size)
+                    cte_migration_sql = text(f"""
+                        WITH batch AS (
+                            SELECT "{id_col}" AS b_id, "{addr_col}" AS b_addr
+                            FROM "{source_schema}"."{source_table}"
+                            WHERE "dire_id" IS NULL
+                            LIMIT :batch_size
+                        ),
+                        inserted AS (
                             INSERT INTO "{target_catalog_schema}"."tb_direccion" (
                                 dire_esquema, dire_tabla, dire_tabla_id,
                                 dire_valor_origen, dire_es_procesado, dire_estado, fecha_proceso
-                            ) VALUES (
-                                :esq, :tab, :tab_id, :val_orig, NULL, 'ACT', NULL
-                            ) RETURNING dire_id;
-                        """), {
+                            )
+                            SELECT
+                                :esq,
+                                :tab,
+                                b.b_id,
+                                CASE WHEN TRIM(COALESCE(b.b_addr, '')) = '' THEN NULL ELSE b.b_addr END,
+                                CASE WHEN TRIM(COALESCE(b.b_addr, '')) = '' THEN FALSE ELSE NULL END,
+                                'ACT',
+                                CASE WHEN TRIM(COALESCE(b.b_addr, '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                            FROM batch b
+                            RETURNING dire_id, dire_tabla_id
+                        )
+                        UPDATE "{source_schema}"."{source_table}" src
+                        SET "dire_id" = inserted.dire_id
+                        FROM inserted
+                        WHERE src."{id_col}" = inserted.dire_tabla_id;
+                    """)
+
+                    while True:
+                        res = session.execute(cte_migration_sql, {
+                            "batch_size": effective_batch,
                             "esq": source_schema,
                             "tab": source_table,
-                            "tab_id": id_val,
-                            "val_orig": addr_val[:500],
-                        }).scalar()
+                        })
+                        affected = res.rowcount or 0
+                        if affected == 0:
+                            break
+                        migrated_count += affected
+                        logger.info("Migrados y enlazados %d registros en %s.%s (total: %d)", affected, source_schema, source_table, migrated_count)
 
-                        # Vincular en tabla fuente
-                        session.execute(text(f"""
-                            UPDATE "{source_schema}"."{source_table}"
-                            SET "dire_id" = :dire_id
-                            WHERE "{id_col}" = :id_val;
-                        """), {"dire_id": new_dire_id, "id_val": id_val})
+                else:
+                    # Modo estándar / SQLite (garantizando asignación a TODAS las filas sin omitir vacías)
+                    while True:
+                        rows = session.execute(text(f"""
+                            SELECT "{id_col}" AS id_val, "{addr_col}" AS addr_val
+                            FROM {src_table_ref}
+                            WHERE "dire_id" IS NULL
+                            ORDER BY "{id_col}" ASC
+                            LIMIT :batch_size;
+                        """), {"batch_size": batch_size}).fetchall()
 
-                        migrated_count += 1
+                        if not rows:
+                            break
 
-                # 4. Eliminación opcional de la columna de texto original
+                        for r in rows:
+                            id_val = r[0]
+                            raw_addr = r[1]
+                            addr_val = str(raw_addr or "").strip()
+                            is_empty = (not addr_val)
+
+                            # Insertar en tb_direccion: vacías como FALSE, con texto como NULL
+                            new_dire_id = session.execute(text(f"""
+                                INSERT INTO {target_dir_ref} (
+                                    dire_esquema, dire_tabla, dire_tabla_id,
+                                    dire_valor_origen, dire_es_procesado, dire_estado, fecha_proceso
+                                ) VALUES (
+                                    :esq, :tab, :tab_id, :val_orig, :es_proc, 'ACT', :f_proc
+                                ) RETURNING dire_id;
+                            """), {
+                                "esq": source_schema or "public",
+                                "tab": source_table,
+                                "tab_id": id_val,
+                                "val_orig": None if is_empty else addr_val[:500],
+                                "es_proc": False if is_empty else None,
+                                "f_proc": datetime.now() if is_empty else None,
+                            }).scalar()
+
+                            # Vincular en tabla fuente
+                            session.execute(text(f"""
+                                UPDATE {src_table_ref}
+                                SET "dire_id" = :dire_id
+                                WHERE "{id_col}" = :id_val;
+                            """), {"dire_id": new_dire_id, "id_val": id_val})
+
+                            migrated_count += 1
+
+                # 4. Verificación de blindaje: Asegurar 0 filas huérfanas
+                remaining_unlinked = session.execute(text(f"""
+                    SELECT COUNT(*) FROM {src_table_ref}
+                    WHERE "dire_id" IS NULL;
+                """)).scalar() or 0
+
+                # 5. Eliminación opcional de la columna de texto original (solo si 100% vinculados)
                 column_dropped = False
                 if drop_source_col:
-                    try:
-                        session.execute(text(f"""
-                            ALTER TABLE "{source_schema}"."{source_table}"
-                            DROP COLUMN IF EXISTS "{addr_col}";
-                        """))
-                        column_dropped = True
-                        logger.info(
-                            "Columna '%s' eliminada de %s.%s tras migración desacoplada exitosa.",
-                            addr_col, source_schema, source_table
+                    if remaining_unlinked == 0:
+                        try:
+                            session.execute(text(f"""
+                                ALTER TABLE {src_table_ref}
+                                DROP COLUMN IF EXISTS "{addr_col}";
+                            """))
+                            column_dropped = True
+                            logger.info(
+                                "Columna '%s' eliminada de %s.%s tras migración desacoplada completa.",
+                                addr_col, source_schema, source_table
+                            )
+                        except Exception as ex_drop:
+                            logger.warning("No se pudo eliminar columna %s en %s.%s: %s", addr_col, source_schema, source_table, ex_drop)
+                    else:
+                        logger.warning(
+                            "No se eliminó la columna '%s' porque aún restan %d registros sin vincular.",
+                            addr_col, remaining_unlinked
                         )
-                    except Exception as ex_drop:
-                        logger.warning("No se pudo eliminar columna %s en %s.%s: %s", addr_col, source_schema, source_table, ex_drop)
 
                 return {
                     "success": True,
@@ -1365,6 +1449,7 @@ class DatabaseService:
                     "total_source": total_source,
                     "already_linked": already_linked,
                     "migrated": migrated_count,
+                    "remaining_unlinked": remaining_unlinked,
                     "column_dropped": column_dropped,
                 }
         except Exception as e:

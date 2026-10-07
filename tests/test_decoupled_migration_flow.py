@@ -276,3 +276,56 @@ class TestDecoupledDatabaseOperations:
             assert rentas_source["total"] == 1
             assert rentas_source["pendientes"] == 1
             assert rentas_source["normalizados"] == 0
+
+    def test_migration_handles_empty_and_null_addresses_without_orphans(self, db_svc):
+        """Verifica que registros con dirección NULL o vacía (ej. caso 34680) se vinculen a tb_direccion sin quedar huérfanos."""
+        with db_svc.get_session() as session:
+            # Crear una tabla fuente con mezcla de casos
+            session.execute(text("""
+                CREATE TABLE test_mixed (
+                    id_lic INTEGER PRIMARY KEY AUTOINCREMENT,
+                    dir_raw VARCHAR(500),
+                    dire_id INTEGER
+                );
+            """))
+            session.execute(text("""
+                INSERT INTO test_mixed (id_lic, dir_raw) VALUES
+                (1, 'AV. BALTA 100'),
+                (2, ''),
+                (3, NULL),
+                (4, '   '),
+                (34680, NULL);
+            """))
+
+        with patch.object(db_svc, "ensure_v2_tables_exist"), patch.object(db_svc, "ensure_tb_direccion_columns"):
+            # En SQLite no hay prefijo de esquema en la tabla, simulamos ejecutando directamente la lógica del loader
+            res = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="",
+                source_table="test_mixed",
+                id_col="id_lic",
+                addr_col="dir_raw",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+
+            # Comprobar reporte
+            assert res["success"] is True
+            assert res["migrated"] == 5
+            assert res["remaining_unlinked"] == 0
+
+            # Verificar que en test_mixed NINGUNA fila tenga dire_id NULL
+            with db_svc.get_session() as session:
+                unlinked = session.execute(text("SELECT COUNT(*) FROM test_mixed WHERE dire_id IS NULL")).scalar()
+                assert unlinked == 0
+
+                # Verificar el caso 34680 específicamente
+                row_34680 = session.execute(text("SELECT id_lic, dire_id FROM test_mixed WHERE id_lic = 34680")).fetchone()
+                assert row_34680 is not None
+                assert row_34680[1] is not None
+                assert row_34680[1] > 0
+
+                # Verificar en tb_direccion cómo quedó el registro 34680
+                dir_row = session.execute(text(f"SELECT dire_id, dire_tabla_id, dire_es_procesado FROM tb_direccion WHERE dire_id = {row_34680[1]}")).fetchone()
+                assert dir_row is not None
+                assert dir_row[1] == 34680
+                assert dir_row[2] == 0  # Marcado como FALSE (no procesable / vacío)
