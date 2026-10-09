@@ -124,12 +124,11 @@ class TestDecoupledDatabaseOperations:
                 );
             """))
 
-            # Crear tabla fuente de prueba
+            # Crear tabla fuente de prueba (sin columna dire_id)
             session.execute(text("""
                 CREATE TABLE test_source (
                     id_registro INTEGER PRIMARY KEY AUTOINCREMENT,
-                    direccion_raw VARCHAR(500),
-                    dire_id INTEGER
+                    direccion_raw VARCHAR(500)
                 );
             """))
             # Insertar registros fuente sin migrar
@@ -143,18 +142,19 @@ class TestDecoupledDatabaseOperations:
         return svc
 
     def test_migration_phase_a(self, db_svc):
-        """Verifica la Fase A: migración desde test_source hacia tb_direccion y vinculación de dire_id."""
+        """Verifica la Fase A: migración desde test_source hacia tb_direccion sin alterar la tabla fuente."""
         with patch.object(db_svc, "ensure_v2_tables_exist"), patch.object(db_svc, "ensure_tb_direccion_columns"):
-            # En SQLite no hay esquemas separados, simulamos con source_schema=''
-            with db_svc.get_session() as session:
-                rows = session.execute(text("SELECT id_registro, direccion_raw FROM test_source WHERE dire_id IS NULL")).fetchall()
-                for r in rows:
-                    res_dir = session.execute(text("""
-                        INSERT INTO tb_direccion (dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_estado)
-                        VALUES ('licencias', 'test_source', :tid, :val, NULL, 'ACT')
-                    """), {"tid": r[0], "val": r[1]})
-                    last_id = res_dir.lastrowid
-                    session.execute(text("UPDATE test_source SET dire_id = :did WHERE id_registro = :tid"), {"did": last_id, "tid": r[0]})
+            res = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="licencias",
+                source_table="test_source",
+                id_col="id_registro",
+                addr_col="direccion_raw",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+            assert res["success"] is True
+            assert res["migrated"] == 3
+            assert res["total_in_tb_direccion"] == 3
 
             # Validar que los 3 registros estén en tb_direccion con dire_es_procesado = NULL
             with db_svc.get_session() as session:
@@ -163,12 +163,9 @@ class TestDecoupledDatabaseOperations:
                 for row in dir_rows:
                     assert row[3] is None  # dire_es_procesado is NULL
 
-                # Validar que test_source tenga dire_id vinculado
-                src_rows = session.execute(text("SELECT id_registro, dire_id FROM test_source")).fetchall()
+                # Validar que test_source conserve sus datos sin columnas impuestas
+                src_rows = session.execute(text("SELECT id_registro, direccion_raw FROM test_source")).fetchall()
                 assert len(src_rows) == 3
-                for sr in src_rows:
-                    assert sr[1] is not None
-                    assert sr[1] > 0
 
     def test_extractor_central_tb_direccion_mode(self, db_svc):
         """Verifica que DatabaseExtractor en modo central_tb_direccion consulte y extraiga de tb_direccion."""
@@ -278,14 +275,13 @@ class TestDecoupledDatabaseOperations:
             assert rentas_source["normalizados"] == 0
 
     def test_migration_handles_empty_and_null_addresses_without_orphans(self, db_svc):
-        """Verifica que registros con dirección NULL o vacía (ej. caso 34680) se vinculen a tb_direccion sin quedar huérfanos."""
+        """Verifica que registros con dirección NULL o vacía (ej. caso 34680) se migren a tb_direccion sin quedar fuera."""
         with db_svc.get_session() as session:
-            # Crear una tabla fuente con mezcla de casos
+            # Crear tabla fuente limpia (sin dire_id) con mezcla de casos
             session.execute(text("""
                 CREATE TABLE test_mixed (
                     id_lic INTEGER PRIMARY KEY AUTOINCREMENT,
-                    dir_raw VARCHAR(500),
-                    dire_id INTEGER
+                    dir_raw VARCHAR(500)
                 );
             """))
             session.execute(text("""
@@ -298,7 +294,7 @@ class TestDecoupledDatabaseOperations:
             """))
 
         with patch.object(db_svc, "ensure_v2_tables_exist"), patch.object(db_svc, "ensure_tb_direccion_columns"):
-            # En SQLite no hay prefijo de esquema en la tabla, simulamos ejecutando directamente la lógica del loader
+            # En SQLite no hay prefijo de esquema en la tabla, simulamos ejecutando directamente la lógica de migración
             res = db_svc.migrate_source_table_to_tb_direccion(
                 source_schema="",
                 source_table="test_mixed",
@@ -311,21 +307,114 @@ class TestDecoupledDatabaseOperations:
             # Comprobar reporte
             assert res["success"] is True
             assert res["migrated"] == 5
+            assert res["total_in_tb_direccion"] == 5
             assert res["remaining_unlinked"] == 0
 
-            # Verificar que en test_mixed NINGUNA fila tenga dire_id NULL
+            # Verificar que en test_mixed las 5 filas se conservan intactas
             with db_svc.get_session() as session:
-                unlinked = session.execute(text("SELECT COUNT(*) FROM test_mixed WHERE dire_id IS NULL")).scalar()
-                assert unlinked == 0
+                count_src = session.execute(text("SELECT COUNT(*) FROM test_mixed")).scalar()
+                assert count_src == 5
 
-                # Verificar el caso 34680 específicamente
-                row_34680 = session.execute(text("SELECT id_lic, dire_id FROM test_mixed WHERE id_lic = 34680")).fetchone()
-                assert row_34680 is not None
-                assert row_34680[1] is not None
-                assert row_34680[1] > 0
-
-                # Verificar en tb_direccion cómo quedó el registro 34680
-                dir_row = session.execute(text(f"SELECT dire_id, dire_tabla_id, dire_es_procesado FROM tb_direccion WHERE dire_id = {row_34680[1]}")).fetchone()
+                # Verificar en tb_direccion cómo quedó el registro 34680 (migrado con éxito y dire_es_procesado = FALSE)
+                dir_row = session.execute(text("SELECT dire_id, dire_tabla_id, dire_es_procesado FROM tb_direccion WHERE dire_tabla_id = 34680")).fetchone()
                 assert dir_row is not None
                 assert dir_row[1] == 34680
                 assert dir_row[2] == 0  # Marcado como FALSE (no procesable / vacío)
+
+    def test_pipeline_transformer_propagates_dire_id_and_metadata(self):
+        """Valida que PipelineTransformer y AIAddressParser preserven dire_id y metadatos sin perderlos."""
+        from src.transformers.pipeline_transformer import PipelineTransformer
+        from src.transformers.ai_parser import AIAddressParser
+
+        # 1. Caso registro con dirección válida
+        orig = DireccionOrigen(
+            id_licencia=34680,
+            emp_direccion="AV. BALTA 123",
+            dire_id=999,
+            dire_esquema="licencias",
+            dire_tabla="tb_licencia",
+            dire_tabla_id=34680,
+            dire_valor_origen="AV. BALTA 123",
+            es_procesado=False,
+        )
+
+        # Modo sin IA
+        transformer_no_ai = PipelineTransformer(use_ai=False)
+        dest_no_ai = transformer_no_ai.transform_record(orig)
+        assert dest_no_ai.dire_id == 999
+        assert dest_no_ai.dire_esquema == "licencias"
+        assert dest_no_ai.dire_tabla == "tb_licencia"
+        assert dest_no_ai.dire_tabla_id == 34680
+        assert dest_no_ai.dire_valor_origen == "AV. BALTA 123"
+
+        # Modo con IA (mockeando el modelo de Ollama para retornar extracción simple)
+        mock_ai_parser = MagicMock(spec=AIAddressParser)
+        mock_ai_parser.parse.return_value = DireccionDestino(
+            id_licencia=34680,
+            dire_id=999,
+            dire_esquema="licencias",
+            dire_tabla="tb_licencia",
+            dire_tabla_id=34680,
+            dire_valor_origen="AV. BALTA 123",
+            es_procesado=True,
+            vias=[{"via_id": 1, "divi_numero": "123"}],
+        )
+        transformer_ai = PipelineTransformer(ai_parser=mock_ai_parser, use_ai=True)
+        dest_ai = transformer_ai.transform_record(orig)
+        assert dest_ai.dire_id == 999
+        assert dest_ai.dire_esquema == "licencias"
+        assert dest_ai.dire_tabla_id == 34680
+
+        # 2. Caso registro vacío
+        orig_empty = DireccionOrigen(
+            id_licencia=34680,
+            emp_direccion="",
+            dire_id=999,
+            dire_esquema="licencias",
+            dire_tabla="tb_licencia",
+            dire_tabla_id=34680,
+            dire_valor_origen=None,
+        )
+        dest_empty = transformer_no_ai.transform_record(orig_empty)
+        assert dest_empty.dire_id == 999
+        assert dest_empty.es_procesado is False
+        assert dest_empty.dire_tabla_id == 34680
+
+    def test_ensure_v2_tables_exist_creates_all_10_tables_and_seeds(self):
+        """Verifica que ensure_v2_tables_exist cree las 10 tablas relacionales V2 completas y siembre catálogos."""
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        svc = DatabaseService()
+        engine = create_engine("sqlite:///:memory:")
+        svc._engine = engine
+        svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+        res = svc.ensure_v2_tables_exist()
+        assert res["status"] in ("OK", "ALL_TABLES_READY")
+
+        expected_tables = [
+            "tb_tipo_via", "tb_via", "tb_tipo_zona", "tb_zona",
+            "tb_direccion", "tb_direccion_via", "tb_componente_direccion",
+            "tb_contenido_componente_direccion", "tb_tipo_modulo",
+            "tb_direccion_tipo_modulo"
+        ]
+        for tbl in expected_tables:
+            assert svc.table_exists(tbl) is True, f"Tabla {tbl} debe existir tras ensure_v2_tables_exist"
+
+        # Validar sembrado de catálogos
+        with svc.get_session() as session:
+            tv_count = session.execute(text("SELECT COUNT(*) FROM tb_tipo_via")).scalar()
+            assert tv_count == 12
+            tz_count = session.execute(text("SELECT COUNT(*) FROM tb_tipo_zona")).scalar()
+            assert tz_count == 28
+            comp_count = session.execute(text("SELECT COUNT(*) FROM tb_componente_direccion")).scalar()
+            assert comp_count == 12
+            mod_count = session.execute(text("SELECT COUNT(*) FROM tb_tipo_modulo")).scalar()
+            assert mod_count == 13
+
+        # Segunda llamada: Idempotencia y Fast-Path
+        res_fast = svc.ensure_v2_tables_exist()
+        assert res_fast["status"] == "ALL_TABLES_READY"
+
+

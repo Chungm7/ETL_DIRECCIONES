@@ -160,10 +160,11 @@ class ETLPipeline:
         else:
             print(f"[CONFIG] Juez IA: OPERATIVO (Modelo 2: {judge_model})")
 
-        # Paso 1: Asegurar arquitectura relacional V2 completa con nomenclatura tb_
+        # Paso 1: Arquitectura relacional V2 en central_tb_direccion
         if self.source_mode == "central_tb_direccion":
+            # Garantizar que las 10 tablas relacionales V2 y sus catálogos existan en public.
+            # Gracias al fast-path en ensure_v2_tables_exist, si ya existen todas completa en < 5ms.
             self.db.ensure_v2_tables_exist(schema="public")
-            self.db.ensure_tb_direccion_columns(schema="public")
             CatalogMatcher.sync_with_db(self.db, "public")
             msg = f"[CONFIG] BD: Catastro Central public.tb_direccion listo para normalización de [{self.schema}.{self.table}]"
             if RICH_AVAILABLE and console:

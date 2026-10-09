@@ -26,6 +26,11 @@ class AIAddressParser:
         if record.is_empty():
             return DireccionDestino(
                 id_licencia=record.id_licencia,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
                 es_procesado=False,
                 observacion="DIRECCIÓN VACÍA: El registro no contiene texto de dirección",
                 metodo_normalizacion="N/A",
@@ -1393,7 +1398,11 @@ class AIAddressParser:
             # Se devuelven relaciones vacías, es_procesado=False y observacion=None.
             return DireccionDestino(
                 id_licencia=record.id_licencia,
-                dire_id=None,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
                 zona_id=None,
                 dire_referencia=None,
                 vias=[],
@@ -1420,7 +1429,11 @@ class AIAddressParser:
 
             return DireccionDestino(
                 id_licencia=record.id_licencia,
-                dire_id=None,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
                 zona_id=matched_zona["id"] if matched_zona else None,
                 dire_referencia=clean_referencia,
                 vias=vias_result,

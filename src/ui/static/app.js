@@ -5,6 +5,82 @@
  * 1. Conexión IA (Ollama) -> 2. Conexión BD -> 3. Esquema -> 4. Tabla y Mapeo -> 5. Inspector Catastral
  */
 
+// ── Sistema de Alertas y Notificaciones Institucionales MPCH (Reemplazo de alert/localhost) ──
+function showModalAlert(title, message, type = 'info') {
+  const overlay = document.getElementById('modalAlertOverlay');
+  if (!overlay) {
+    console.warn('[ALERTA MPCH]', title, message);
+    return;
+  }
+  const titleEl = document.getElementById('modalAlertTitle');
+  const msgEl = document.getElementById('modalAlertMessage');
+  const badgeEl = document.getElementById('modalAlertIconBadge');
+  const iconInfo = document.getElementById('modalAlertIconInfo');
+  const iconWarn = document.getElementById('modalAlertIconWarning');
+  const iconErr = document.getElementById('modalAlertIconError');
+  const iconSuccess = document.getElementById('modalAlertIconSuccess');
+  const btnOk = document.getElementById('modalAlertBtnOk');
+
+  if (titleEl) titleEl.textContent = title || 'Aviso del Sistema';
+  if (msgEl) msgEl.textContent = message || '';
+
+  [iconInfo, iconWarn, iconErr, iconSuccess].forEach(ic => ic?.classList.add('hidden'));
+
+  if (type === 'error') {
+    iconErr?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#fef2f2';
+      badgeEl.style.borderColor = '#fecaca';
+      badgeEl.style.color = '#dc2626';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-red';
+    }
+  } else if (type === 'warning') {
+    iconWarn?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#fffbeb';
+      badgeEl.style.borderColor = '#fef3c7';
+      badgeEl.style.color = '#d97706';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-primary';
+    }
+  } else if (type === 'success') {
+    iconSuccess?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#f0fdf4';
+      badgeEl.style.borderColor = '#bbf7d0';
+      badgeEl.style.color = '#16a34a';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-green';
+    }
+  } else {
+    iconInfo?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#eff6ff';
+      badgeEl.style.borderColor = '#bfdbfe';
+      badgeEl.style.color = '#2563eb';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-primary';
+    }
+  }
+
+  overlay.classList.remove('hidden');
+}
+
+function closeAlertModal() {
+  const overlay = document.getElementById('modalAlertOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// Interceptar window.alert nativo para que nunca muestre popup "localhost:8080 dice:"
+window.alert = function(msg) {
+  showModalAlert('Aviso del Sistema', String(msg || ''), 'info');
+};
+
 // ── Estado Global del Asistente ──────────────────────────────────────────────
 const wiz = {
   step: 1,
@@ -75,6 +151,16 @@ function syncNumWorkers(val) {
 
 // ── Navegación e Interactividad del Stepper ──────────────────────────────────
 function tryGoStep(n) {
+  if (n === 5) {
+    if (!wiz.schema || !wiz.table || wiz.source_mode !== 'central_tb_direccion' || n > wiz.maxStepUnlocked) {
+      showModalAlert(
+        'Normalización con IA Bloqueada',
+        'Para ingresar a la Normalización con IA (Paso 5), primero debe:\n1. Migrar e ingestar una tabla a public.tb_direccion, o\n2. Seleccionar una fuente en la lista de Reanudación del Paso 4.',
+        'warning'
+      );
+      return;
+    }
+  }
   if (n <= wiz.maxStepUnlocked) {
     goStep(n);
   }
@@ -493,7 +579,7 @@ async function inspectSchema() {
     const data = await res.json();
 
     if (!res.ok) {
-      alert('Error al inspeccionar el esquema: ' + (data.detail || 'Error desconocido'));
+      showModalAlert('Error al Inspeccionar Esquema', data.detail || 'Error desconocido', 'error');
       return;
     }
 
@@ -511,7 +597,7 @@ async function inspectSchema() {
     goStep(4);
 
   } catch (e) {
-    alert('Error de red al consultar tablas: ' + e.message);
+    showModalAlert('Error de Red', 'Error al consultar tablas: ' + e.message, 'error');
   } finally {
     setLoading('btnSchema', 'spinSchema', false);
   }
@@ -598,10 +684,18 @@ function showColumnConfig(tableInfo) {
 
   const bestId = tableInfo.columns.find(c =>
     idHints.some(h => c.name.toLowerCase().includes(h))
-  );
-  const bestAddr = tableInfo.columns.find(c =>
+  ) || tableInfo.columns[0];
+
+  let bestAddr = tableInfo.columns.find(c =>
     addrHints.some(h => c.name.toLowerCase().includes(h))
   );
+
+  // Si la columna de dirección original ya fue eliminada tras migración exitosa:
+  if (!bestAddr) {
+    bestAddr = tableInfo.columns.find(c => c.name.toLowerCase() === 'dire_id')
+      || tableInfo.columns.find(c => c.name !== (bestId ? bestId.name : ''))
+      || tableInfo.columns[0];
+  }
 
   if (bestId)   selId.value   = bestId.name;
   if (bestAddr) selAddr.value = bestAddr.name;
@@ -638,7 +732,7 @@ async function previewTable() {
   const addr_col = document.getElementById('sel_addr_col').value;
 
   if (!id_col || !addr_col) {
-    alert('Debe seleccionar la columna identificador único (ID) y la columna de dirección.');
+    showModalAlert('Columnas Requeridas', 'Debe seleccionar la columna identificador único (ID) y la columna de dirección.', 'warning');
     return;
   }
 
@@ -658,7 +752,7 @@ async function previewTable() {
     const data = await res.json();
 
     if (!res.ok) {
-      alert('Error al obtener vista previa: ' + (data.detail || 'Error desconocido'));
+      showModalAlert('Error de Vista Previa', data.detail || 'Error desconocido', 'error');
       return;
     }
 
@@ -707,10 +801,20 @@ async function previewTable() {
     });
 
     document.getElementById('previewSection').classList.remove('hidden');
-    document.getElementById('btnConfirmTable').disabled = false;
+
+    const statusBanner = document.getElementById('migrationStatusBanner');
+    const statusText   = document.getElementById('migrationStatusText');
+    if (data.is_ingested && (c_cent.total || 0) > 0) {
+      if (statusBanner && statusText) {
+        statusText.innerHTML = `Esta tabla ya cuenta con <strong>${(c_cent.total||0).toLocaleString()}</strong> registros en <code>public.tb_direccion</code> (${(c_cent.pendientes||0).toLocaleString()} pendientes). Puede pasar a normalizar con IA directamente o volver a sincronizar.`;
+        statusBanner.classList.remove('hidden');
+      }
+    } else {
+      if (statusBanner) statusBanner.classList.add('hidden');
+    }
 
   } catch (e) {
-    alert('Error de red al previsualizar tabla: ' + e.message);
+    showModalAlert('Error de Red', 'Error al previsualizar tabla: ' + e.message, 'error');
   } finally {
     setLoading('btnPreview', 'spinPreview', false);
   }
@@ -745,7 +849,7 @@ function openMigrationConfirmModal() {
   const dropCol  = document.getElementById('chkDropSourceCol')?.checked || false;
 
   if (!wiz.schema || !wiz.table || !id_col || !addr_col) {
-    alert('Debe seleccionar la tabla y las columnas de ID y Dirección antes de migrar.');
+    showModalAlert('Campos Incompletos', 'Debe seleccionar la tabla y las columnas de ID y Dirección antes de migrar.', 'warning');
     return;
   }
 
@@ -796,16 +900,21 @@ async function executeConfirmedMigration() {
     progressOverlay.classList.add('hidden');
 
     if (!res.ok) {
-      alert('Error en la migración: ' + (data.detail || data.error || 'Error desconocido'));
+      showModalAlert('Error en la Migración', data.detail || data.error || 'Error desconocido', 'error');
       return;
     }
 
     // Cargar datos en el modal de resultado
     document.getElementById('resMigrateTotalSource').textContent = (data.total_source || 0).toLocaleString();
-    const totalLinked = ((data.already_linked || 0) + (data.migrated || 0));
-    document.getElementById('resMigrateLinked').textContent = totalLinked.toLocaleString();
+    const totalInDir = data.total_in_tb_direccion || ((data.already_migrated || data.already_linked || 0) + (data.migrated || 0));
+    document.getElementById('resMigrateLinked').textContent = totalInDir.toLocaleString();
     document.getElementById('resMigrateUnlinked').textContent = (data.remaining_unlinked || 0).toLocaleString();
-    document.getElementById('resMigrateColDropped').textContent = data.column_dropped ? 'Eliminada (Seguro)' : 'Conservada';
+    document.getElementById('resMigrateColDropped').textContent = data.column_dropped ? 'Eliminada (Desacoplada)' : 'Conservada';
+
+    // Desbloquear Paso 5 para esta tabla migrada
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+    const tab5 = document.getElementById('tab5');
+    if (tab5) tab5.classList.remove('locked');
 
     // Abrir modal de resultado
     document.getElementById('modalMigrationResultOverlay').classList.remove('hidden');
@@ -816,25 +925,29 @@ async function executeConfirmedMigration() {
 
   } catch (e) {
     progressOverlay.classList.add('hidden');
-    alert('Error de red al ejecutar migración: ' + e.message);
+    showModalAlert('Error de Red', 'Error al ejecutar migración: ' + e.message, 'error');
   }
 }
 
 function migrateAnotherTable() {
-  document.getElementById('modalMigrationResultOverlay').classList.add('hidden');
+  document.getElementById('modalMigrationResultOverlay')?.classList.add('hidden');
   document.querySelectorAll('#tableCards .card-item').forEach(c => c.classList.remove('selected'));
   document.getElementById('colConfig')?.classList.add('hidden');
   document.getElementById('previewSection')?.classList.add('hidden');
-  document.getElementById('btnConfirmTable').disabled = true;
+  document.getElementById('migrationStatusBanner')?.classList.add('hidden');
   wiz.table = null;
   wiz.columns = [];
   switchWorkflowMode('migrate');
 }
 
 function resumeFromJustMigrated() {
-  document.getElementById('modalMigrationResultOverlay').classList.add('hidden');
-  if (pendingMigrationConfig) {
-    resumeFromCentralSource(pendingMigrationConfig.schema_name, pendingMigrationConfig.table_name);
+  document.getElementById('modalMigrationResultOverlay')?.classList.add('hidden');
+  const targetSchema = pendingMigrationConfig?.schema_name || wiz.schema;
+  const targetTable  = pendingMigrationConfig?.table_name || wiz.table;
+  if (targetSchema && targetTable) {
+    resumeFromCentralSource(targetSchema, targetTable);
+  } else {
+    showModalAlert('Selección Requerida', 'Seleccione una tabla antes de pasar a la normalización.', 'warning');
   }
 }
 
@@ -913,30 +1026,20 @@ function confirmTable() {
   if (selAddr) wiz.addr_col = selAddr;
 
   if (!wiz.table || !wiz.id_col || !wiz.addr_col) {
-    alert('Por favor seleccione la tabla y las columnas de ID y Dirección antes de continuar.');
+    showModalAlert('Selección Requerida', 'Por favor seleccione la tabla y las columnas de ID y Dirección antes de continuar.', 'warning');
     return;
   }
 
-  wiz.source_mode = 'central_tb_direccion';
+  if (!wiz.is_ingested || (wiz.centralCounts?.total || 0) === 0) {
+    showModalAlert(
+      'Migración Requerida',
+      'Esta tabla aún no ha sido migrada a public.tb_direccion. Por favor haga clic en "Migrar e Ingestar a tb_direccion" antes de normalizar con IA.',
+      'warning'
+    );
+    return;
+  }
 
-  document.getElementById('summSchema').textContent  = wiz.schema;
-  document.getElementById('summTable').textContent   = wiz.table;
-  document.getElementById('summId').textContent      = wiz.id_col;
-  document.getElementById('summAddr').textContent    = wiz.addr_col;
-
-  const elAiModel = document.getElementById('summAiModel');
-  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model || 'Ollama'}`;
-  const elAiHost = document.getElementById('summAiHost');
-  if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
-
-  syncNumWorkers(wiz.num_workers || 4);
-
-  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
-  const tab5 = document.getElementById('tab5');
-  if (tab5) tab5.classList.remove('locked');
-
-  goStep(5);
-  initStep5();
+  resumeFromCentralSource(wiz.schema, wiz.table);
 }
 
 // ── PASO 5: Ejecución y Monitoreo del Inspector Catastral ────────────────────
@@ -1839,7 +1942,7 @@ async function executeExport(scope, format) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert('Error en exportación desde BD: ' + (err.detail || 'No se pudo generar el archivo.'));
+        showModalAlert('Error de Exportación', err.detail || 'No se pudo generar el archivo.', 'error');
         return;
       }
 
@@ -1875,7 +1978,7 @@ async function executeExport(scope, format) {
       }
 
       if (!filtered.length) {
-        alert('No hay registros en la vista activa que coincidan con el filtro seleccionado.');
+        showModalAlert('Sin Registros', 'No hay registros en la vista activa que coincidan con el filtro seleccionado.', 'info');
         return;
       }
 
@@ -1891,7 +1994,7 @@ async function executeExport(scope, format) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert('Error al generar archivo: ' + (err.detail || 'Error desconocido'));
+        showModalAlert('Error al Generar Archivo', err.detail || 'Error desconocido', 'error');
         return;
       }
 
@@ -1905,7 +2008,7 @@ async function executeExport(scope, format) {
       triggerBrowserDownload(blob, filename);
     }
   } catch (e) {
-    alert('Error al descargar archivo: ' + e.message);
+    showModalAlert('Error de Descarga', e.message, 'error');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -2009,7 +2112,7 @@ async function startETL() {
     const data = await res.json();
 
     if (!res.ok) {
-      alert('Error al iniciar el proceso: ' + (data.detail || 'Error desconocido'));
+      showModalAlert('Error al Iniciar Proceso', data.detail || 'Error desconocido', 'error');
       document.getElementById('btnStart').disabled = false;
       document.getElementById('btnStop').disabled  = true;
       if (btnStopSync) btnStopSync.disabled = true;
@@ -2019,7 +2122,7 @@ async function startETL() {
       [1, 2, 3, 4, 5].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
     }
   } catch (e) {
-    alert('Error de comunicación: ' + e.message);
+    showModalAlert('Error de Comunicación', e.message, 'error');
     document.getElementById('btnStart').disabled = false;
     document.getElementById('btnStop').disabled  = true;
     if (btnStopSync) btnStopSync.disabled = true;
@@ -2341,7 +2444,7 @@ function syncWithCompletedSession(data) {
 
 function resetToNewSession() {
   if (!document.getElementById('btnStop')?.disabled) {
-    alert('No puede iniciar una nueva configuración mientras haya un proceso en ejecución. Deténgalo primero.');
+    showModalAlert('Proceso Activo', 'No puede iniciar una nueva configuración mientras haya un proceso en ejecución. Deténgalo primero.', 'warning');
     return;
   }
   wiz.maxStepUnlocked = 1;

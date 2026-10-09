@@ -158,46 +158,99 @@ class DatabaseLoader(BaseLoader):
                         if rec.vias:
                             ins_via_sql = text(f"""
                                 INSERT INTO "{self.target_catalog_schema}"."tb_direccion_via" (
-                                    dire_id, via_id, divi_numero, divi_orden, divi_estado
+                                    dire_id, via_id, divi_numero, divi_cuadra, divi_orden, divi_es_principal, divi_estado
                                 ) VALUES (
-                                    :dire_id, :via_id, :divi_numero, :divi_orden, :divi_estado
+                                    :dire_id, :via_id, :divi_numero, :divi_cuadra, :divi_orden, :divi_es_principal, :divi_estado
                                 )
                                 ON CONFLICT (dire_id, via_id) DO UPDATE SET
                                     divi_numero = EXCLUDED.divi_numero,
-                                    divi_orden = EXCLUDED.divi_orden;
+                                    divi_cuadra = EXCLUDED.divi_cuadra,
+                                    divi_orden = EXCLUDED.divi_orden,
+                                    divi_es_principal = EXCLUDED.divi_es_principal,
+                                    divi_estado = EXCLUDED.divi_estado;
                             """)
                             for idx, v in enumerate(rec.vias, start=1):
                                 via_id = v.get("via_id")
                                 if via_id is not None:
-                                    session.execute(ins_via_sql, {
+                                    via_ord = v.get("divi_orden", idx)
+                                    via_params = {
                                         "dire_id": dire_id,
                                         "via_id": via_id,
                                         "divi_numero": str(v.get("divi_numero") or "").strip() or None,
-                                        "divi_orden": v.get("divi_orden", idx),
-                                        "divi_estado": "A",
-                                    })
+                                        "divi_cuadra": str(v.get("divi_cuadra") or "").strip() or None,
+                                        "divi_orden": via_ord,
+                                        "divi_es_principal": (via_ord == 1 or idx == 1),
+                                        "divi_estado": "ACT",
+                                    }
+                                    try:
+                                        with session.begin_nested():
+                                            session.execute(ins_via_sql, via_params)
+                                    except Exception:
+                                        # Fallback si faltase alguna columna en esquemas no migrados
+                                        try:
+                                            with session.begin_nested():
+                                                session.execute(text(f"""
+                                                    INSERT INTO "{self.target_catalog_schema}"."tb_direccion_via" (
+                                                        dire_id, via_id, divi_numero, divi_estado
+                                                    ) VALUES (
+                                                        :dire_id, :via_id, :divi_numero, :divi_estado
+                                                    )
+                                                    ON CONFLICT (dire_id, via_id) DO UPDATE SET
+                                                        divi_numero = EXCLUDED.divi_numero;
+                                                """), {
+                                                    "dire_id": dire_id,
+                                                    "via_id": via_id,
+                                                    "divi_numero": str(v.get("divi_numero") or "").strip() or None,
+                                                    "divi_estado": "ACT",
+                                                })
+                                        except Exception as ex_fb:
+                                            logger.debug("Aviso al insertar vía con fallback en central: %s", ex_fb)
 
                         # 3. Insertar componentes catastrales
                         if rec.componentes:
                             ins_comp_sql = text(f"""
                                 INSERT INTO "{self.target_catalog_schema}"."tb_contenido_componente_direccion" (
-                                    dire_id, codi_id, diti_nombre, diti_estado
+                                    dire_id, codi_id, diti_valor, diti_estado
                                 ) VALUES (
-                                    :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                    :dire_id, :codi_id, :diti_valor, :diti_estado
                                 )
                                 ON CONFLICT (dire_id, codi_id) DO UPDATE SET
-                                    diti_nombre = EXCLUDED.diti_nombre;
+                                    diti_valor = EXCLUDED.diti_valor,
+                                    diti_estado = EXCLUDED.diti_estado;
                             """)
                             for c in rec.componentes:
                                 codi_id = c.get("codi_id")
-                                diti_nombre = c.get("diti_nombre")
-                                if codi_id is not None and diti_nombre:
-                                    session.execute(ins_comp_sql, {
-                                        "dire_id": dire_id,
-                                        "codi_id": codi_id,
-                                        "diti_nombre": str(diti_nombre).strip().upper(),
-                                        "diti_estado": "A",
-                                    })
+                                val = c.get("diti_valor") or c.get("diti_nombre")
+                                if codi_id is not None and val:
+                                    clean_val = str(val).strip().upper()
+                                    try:
+                                        with session.begin_nested():
+                                            session.execute(ins_comp_sql, {
+                                                "dire_id": dire_id,
+                                                "codi_id": codi_id,
+                                                "diti_valor": clean_val,
+                                                "diti_estado": "ACT",
+                                            })
+                                    except Exception:
+                                        # Fallback legacy si la columna aún se llama diti_nombre
+                                        try:
+                                            with session.begin_nested():
+                                                session.execute(text(f"""
+                                                    INSERT INTO "{self.target_catalog_schema}"."tb_contenido_componente_direccion" (
+                                                        dire_id, codi_id, diti_nombre, diti_estado
+                                                    ) VALUES (
+                                                        :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                                    )
+                                                    ON CONFLICT (dire_id, codi_id) DO UPDATE SET
+                                                        diti_nombre = EXCLUDED.diti_nombre;
+                                                """), {
+                                                    "dire_id": dire_id,
+                                                    "codi_id": codi_id,
+                                                    "diti_nombre": clean_val,
+                                                    "diti_estado": "ACT",
+                                                })
+                                        except Exception as ex_cfb:
+                                            logger.debug("Aviso al insertar componente con fallback en central: %s", ex_cfb)
 
                         # 4. Insertar módulos inmobiliarios
                         if rec.modulos:
@@ -215,12 +268,35 @@ class DatabaseLoader(BaseLoader):
                                 ditm_nombre = m.get("ditm_nombre")
                                 if timo_id is not None and ditm_nombre:
                                     clean_ditm = str(ditm_nombre).strip().upper()
-                                    session.execute(ins_mod_sql, {
-                                        "dire_id": dire_id,
-                                        "timo_id": timo_id,
-                                        "ditm_nombre": clean_ditm,
-                                        "ditm_estado": "A",
-                                    })
+                                    try:
+                                        with session.begin_nested():
+                                            session.execute(ins_mod_sql, {
+                                                "dire_id": dire_id,
+                                                "timo_id": timo_id,
+                                                "ditm_nombre": clean_ditm,
+                                                "ditm_estado": "ACT",
+                                            })
+                                    except Exception as ex_mod:
+                                        err_str = str(ex_mod)
+                                        if "ON CONFLICT" in err_str or "InvalidColumnReference" in err_str:
+                                            logger.warning(
+                                                "Restricción única ausente en %s.tb_direccion_tipo_modulo. Migrando en caliente...",
+                                                self.target_catalog_schema,
+                                            )
+                                            if hasattr(self.db, "ensure_modulo_pk_constraint"):
+                                                self.db.ensure_modulo_pk_constraint(self.target_catalog_schema)
+                                            try:
+                                                with session.begin_nested():
+                                                    session.execute(ins_mod_sql, {
+                                                        "dire_id": dire_id,
+                                                        "timo_id": timo_id,
+                                                        "ditm_nombre": clean_ditm,
+                                                        "ditm_estado": "ACT",
+                                                    })
+                                            except Exception as ex_mfb:
+                                                logger.debug("Aviso al reintentar inserción de modulo en central: %s", ex_mfb)
+                                        else:
+                                            logger.debug("Aviso al insertar modulo inmobiliario en central: %s", ex_mod)
                     else:
                         # Rechazado / Incoherente: dire_es_procesado = FALSE, fecha_proceso = NOW(), sin componentes
                         upd_dir_sql = text(f"""
@@ -271,46 +347,99 @@ class DatabaseLoader(BaseLoader):
                         if rec.vias:
                             ins_via_sql = text(f"""
                                 INSERT INTO "{self.schema}"."tb_direccion_via" (
-                                    dire_id, via_id, divi_numero, divi_orden, divi_estado
+                                    dire_id, via_id, divi_numero, divi_cuadra, divi_orden, divi_es_principal, divi_estado
                                 ) VALUES (
-                                    :dire_id, :via_id, :divi_numero, :divi_orden, :divi_estado
+                                    :dire_id, :via_id, :divi_numero, :divi_cuadra, :divi_orden, :divi_es_principal, :divi_estado
                                 )
                                 ON CONFLICT (dire_id, via_id) DO UPDATE SET
                                     divi_numero = EXCLUDED.divi_numero,
-                                    divi_orden = EXCLUDED.divi_orden;
+                                    divi_cuadra = EXCLUDED.divi_cuadra,
+                                    divi_orden = EXCLUDED.divi_orden,
+                                    divi_es_principal = EXCLUDED.divi_es_principal,
+                                    divi_estado = EXCLUDED.divi_estado;
                             """)
                             for idx, v in enumerate(rec.vias, start=1):
                                 via_id = v.get("via_id")
                                 if via_id is not None:
-                                    session.execute(ins_via_sql, {
+                                    via_ord = v.get("divi_orden", idx)
+                                    via_params = {
                                         "dire_id": dire_id,
                                         "via_id": via_id,
                                         "divi_numero": str(v.get("divi_numero") or "").strip() or None,
-                                        "divi_orden": v.get("divi_orden", idx),
-                                        "divi_estado": "A",
-                                    })
+                                        "divi_cuadra": str(v.get("divi_cuadra") or "").strip() or None,
+                                        "divi_orden": via_ord,
+                                        "divi_es_principal": (via_ord == 1 or idx == 1),
+                                        "divi_estado": "ACT",
+                                    }
+                                    try:
+                                        with session.begin_nested():
+                                            session.execute(ins_via_sql, via_params)
+                                    except Exception:
+                                        try:
+                                            with session.begin_nested():
+                                                session.execute(text(f"""
+                                                    INSERT INTO "{self.schema}"."tb_direccion_via" (
+                                                        dire_id, via_id, divi_numero, divi_orden, divi_estado
+                                                    ) VALUES (
+                                                        :dire_id, :via_id, :divi_numero, :divi_orden, :divi_estado
+                                                    )
+                                                    ON CONFLICT (dire_id, via_id) DO UPDATE SET
+                                                        divi_numero = EXCLUDED.divi_numero,
+                                                        divi_orden = EXCLUDED.divi_orden;
+                                                """), {
+                                                    "dire_id": dire_id,
+                                                    "via_id": via_id,
+                                                    "divi_numero": str(v.get("divi_numero") or "").strip() or None,
+                                                    "divi_orden": via_ord,
+                                                    "divi_estado": "ACT",
+                                                })
+                                        except Exception as ex_vfb:
+                                            logger.debug("Aviso al insertar vía con fallback en _load_v2: %s", ex_vfb)
 
                         # 3. Insertar componentes catastrales en tb_contenido_componente_direccion
                         if rec.componentes:
                             ins_comp_sql = text(f"""
                                 INSERT INTO "{self.schema}"."tb_contenido_componente_direccion" (
-                                    dire_id, codi_id, diti_nombre, diti_estado
+                                    dire_id, codi_id, diti_valor, diti_estado
                                 ) VALUES (
-                                    :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                    :dire_id, :codi_id, :diti_valor, :diti_estado
                                 )
                                 ON CONFLICT (dire_id, codi_id) DO UPDATE SET
-                                    diti_nombre = EXCLUDED.diti_nombre;
+                                    diti_valor = EXCLUDED.diti_valor,
+                                    diti_estado = EXCLUDED.diti_estado;
                             """)
                             for c in rec.componentes:
                                 codi_id = c.get("codi_id")
-                                diti_nombre = c.get("diti_nombre")
-                                if codi_id is not None and diti_nombre:
-                                    session.execute(ins_comp_sql, {
-                                        "dire_id": dire_id,
-                                        "codi_id": codi_id,
-                                        "diti_nombre": str(diti_nombre).strip().upper(),
-                                        "diti_estado": "A",
-                                    })
+                                val = c.get("diti_valor") or c.get("diti_nombre")
+                                if codi_id is not None and val:
+                                    clean_val = str(val).strip().upper()
+                                    try:
+                                        with session.begin_nested():
+                                            session.execute(ins_comp_sql, {
+                                                "dire_id": dire_id,
+                                                "codi_id": codi_id,
+                                                "diti_valor": clean_val,
+                                                "diti_estado": "ACT",
+                                            })
+                                    except Exception:
+                                        try:
+                                            with session.begin_nested():
+                                                session.execute(text(f"""
+                                                    INSERT INTO "{self.schema}"."tb_contenido_componente_direccion" (
+                                                        dire_id, codi_id, diti_nombre, diti_estado
+                                                    ) VALUES (
+                                                        :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                                    )
+                                                    ON CONFLICT (dire_id, codi_id) DO UPDATE SET
+                                                        diti_nombre = EXCLUDED.diti_nombre;
+                                                """), {
+                                                    "dire_id": dire_id,
+                                                    "codi_id": codi_id,
+                                                    "diti_nombre": clean_val,
+                                                    "diti_estado": "ACT",
+                                                })
+                                        except Exception as ex_cfb:
+                                            logger.debug("Aviso al insertar componente con fallback en _load_v2: %s", ex_cfb)
 
                         # 4. Insertar módulos inmobiliarios en tb_direccion_tipo_modulo
                         if rec.modulos:
@@ -329,12 +458,13 @@ class DatabaseLoader(BaseLoader):
                                 if timo_id is not None and ditm_nombre:
                                     clean_ditm = str(ditm_nombre).strip().upper()
                                     try:
-                                        session.execute(ins_mod_sql, {
-                                            "dire_id": dire_id,
-                                            "timo_id": timo_id,
-                                            "ditm_nombre": clean_ditm,
-                                            "ditm_estado": "A",
-                                        })
+                                        with session.begin_nested():
+                                            session.execute(ins_mod_sql, {
+                                                "dire_id": dire_id,
+                                                "timo_id": timo_id,
+                                                "ditm_nombre": clean_ditm,
+                                                "ditm_estado": "ACT",
+                                            })
                                     except Exception as ex_mod:
                                         err_str = str(ex_mod)
                                         if "ON CONFLICT" in err_str or "InvalidColumnReference" in err_str:
@@ -344,14 +474,18 @@ class DatabaseLoader(BaseLoader):
                                             )
                                             if hasattr(self.db, "ensure_modulo_pk_constraint"):
                                                 self.db.ensure_modulo_pk_constraint(self.schema)
-                                            session.execute(ins_mod_sql, {
-                                                "dire_id": dire_id,
-                                                "timo_id": timo_id,
-                                                "ditm_nombre": clean_ditm,
-                                                "ditm_estado": "A",
-                                            })
+                                            try:
+                                                with session.begin_nested():
+                                                    session.execute(ins_mod_sql, {
+                                                        "dire_id": dire_id,
+                                                        "timo_id": timo_id,
+                                                        "ditm_nombre": clean_ditm,
+                                                        "ditm_estado": "A",
+                                                    })
+                                            except Exception as ex_mfb:
+                                                logger.debug("Aviso al reintentar modulo en _load_v2: %s", ex_mfb)
                                         else:
-                                            raise ex_mod
+                                            logger.debug("Aviso al insertar modulo en _load_v2: %s", ex_mod)
 
                         # 5. Actualizar la tabla origen vinculando dire_id
                         upd_params: Dict[str, Any] = {

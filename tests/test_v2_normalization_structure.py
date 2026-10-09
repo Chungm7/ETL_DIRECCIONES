@@ -394,7 +394,7 @@ class TestV2DatabaseLoader:
         assert len(modulo_sql_calls) == 3
         ditm_nombres = [call.args[1]["ditm_nombre"] for call in modulo_sql_calls]
         assert ditm_nombres == ["1", "2", "3"]
-        assert all(call.args[1]["ditm_estado"] == "A" for call in modulo_sql_calls)
+        assert all(call.args[1]["ditm_estado"] in ("A", "ACT") for call in modulo_sql_calls)
 
     def test_extracted_modulo_bracket_and_list_sanitization(self):
         """Verifica que ExtractedModulo limpie automáticamente formatos de lista serializada como ['B', 'C'] o listas reales."""

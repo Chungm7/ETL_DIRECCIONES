@@ -66,11 +66,21 @@ class DatabaseExtractor(BaseExtractor):
                     if cand and cand.lower() in cols:
                         self.id_col = cols[cand.lower()]
                         break
+                if self.id_col and self.id_col.lower() not in cols and cols:
+                    self.id_col = next(iter(cols.values()))
 
+                found_dir = False
                 for cand in [self.dir_col, "emp_direccion", "xxxx_direccion_original", "direccion", "dir", "raw_text"]:
                     if cand and cand.lower() in cols:
                         self.dir_col = cols[cand.lower()]
+                        found_dir = True
                         break
+                if not found_dir:
+                    if "dire_id" in cols:
+                        self.dir_col = cols["dire_id"]
+                    else:
+                        other_cols = [c for c in cols.values() if c != self.id_col]
+                        self.dir_col = other_cols[0] if other_cols else self.id_col
 
                 for cand in [self.col_es_procesado, "xxxx_es_procesado", "es_procesado"]:
                     if cand and cand.lower() in cols:

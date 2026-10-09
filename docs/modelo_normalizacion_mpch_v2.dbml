@@ -103,6 +103,7 @@ Table tb_direccion_via {
   via_id bigint [not null, ref: > tb_via.via_id, note: 'FK hacia la vía catalogada']
   divi_numero varchar(50) [default: 'S/N', note: 'Numeración de policía municipal (ej. 155, 882) o S/N']
   divi_cuadra varchar(20) [note: 'Número de cuadra (ej. CDR 4)']
+  divi_orden int [not null, default: 1, note: 'Orden de prelación vial: 1 = Principal, 2 = Secundaria / Esquina, 3 = Intersección adicional']
   divi_es_principal boolean [not null, default: true, note: 'True si es la arteria principal; False para arteria secundaria en esquinas/intersecciones']
   divi_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
 

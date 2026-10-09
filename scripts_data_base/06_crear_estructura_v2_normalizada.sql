@@ -17,14 +17,162 @@
 --    11. Datos semilla de catálogos y vista relacional completa (v_direcciones_v2)
 -- =============================================================================
 
+-- Adaptar tablas existentes con nombres previos si existieran en la base de datos
+DO $$
+BEGIN
+    -- tb_tipo_via
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_tipo_via') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_via' AND column_name = 'nombre_tipo_via') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_via' AND column_name = 'tivi_nombre') THEN
+            ALTER TABLE tb_tipo_via RENAME COLUMN nombre_tipo_via TO tivi_nombre;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_via' AND column_name = 'id_tipo_via') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_via' AND column_name = 'tivi_id') THEN
+            ALTER TABLE tb_tipo_via RENAME COLUMN id_tipo_via TO tivi_id;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_via' AND column_name = 'abreviatura') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_via' AND column_name = 'tivi_abreviatura') THEN
+            ALTER TABLE tb_tipo_via RENAME COLUMN abreviatura TO tivi_abreviatura;
+        END IF;
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_id BIGSERIAL;
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_nombre VARCHAR(100);
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_abreviatura VARCHAR(20);
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_tipo_via ALTER COLUMN tivi_nombre TYPE VARCHAR(100);
+        ALTER TABLE tb_tipo_via ALTER COLUMN tivi_abreviatura TYPE VARCHAR(20);
+        ALTER TABLE tb_tipo_via ALTER COLUMN tivi_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_tipo_zona
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_tipo_zona') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_zona' AND column_name = 'nombre_tipo_zona') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_zona' AND column_name = 'tizo_nombre') THEN
+            ALTER TABLE tb_tipo_zona RENAME COLUMN nombre_tipo_zona TO tizo_nombre;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_zona' AND column_name = 'id_tipo_zona') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_zona' AND column_name = 'tizo_id') THEN
+            ALTER TABLE tb_tipo_zona RENAME COLUMN id_tipo_zona TO tizo_id;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_zona' AND column_name = 'abreviatura') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_tipo_zona' AND column_name = 'tizo_abreviatura') THEN
+            ALTER TABLE tb_tipo_zona RENAME COLUMN abreviatura TO tizo_abreviatura;
+        END IF;
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_id BIGSERIAL;
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_nombre VARCHAR(100);
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_abreviatura VARCHAR(20);
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_tipo_zona ALTER COLUMN tizo_nombre TYPE VARCHAR(100);
+        ALTER TABLE tb_tipo_zona ALTER COLUMN tizo_abreviatura TYPE VARCHAR(20);
+        ALTER TABLE tb_tipo_zona ALTER COLUMN tizo_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_via
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_via') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_via' AND column_name = 'nom_via') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_via' AND column_name = 'via_nombre') THEN
+            ALTER TABLE tb_via RENAME COLUMN nom_via TO via_nombre;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_via' AND column_name = 'id_tipo_via') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_via' AND column_name = 'tivi_id') THEN
+            ALTER TABLE tb_via RENAME COLUMN id_tipo_via TO tivi_id;
+        END IF;
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS via_id BIGSERIAL;
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS tivi_id BIGINT;
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS via_nombre VARCHAR(250);
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS via_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_via ALTER COLUMN via_nombre TYPE VARCHAR(250);
+        ALTER TABLE tb_via ALTER COLUMN via_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_zona
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_zona') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_zona' AND column_name = 'nom_zona') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_zona' AND column_name = 'zona_nombre') THEN
+            ALTER TABLE tb_zona RENAME COLUMN nom_zona TO zona_nombre;
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_zona' AND column_name = 'id_tipo_zona') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_zona' AND column_name = 'tizo_id') THEN
+            ALTER TABLE tb_zona RENAME COLUMN id_tipo_zona TO tizo_id;
+        END IF;
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS zona_id BIGSERIAL;
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS tizo_id BIGINT;
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS zona_nombre VARCHAR(250);
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS zona_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_zona ALTER COLUMN zona_nombre TYPE VARCHAR(250);
+        ALTER TABLE tb_zona ALTER COLUMN zona_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_direccion
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_direccion') THEN
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_referencia TEXT;
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_esquema VARCHAR(500);
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_tabla VARCHAR(500);
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_tabla_id BIGINT;
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_valor_origen VARCHAR(500);
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS dire_es_procesado BOOLEAN;
+        ALTER TABLE tb_direccion ADD COLUMN IF NOT EXISTS fecha_proceso TIMESTAMP;
+        ALTER TABLE tb_direccion ALTER COLUMN dire_referencia TYPE TEXT;
+        ALTER TABLE tb_direccion ALTER COLUMN dire_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_direccion_via
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_direccion_via') THEN
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_id BIGSERIAL;
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_cuadra VARCHAR(20);
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_orden INTEGER DEFAULT 1;
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_es_principal BOOLEAN DEFAULT TRUE;
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_direccion_via ALTER COLUMN divi_numero TYPE VARCHAR(50);
+        ALTER TABLE tb_direccion_via ALTER COLUMN divi_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_componente_direccion
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_componente_direccion') THEN
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS codi_abreviatura VARCHAR(20);
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS codi_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_componente_direccion ALTER COLUMN codi_nombre TYPE VARCHAR(100);
+        ALTER TABLE tb_componente_direccion ALTER COLUMN codi_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_contenido_componente_direccion
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_contenido_componente_direccion') THEN
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_contenido_componente_direccion' AND column_name = 'diti_nombre') 
+           AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'tb_contenido_componente_direccion' AND column_name = 'diti_valor') THEN
+            ALTER TABLE tb_contenido_componente_direccion RENAME COLUMN diti_nombre TO diti_valor;
+        END IF;
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_id BIGSERIAL;
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_valor VARCHAR(100);
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_contenido_componente_direccion ALTER COLUMN diti_valor TYPE VARCHAR(100);
+        ALTER TABLE tb_contenido_componente_direccion ALTER COLUMN diti_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_tipo_modulo
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_tipo_modulo') THEN
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS timo_abreviatura VARCHAR(20);
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS timo_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_tipo_modulo ALTER COLUMN timo_nombre TYPE VARCHAR(100);
+        ALTER TABLE tb_tipo_modulo ALTER COLUMN timo_estado TYPE VARCHAR(3);
+    END IF;
+
+    -- tb_direccion_tipo_modulo
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_direccion_tipo_modulo') THEN
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_id BIGSERIAL;
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(3) DEFAULT 'ACT';
+        ALTER TABLE tb_direccion_tipo_modulo ALTER COLUMN ditm_nombre TYPE VARCHAR(100);
+        ALTER TABLE tb_direccion_tipo_modulo ALTER COLUMN ditm_estado TYPE VARCHAR(3);
+    END IF;
+END $$;
+
 -- -----------------------------------------------------------------------------
 -- 1. Tabla Maestra: TIPOS DE VÍA (tb_tipo_via)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tb_tipo_via (
     tivi_id             BIGSERIAL NOT NULL,
-    tivi_nombre         VARCHAR(50) NOT NULL,
-    tivi_abreviatura    VARCHAR(10) NOT NULL,
-    tivi_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    tivi_nombre         VARCHAR(100) NOT NULL,
+    tivi_abreviatura    VARCHAR(20),
+    tivi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tivi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_tipo_via PRIMARY KEY (tivi_id),
     CONSTRAINT uq_tb_tipo_via_nombre UNIQUE (tivi_nombre)
@@ -34,7 +182,7 @@ COMMENT ON TABLE tb_tipo_via IS 'Catálogo maestro institucional de tipos de art
 COMMENT ON COLUMN tb_tipo_via.tivi_id IS 'Identificador numérico único del tipo de vía.';
 COMMENT ON COLUMN tb_tipo_via.tivi_nombre IS 'Nombre completo oficial del tipo de vía.';
 COMMENT ON COLUMN tb_tipo_via.tivi_abreviatura IS 'Abreviatura estándar oficial (AV., CA., JR., etc.).';
-COMMENT ON COLUMN tb_tipo_via.tivi_estado IS 'Estado del registro: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_tipo_via.tivi_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
 
 -- -----------------------------------------------------------------------------
 -- 2. Tabla Maestra: VÍAS OFICIALES DE CHICLAYO (tb_via)
@@ -42,8 +190,8 @@ COMMENT ON COLUMN tb_tipo_via.tivi_estado IS 'Estado del registro: A (Activo), I
 CREATE TABLE IF NOT EXISTS tb_via (
     via_id              BIGSERIAL NOT NULL,
     tivi_id             BIGINT NOT NULL,
-    via_nombre          VARCHAR(255) NOT NULL,
-    via_estado          VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (via_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    via_nombre          VARCHAR(250) NOT NULL,
+    via_estado          VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (via_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_via PRIMARY KEY (via_id),
     CONSTRAINT fk_tb_via_tipo_via 
@@ -57,10 +205,10 @@ COMMENT ON TABLE tb_via IS 'Catálogo maestro de vías públicas habilitadas de 
 COMMENT ON COLUMN tb_via.via_id IS 'Identificador secuencial único de la vía.';
 COMMENT ON COLUMN tb_via.tivi_id IS 'Clave foránea hacia tb_tipo_via.';
 COMMENT ON COLUMN tb_via.via_nombre IS 'Denominación oficial de la vía (ej. BALTA, LUIS GONZALES, 7 DE ENERO).';
-COMMENT ON COLUMN tb_via.via_estado IS 'Estado del registro: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_via.via_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
 
 CREATE INDEX IF NOT EXISTS idx_tb_via_nombre ON tb_via (via_nombre);
-CREATE INDEX IF NOT EXISTS idx_tb_via_tipo ON tb_via (tivi_id);
+CREATE INDEX IF NOT EXISTS idx_tb_via_tipo_nombre ON tb_via (tivi_id, via_nombre);
 
 -- -----------------------------------------------------------------------------
 -- 3. Tabla Maestra: TIPOS DE ZONA (tb_tipo_zona - 28 tipos oficiales)
@@ -68,8 +216,8 @@ CREATE INDEX IF NOT EXISTS idx_tb_via_tipo ON tb_via (tivi_id);
 CREATE TABLE IF NOT EXISTS tb_tipo_zona (
     tizo_id             BIGSERIAL NOT NULL,
     tizo_nombre         VARCHAR(100) NOT NULL,
-    tizo_abreviatura    VARCHAR(10) NOT NULL,
-    tizo_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    tizo_abreviatura    VARCHAR(20),
+    tizo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tizo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_tipo_zona PRIMARY KEY (tizo_id),
     CONSTRAINT uq_tb_tipo_zona_nombre UNIQUE (tizo_nombre)
@@ -79,7 +227,7 @@ COMMENT ON TABLE tb_tipo_zona IS 'Catálogo maestro de los 28 tipos oficiales de
 COMMENT ON COLUMN tb_tipo_zona.tizo_id IS 'Identificador secuencial único del tipo de zona.';
 COMMENT ON COLUMN tb_tipo_zona.tizo_nombre IS 'Nombre oficial completo (URBANIZACION, PUEBLO JOVEN, etc.).';
 COMMENT ON COLUMN tb_tipo_zona.tizo_abreviatura IS 'Abreviatura oficial (URB., P.J., A.H., etc.).';
-COMMENT ON COLUMN tb_tipo_zona.tizo_estado IS 'Estado del registro: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_tipo_zona.tizo_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
 
 -- -----------------------------------------------------------------------------
 -- 4. Tabla Maestra: HABILITACIONES URBANAS Y ZONAS (tb_zona)
@@ -87,8 +235,8 @@ COMMENT ON COLUMN tb_tipo_zona.tizo_estado IS 'Estado del registro: A (Activo), 
 CREATE TABLE IF NOT EXISTS tb_zona (
     zona_id             BIGSERIAL NOT NULL,
     tizo_id             BIGINT NOT NULL,
-    zona_nombre         VARCHAR(255) NOT NULL,
-    zona_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (zona_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    zona_nombre         VARCHAR(250) NOT NULL,
+    zona_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (zona_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_zona PRIMARY KEY (zona_id),
     CONSTRAINT fk_tb_zona_tipo_zona 
@@ -102,10 +250,10 @@ COMMENT ON TABLE tb_zona IS 'Catálogo maestro de habilitaciones urbanas, sector
 COMMENT ON COLUMN tb_zona.zona_id IS 'Identificador secuencial único de la zona.';
 COMMENT ON COLUMN tb_zona.tizo_id IS 'Clave foránea hacia tb_tipo_zona.';
 COMMENT ON COLUMN tb_zona.zona_nombre IS 'Nombre oficial de la zona (ej. SANTA VICTORIA, 9 DE OCTUBRE, FEDERICO VILLARREAL).';
-COMMENT ON COLUMN tb_zona.zona_estado IS 'Estado del registro: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_zona.zona_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
 
 CREATE INDEX IF NOT EXISTS idx_tb_zona_nombre ON tb_zona (zona_nombre);
-CREATE INDEX IF NOT EXISTS idx_tb_zona_tipo ON tb_zona (tizo_id);
+CREATE INDEX IF NOT EXISTS idx_tb_zona_tipo_nombre ON tb_zona (tizo_id, zona_nombre);
 
 -- -----------------------------------------------------------------------------
 -- 5. Tabla Principal: DIRECCIONES NORMALIZADAS (tb_direccion)
@@ -113,7 +261,7 @@ CREATE INDEX IF NOT EXISTS idx_tb_zona_tipo ON tb_zona (tizo_id);
 CREATE TABLE IF NOT EXISTS tb_direccion (
     dire_id             BIGSERIAL NOT NULL,
     zona_id             BIGINT,
-    dire_referencia     VARCHAR(500),
+    dire_referencia     TEXT,
     dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
     dire_esquema        VARCHAR(500),
     dire_tabla          VARCHAR(500),
@@ -130,14 +278,14 @@ CREATE TABLE IF NOT EXISTS tb_direccion (
         ON DELETE SET NULL
 );
 
-COMMENT ON TABLE tb_direccion IS 'Entidad central que consolida la dirección normalizada, su procedencia cruda y estado de procesamiento.';
+COMMENT ON TABLE tb_direccion IS 'Entidad central polimórfica que consolida la dirección normalizada de múltiples esquemas institucionales (licencias, rentas, catastro, etc.) mediante referencia lógica (dire_esquema, dire_tabla, dire_tabla_id) sin ataduras rígidas de FOREIGN KEY.';
 COMMENT ON COLUMN tb_direccion.dire_id IS 'Identificador secuencial único de la dirección normalizada.';
 COMMENT ON COLUMN tb_direccion.zona_id IS 'Clave foránea hacia tb_zona. Permite NULL si el predio no posee zona registrada.';
 COMMENT ON COLUMN tb_direccion.dire_referencia IS 'Hito espacial o comercial de orientación urbana (ej. CERCA AL SENATI, FRENTE AL PARQUE).';
 COMMENT ON COLUMN tb_direccion.dire_estado IS 'Estado del registro: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
-COMMENT ON COLUMN tb_direccion.dire_esquema IS 'Nombre del esquema de base de datos de origen.';
-COMMENT ON COLUMN tb_direccion.dire_tabla IS 'Nombre de la tabla de origen.';
-COMMENT ON COLUMN tb_direccion.dire_tabla_id IS 'Clave primaria del registro en la tabla de origen.';
+COMMENT ON COLUMN tb_direccion.dire_esquema IS 'Nombre del esquema de base de datos de origen (ej. licencias, rentas, catastro, public).';
+COMMENT ON COLUMN tb_direccion.dire_tabla IS 'Nombre de la tabla de negocio de origen.';
+COMMENT ON COLUMN tb_direccion.dire_tabla_id IS 'Clave primaria del registro en la tabla de origen (referencia lógica polimórfica, sin FK rígida).';
 COMMENT ON COLUMN tb_direccion.dire_valor_origen IS 'Texto crudo original de la dirección extraída de la fuente.';
 COMMENT ON COLUMN tb_direccion.dire_es_procesado IS 'Semántica Tri-State: NULL = Pendiente | TRUE = Normalizado 100% Certeza | FALSE = Rechazado / Incoherente.';
 COMMENT ON COLUMN tb_direccion.fecha_proceso IS 'Marca de tiempo en que el ETL procesó el registro.';
@@ -150,13 +298,16 @@ CREATE INDEX IF NOT EXISTS idx_tb_direccion_origen_lookup ON tb_direccion (dire_
 -- 6. Tabla Intermedia: DIRECCIÓN - VÍAS (tb_direccion_via - Esquinas e Intersecciones)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tb_direccion_via (
+    divi_id             BIGSERIAL NOT NULL,
     dire_id             BIGINT NOT NULL,
     via_id              BIGINT NOT NULL,
-    divi_numero         VARCHAR(20),
-    divi_orden          INT DEFAULT 1,
-    divi_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    divi_numero         VARCHAR(50),
+    divi_cuadra         VARCHAR(20),
+    divi_orden          INTEGER NOT NULL DEFAULT 1,
+    divi_es_principal   BOOLEAN NOT NULL DEFAULT TRUE,
+    divi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (divi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
-    CONSTRAINT pk_tb_direccion_via PRIMARY KEY (dire_id, via_id),
+    CONSTRAINT pk_tb_direccion_via PRIMARY KEY (divi_id),
     CONSTRAINT fk_tb_direccion_via_dir 
         FOREIGN KEY (dire_id) 
         REFERENCES tb_direccion (dire_id) 
@@ -169,14 +320,19 @@ CREATE TABLE IF NOT EXISTS tb_direccion_via (
         ON DELETE CASCADE
 );
 
-COMMENT ON TABLE tb_direccion_via IS 'Relación N:M que asocia vías con la dirección. Soporta esquinas (San José 102 con Luis Gonzales 801).';
+COMMENT ON TABLE tb_direccion_via IS 'Relación que asocia vías con la dirección. Soporta esquinas e intersecciones múltiples.';
+COMMENT ON COLUMN tb_direccion_via.divi_id IS 'Identificador secuencial único de la relación dirección-vía.';
 COMMENT ON COLUMN tb_direccion_via.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_direccion_via.via_id IS 'Clave foránea hacia tb_via.';
-COMMENT ON COLUMN tb_direccion_via.divi_numero IS 'Numeración municipal en esta arteria (ej. 102, 801, S/N).';
-COMMENT ON COLUMN tb_direccion_via.divi_orden IS 'Orden de prelación vial: 1 para vía principal, 2 para vía de cruce / intersección.';
-COMMENT ON COLUMN tb_direccion_via.divi_estado IS 'Estado: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_direccion_via.divi_numero IS 'Numeración municipal en esta arteria (ej. 1020, 1024-B, S/N).';
+COMMENT ON COLUMN tb_direccion_via.divi_cuadra IS 'Número de cuadra en la que se ubica la dirección (ej. CDA. 10).';
+COMMENT ON COLUMN tb_direccion_via.divi_orden IS 'Orden de prelación vial: 1 = Principal, 2 = Secundaria / Esquina, 3 = Intersección adicional.';
+COMMENT ON COLUMN tb_direccion_via.divi_es_principal IS 'Indica si es la vía principal (true) o una vía secundaria/intersección (false).';
+COMMENT ON COLUMN tb_direccion_via.divi_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
 
-CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_via ON tb_direccion_via (via_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_via_lookup ON tb_direccion_via (dire_id, via_id);
+CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_lookup ON tb_direccion_via (dire_id, via_id);
+CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_principal ON tb_direccion_via (divi_es_principal);
 
 -- -----------------------------------------------------------------------------
 -- 7. Tabla Maestra: COMPONENTES DE DIRECCIÓN (tb_componente_direccion)
@@ -184,29 +340,32 @@ CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_via ON tb_direccion_via (via_id)
 CREATE TABLE IF NOT EXISTS tb_componente_direccion (
     codi_id             BIGSERIAL NOT NULL,
     codi_nombre         VARCHAR(100) NOT NULL,
+    codi_abreviatura    VARCHAR(20),
     codi_es_urbano      BOOLEAN DEFAULT TRUE,
-    codi_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (codi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    codi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (codi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_componente_direccion PRIMARY KEY (codi_id),
     CONSTRAINT uq_tb_componente_direccion_nombre UNIQUE (codi_nombre)
 );
 
 COMMENT ON TABLE tb_componente_direccion IS 'Catálogo de atributos catastrales urbanos (Mz, Lote, Piso) y rurales (Valle, Predio, Coordenadas).';
-COMMENT ON COLUMN tb_componente_direccion.codi_id IS 'Identificador del tipo de componente.';
-COMMENT ON COLUMN tb_componente_direccion.codi_nombre IS 'Nombre del componente (MANZANA, LOTE, SUBLOTE, PISO, PREDIO, etc.).';
+COMMENT ON COLUMN tb_componente_direccion.codi_id IS 'Identificador único del tipo de componente.';
+COMMENT ON COLUMN tb_componente_direccion.codi_nombre IS 'Nombre del componente (MANZANA, LOTE, SUBLOTE, PISO, BLOCK, etc.).';
+COMMENT ON COLUMN tb_componente_direccion.codi_abreviatura IS 'Abreviatura estandarizada (MZ., LT., SLT., PISO, BLK.).';
 COMMENT ON COLUMN tb_componente_direccion.codi_es_urbano IS 'True: Urbano, False: Rural.';
-COMMENT ON COLUMN tb_componente_direccion.codi_estado IS 'Estado: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_componente_direccion.codi_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
 
 -- -----------------------------------------------------------------------------
 -- 8. Tabla Relacional: CONTENIDO DE COMPONENTES (tb_contenido_componente_direccion)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tb_contenido_componente_direccion (
+    diti_id             BIGSERIAL NOT NULL,
     dire_id             BIGINT NOT NULL,
     codi_id             BIGINT NOT NULL,
-    diti_nombre         VARCHAR(100) NOT NULL,
-    diti_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    diti_valor          VARCHAR(100) NOT NULL,
+    diti_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (diti_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
-    CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (dire_id, codi_id),
+    CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
     CONSTRAINT fk_tb_contenido_componente_dir 
         FOREIGN KEY (dire_id) 
         REFERENCES tb_direccion (dire_id) 
@@ -220,10 +379,14 @@ CREATE TABLE IF NOT EXISTS tb_contenido_componente_direccion (
 );
 
 COMMENT ON TABLE tb_contenido_componente_direccion IS 'Valores atómicos asignados a cada componente catastral en una dirección.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.diti_id IS 'Identificador secuencial del contenido del componente.';
 COMMENT ON COLUMN tb_contenido_componente_direccion.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_contenido_componente_direccion.codi_id IS 'Clave foránea hacia tb_componente_direccion.';
-COMMENT ON COLUMN tb_contenido_componente_direccion.diti_nombre IS 'Valor del componente (ej. A, 14, 2, SECTOR 3).';
-COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_contenido_componente_direccion.diti_valor IS 'Valor asignado al componente (ej. A, 14, 2, B).';
+COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
+CREATE INDEX IF NOT EXISTS idx_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
 
 -- -----------------------------------------------------------------------------
 -- 9. Tabla Maestra: TIPOS DE MÓDULO (tb_tipo_modulo)
@@ -231,27 +394,30 @@ COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado: A (A
 CREATE TABLE IF NOT EXISTS tb_tipo_modulo (
     timo_id             BIGSERIAL NOT NULL,
     timo_nombre         VARCHAR(100) NOT NULL,
-    timo_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (timo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    timo_abreviatura    VARCHAR(20),
+    timo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (timo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
     CONSTRAINT pk_tb_tipo_modulo PRIMARY KEY (timo_id),
     CONSTRAINT uq_tb_tipo_modulo_nombre UNIQUE (timo_nombre)
 );
 
-COMMENT ON TABLE tb_tipo_modulo IS 'Catálogo de tipos de dependencias y subunidades (INTERIOR, DEPARTAMENTO, PUERTA, STAND, etc.).';
-COMMENT ON COLUMN tb_tipo_modulo.timo_id IS 'Identificador único del tipo de módulo.';
-COMMENT ON COLUMN tb_tipo_modulo.timo_nombre IS 'Nombre del módulo (INTERIOR, DEPARTAMENTO, PUERTA, STAND, TIENDA, BLOCK, OFICINA).';
-COMMENT ON COLUMN tb_tipo_modulo.timo_estado IS 'Estado: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON TABLE tb_tipo_modulo IS 'Catálogo de tipos de dependencias y subunidades (INTERIOR, DEPARTAMENTO, STAND, TIENDA, etc.).';
+COMMENT ON COLUMN tb_tipo_modulo.timo_id IS 'Identificador único del tipo de modulo.';
+COMMENT ON COLUMN tb_tipo_modulo.timo_nombre IS 'Nombre del tipo de modulo (DEPARTAMENTO, INTERIOR, STAND, TIENDA, etc.).';
+COMMENT ON COLUMN tb_tipo_modulo.timo_abreviatura IS 'Abreviatura estandarizada (DPTO., INT., STD., TDA., OF.).';
+COMMENT ON COLUMN tb_tipo_modulo.timo_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
 
 -- -----------------------------------------------------------------------------
 -- 10. Tabla Relacional: DIRECCIÓN - TIPOS DE MÓDULO (tb_direccion_tipo_modulo)
 -- -----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS tb_direccion_tipo_modulo (
+    ditm_id             BIGSERIAL NOT NULL,
     dire_id             BIGINT NOT NULL,
     timo_id             BIGINT NOT NULL,
     ditm_nombre         VARCHAR(100) NOT NULL,
-    ditm_estado         VARCHAR(3) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    ditm_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (ditm_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
 
-    CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre),
+    CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (ditm_id),
     CONSTRAINT fk_tb_direccion_modulo_dir 
         FOREIGN KEY (dire_id) 
         REFERENCES tb_direccion (dire_id) 
@@ -265,16 +431,19 @@ CREATE TABLE IF NOT EXISTS tb_direccion_tipo_modulo (
 );
 
 COMMENT ON TABLE tb_direccion_tipo_modulo IS 'Dependencias y módulos inmobiliarios asociados a la dirección.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_id IS 'Identificador único de la relación dirección-modulo.';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.timo_id IS 'Clave foránea hacia tb_tipo_modulo.';
-COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_nombre IS 'Detalle del módulo (ej. 2, B, 101, STAND 4).';
-COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_estado IS 'Estado: A (Activo), I (Inactivo), E (Eliminado).';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_nombre IS 'Identificador o número del módulo (ej. 402, 12, A-3).';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON tb_direccion_tipo_modulo (dire_id, timo_id, ditm_nombre);
 
 -- -----------------------------------------------------------------------------
 -- 11. Carga de Datos Semilla Oficiales (Catálogos V2)
 -- -----------------------------------------------------------------------------
 
 -- 11.1 Tipos de Vía Oficiales
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_tipo_via_nombre ON tb_tipo_via (tivi_nombre);
 INSERT INTO tb_tipo_via (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado) VALUES
     (1, 'AVENIDA', 'AV.', 'A'),
     (2, 'CALLE', 'CA.', 'A'),
@@ -293,6 +462,7 @@ SET tivi_abreviatura = EXCLUDED.tivi_abreviatura,
     tivi_estado      = EXCLUDED.tivi_estado;
 
 -- 11.2 Tipos de Zona Oficiales (Estrictamente los 28 tipos oficiales de Chiclayo)
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_tipo_zona_nombre ON tb_tipo_zona (tizo_nombre);
 INSERT INTO tb_tipo_zona (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado) VALUES
     (1, 'ASENTAMIENTO HUMANO', 'A.H.', 'A'),
     (2, 'AGRUPACION', 'AGRUP.', 'A'),
@@ -327,36 +497,42 @@ SET tizo_abreviatura = EXCLUDED.tizo_abreviatura,
     tizo_estado      = EXCLUDED.tizo_estado;
 
 -- 11.3 Componentes de Dirección (Urbanos y Rurales)
-INSERT INTO tb_componente_direccion (codi_id, codi_nombre, codi_es_urbano, codi_estado) VALUES
-    (1, 'MANZANA', TRUE, 'A'),
-    (2, 'LOTE', TRUE, 'A'),
-    (3, 'SUBLOTE', TRUE, 'A'),
-    (4, 'PISO', TRUE, 'A'),
-    (5, 'PREDIO', FALSE, 'A'),
-    (6, 'VALLE', FALSE, 'A'),
-    (7, 'SECTOR', FALSE, 'A'),
-    (8, 'UNIDAD CATASTRAL', FALSE, 'A'),
-    (9, 'COORDENADA NORTE', FALSE, 'A'),
-    (10, 'COORDENADA ESTE', FALSE, 'A'),
-    (11, 'BLOCK', TRUE, 'A')
+INSERT INTO tb_componente_direccion (codi_id, codi_nombre, codi_abreviatura, codi_es_urbano, codi_estado) VALUES
+    (1, 'MANZANA', 'MZ', TRUE, 'ACT'),
+    (2, 'LOTE', 'LT', TRUE, 'ACT'),
+    (3, 'SUBLOTE', 'SLT', TRUE, 'ACT'),
+    (4, 'PISO', 'PIS', TRUE, 'ACT'),
+    (5, 'PREDIO', 'PRD', FALSE, 'ACT'),
+    (6, 'VALLE', 'VAL', FALSE, 'ACT'),
+    (7, 'SECTOR', 'SEC', FALSE, 'ACT'),
+    (8, 'UNIDAD CATASTRAL', 'UC', FALSE, 'ACT'),
+    (9, 'COORDENADA NORTE', 'CN', FALSE, 'ACT'),
+    (10, 'COORDENADA ESTE', 'CE', FALSE, 'ACT'),
+    (11, 'BLOCK', 'BLK', TRUE, 'ACT'),
+    (12, 'ETAPA', 'ETP', TRUE, 'ACT')
 ON CONFLICT (codi_nombre) DO UPDATE
-SET codi_es_urbano = EXCLUDED.codi_es_urbano,
-    codi_estado    = EXCLUDED.codi_estado;
+SET codi_abreviatura = EXCLUDED.codi_abreviatura,
+    codi_es_urbano   = EXCLUDED.codi_es_urbano,
+    codi_estado      = EXCLUDED.codi_estado;
 
 -- 11.4 Tipos de Módulo (Subunidades e Interiores)
-INSERT INTO tb_tipo_modulo (timo_id, timo_nombre, timo_estado) VALUES
-    (1, 'INTERIOR', 'A'),
-    (2, 'DEPARTAMENTO', 'A'),
-    (3, 'PUERTA', 'A'),
-    (4, 'STAND', 'A'),
-    (5, 'TIENDA', 'A'),
-    (6, 'OFICINA', 'A'),
-    (7, 'BLOCK', 'A'),
-    (8, 'PUESTO', 'A'),
-    (9, 'LOCAL', 'A'),
-    (10, 'COCHERA', 'A')
+INSERT INTO tb_tipo_modulo (timo_id, timo_nombre, timo_abreviatura, timo_estado) VALUES
+    (1, 'INTERIOR', 'INT', 'ACT'),
+    (2, 'DEPARTAMENTO', 'DPTO', 'ACT'),
+    (3, 'PUERTA', 'PTA', 'ACT'),
+    (4, 'STAND', 'STD', 'ACT'),
+    (5, 'TIENDA', 'TDA', 'ACT'),
+    (6, 'OFICINA', 'OF', 'ACT'),
+    (7, 'BLOCK', 'BLK', 'ACT'),
+    (8, 'PUESTO', 'PTO', 'ACT'),
+    (9, 'LOCAL', 'LOC', 'ACT'),
+    (10, 'COCHERA', 'CCH', 'ACT'),
+    (11, 'KIOSKO', 'KSK', 'ACT'),
+    (12, 'DEPOSITO', 'DEP', 'ACT'),
+    (13, 'ALMACEN', 'ALM', 'ACT')
 ON CONFLICT (timo_nombre) DO UPDATE
-SET timo_estado = EXCLUDED.timo_estado;
+SET timo_abreviatura = EXCLUDED.timo_abreviatura,
+    timo_estado      = EXCLUDED.timo_estado;
 
 -- 11.5 Vías Públicas Oficiales de Chiclayo (2,935 registros)
 INSERT INTO tb_via (via_id, tivi_id, via_nombre, via_estado) VALUES

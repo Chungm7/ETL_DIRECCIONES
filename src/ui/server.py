@@ -759,7 +759,7 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
                 logger.warning("Aviso al consultar columnas agrupadas de %s: %s", req.schema_name, ex_cols)
                 session.rollback()
 
-            # 3. Listar tablas base del esquema
+            # 3. Listar tablas base del esquema excluyendo catálogos del sistema relacional
             rows = session.execute(sa_text("""
                 SELECT table_name
                 FROM information_schema.tables
@@ -768,7 +768,22 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
                 ORDER BY table_name;
             """), {"schema": req.schema_name}).fetchall()
 
+            system_excluded_tables = {
+                "tb_direccion",
+                "tb_via",
+                "tb_zona",
+                "tb_tipo_via",
+                "tb_tipo_zona",
+                "tb_direccion_via",
+                "tb_componente_direccion",
+                "tb_contenido_componente_direccion",
+                "tb_tipo_modulo",
+                "tb_direccion_tipo_modulo",
+            }
+
             for (tname,) in rows:
+                if str(tname).lower() in system_excluded_tables:
+                    continue
                 columns = cols_by_table.get(tname, [])
                 count_val = counts_by_table.get(tname, -1)
 
@@ -825,33 +840,55 @@ async def wizard_inspect_table(req: InspectTableRequest):
     db_svc = state.dynamic_db_service or DatabaseService()
     settings = get_settings()
 
-    id_col = req.id_col or settings.db.id_col
-    address_col = req.address_col or settings.db.dir_col
-
     try:
         from sqlalchemy import text as sa_text
 
-        with db_svc.get_session() as session:
-            # Obtener preview de primeras 10 filas con las columnas clave
-            preview_rows = session.execute(sa_text(f"""
-                SELECT "{id_col}", "{address_col}"
-                FROM "{req.schema_name}"."{req.table_name}"
-                LIMIT 10;
-            """)).fetchall()
+        # 1. Obtener las columnas reales existentes en la tabla
+        actual_cols = db_svc.get_table_columns(req.table_name, req.schema_name)
+        if not actual_cols:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La tabla '{req.schema_name}.{req.table_name}' no existe o no tiene columnas accesibles."
+            )
+        col_lookup = {c.lower(): c for c in actual_cols}
 
-            preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
+        # 2. Resolver columna ID inteligentemente
+        id_col = None
+        if req.id_col and req.id_col.lower() in col_lookup:
+            id_col = col_lookup[req.id_col.lower()]
+        else:
+            id_cands = [settings.db.id_col, "id_licencia", "xxxx_id", "id", "id_direccion", "codigo", "cod", "nro", "pk"]
+            for cand in id_cands:
+                if cand and cand.lower() in col_lookup:
+                    id_col = col_lookup[cand.lower()]
+                    break
+            if not id_col:
+                for col_name in actual_cols:
+                    if col_name.lower().endswith("_id") or col_name.lower() == "id":
+                        id_col = col_name
+                        break
+            if not id_col:
+                id_col = actual_cols[0]
 
-        # Utilizar DatabaseExtractor para conteo unificado y robusto de estados
-        extractor = DatabaseExtractor(
-            db_service=db_svc,
-            schema=req.schema_name,
-            table=req.table_name,
-            id_col=id_col,
-            dir_col=address_col,
-        )
-        status_counts = extractor.get_status_counts()
+        # 3. Resolver columna de dirección inteligentemente
+        # Puede haber sido eliminada si ya se migró y desacopló en tb_direccion
+        address_col = None
+        if req.address_col and req.address_col.lower() in col_lookup:
+            address_col = col_lookup[req.address_col.lower()]
+        else:
+            addr_cands = [settings.db.dir_col, "emp_direccion", "xxxx_direccion_original", "direccion", "dir", "address", "raw_text", "domicilio", "ubicacion", "calle"]
+            for cand in addr_cands:
+                if cand and cand.lower() in col_lookup:
+                    address_col = col_lookup[cand.lower()]
+                    break
+            if not address_col:
+                for col_name in actual_cols:
+                    lower = col_name.lower()
+                    if any(term in lower for term in ("dir", "direc", "address", "domicilio", "ubica")):
+                        address_col = col_name
+                        break
 
-        # Comprobar si ya fue migrada a catastro central (tb_direccion)
+        # 4. Comprobar si ya fue migrada a catastro central (tb_direccion)
         central_extractor = DatabaseExtractor(
             db_service=db_svc,
             schema=req.schema_name,
@@ -860,6 +897,84 @@ async def wizard_inspect_table(req: InspectTableRequest):
         )
         central_counts = central_extractor.get_status_counts()
         is_ingested = central_counts.get("total", 0) > 0
+        has_dire_id = "dire_id" in col_lookup
+
+        # Si la columna de dirección ya fue eliminada tras la migración exitosa:
+        is_decoupled = False
+        if not address_col and has_dire_id:
+            address_col = col_lookup["dire_id"]
+            is_decoupled = True
+        elif not address_col:
+            # Tomar la siguiente columna disponible que quede libre
+            available_cols = [c for c in actual_cols if c != id_col]
+            address_col = available_cols[0] if available_cols else id_col
+
+        # 5. Obtener preview de forma 100% segura y resiliente
+        preview = []
+        with db_svc.get_session() as session:
+            try:
+                addr_in_actual = any(c.lower() == str(address_col).lower() for c in actual_cols)
+                if (not addr_in_actual or is_decoupled) and is_ingested:
+                    # Traer desde tb_direccion mediante enlace polimórfico limpio
+                    prev_sql = sa_text(f"""
+                        SELECT src."{id_col}", COALESCE(d.dire_valor_origen, '(Migrado a tb_direccion)')
+                        FROM "{req.schema_name}"."{req.table_name}" src
+                        LEFT JOIN "public"."tb_direccion" d 
+                          ON d.dire_esquema = :esq 
+                         AND d.dire_tabla = :tab 
+                         AND d.dire_tabla_id = src."{id_col}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql, {"esq": req.schema_name, "tab": req.table_name}).fetchall()
+                    preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
+                elif addr_in_actual:
+                    prev_sql = sa_text(f"""
+                        SELECT "{id_col}", "{address_col}"
+                        FROM "{req.schema_name}"."{req.table_name}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql).fetchall()
+                    preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
+                else:
+                    c1 = actual_cols[0]
+                    c2 = actual_cols[1] if len(actual_cols) > 1 else actual_cols[0]
+                    prev_sql = sa_text(f"""
+                        SELECT "{c1}", "{c2}"
+                        FROM "{req.schema_name}"."{req.table_name}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql).fetchall()
+                    preview = [{"id": r[0], "direccion": str(r[1])} for r in preview_rows]
+            except Exception as ex_prev:
+                logger.warning("Aviso al obtener vista previa de %s.%s: %s", req.schema_name, req.table_name, ex_prev)
+                try:
+                    c1 = actual_cols[0]
+                    c2 = actual_cols[1] if len(actual_cols) > 1 else actual_cols[0]
+                    prev_sql = sa_text(f"""
+                        SELECT "{c1}", "{c2}"
+                        FROM "{req.schema_name}"."{req.table_name}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql).fetchall()
+                    preview = [{"id": r[0], "direccion": str(r[1])} for r in preview_rows]
+                except Exception:
+                    preview = []
+
+        # 6. Conteos de estado
+        if is_ingested:
+            status_counts = central_counts
+        else:
+            try:
+                extractor = DatabaseExtractor(
+                    db_service=db_svc,
+                    schema=req.schema_name,
+                    table=req.table_name,
+                    id_col=id_col,
+                    dir_col=address_col,
+                )
+                status_counts = extractor.get_status_counts()
+            except Exception:
+                status_counts = central_counts
 
         return {
             "schema": req.schema_name,
@@ -869,9 +984,13 @@ async def wizard_inspect_table(req: InspectTableRequest):
             "counts": status_counts,
             "central_counts": central_counts,
             "is_ingested": is_ingested,
+            "is_decoupled": is_decoupled or (has_dire_id and is_ingested),
             "preview": preview,
         }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("Error al inspeccionar tabla %s.%s: %s", req.schema_name, req.table_name, e)
         raise HTTPException(
             status_code=400,
             detail=f"Error al inspeccionar tabla '{req.schema_name}.{req.table_name}': {str(e)}"
