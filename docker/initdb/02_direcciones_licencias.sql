@@ -42569,7 +42569,7 @@ CREATE TABLE IF NOT EXISTS public.direcciones_actual (
 );
 
 INSERT INTO public.direcciones_actual (id_licencia, emp_direccion)
-SELECT id_licencia, emp_direccion 
+SELECT id_licencia, emp_direccion
 FROM public.direcciones_licencias
 ON CONFLICT (id_licencia) DO UPDATE SET emp_direccion = EXCLUDED.emp_direccion;
 

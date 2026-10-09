@@ -1,0 +1,245 @@
+// =====================================================================
+// MODELO RELACIONAL NORMALIZADO (3NF) - VERSIÓN 2.0 (ACTUALIZADA)
+// Municipalidad Provincial de Chiclayo (MPCH)
+// Formato: Database Markup Language (DBML)
+// Compatible con: dbdocs.io, dbdiagram.io y renderizadores DBML oficiales
+// =====================================================================
+
+Project Normalizacion_Direcciones_MPCH_V2 {
+  database_type: 'PostgreSQL'
+  Note: '''
+    # Arquitectura Relacional Catastral MPCH V2
+    Sistema de Normalización Geográfica y Validación Predial Estricta.
+    
+    Regla de Oro:
+    - es_procesado = NULL  : Pendiente de procesar.
+    - es_procesado = TRUE  : Normalizado con 100% certeza catastral y dire_id asociado.
+    - es_procesado = FALSE : Rechazado / Incoherente (dire_id = NULL, sin inserción en tb_direccion).
+  '''
+}
+
+// ---------------------------------------------------------------------
+// 1. CATÁLOGOS BASE Y MAESTROS
+// ---------------------------------------------------------------------
+
+Table tb_tipo_via {
+  tivi_id bigint [pk, increment, note: 'Identificador único oficial del tipo de vía']
+  tivi_nombre varchar(100) [not null, unique, note: 'Nombre oficial (AVENIDA, CALLE, JIRON, PASAJE, PROLONGACION, etc.)']
+  tivi_abreviatura varchar(20) [note: 'Abreviatura estandarizada (AV., CA., JR., PJ., PROL.)']
+  tivi_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo, INA = Inactivo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el catálogo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  Note: 'Catálogo oficial de clasificación de vías urbanas según normativa MPCH.'
+}
+
+Table tb_via {
+  via_id bigint [pk, increment, note: 'Identificador único de la vía física']
+  tivi_id bigint [not null, ref: > tb_tipo_via.tivi_id, note: 'Clasificación oficial de la vía']
+  via_nombre varchar(250) [not null, note: 'Nombre propio de la vía sin prefijo de tipo (ej. JOSE BALTA, SAN JOSE, CRISTOBAL COLON)']
+  via_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la vía']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  indexes {
+    (via_nombre) [name: 'idx_tb_via_nombre']
+    (tivi_id, via_nombre) [name: 'idx_tb_via_tipo_nombre']
+  }
+
+  Note: 'Catálogo de nomenclatura vial del distrito de Chiclayo Cercado.'
+}
+
+Table tb_tipo_zona {
+  tizo_id bigint [pk, increment, note: 'Identificador único de habilitación urbana']
+  tizo_nombre varchar(100) [not null, unique, note: 'Tipo de habilitación (URBANIZACION, PUEBLO JOVEN, ASOCIACION PRO VIVIENDA, UNIDAD VECINAL, etc.)']
+  tizo_abreviatura varchar(20) [note: 'Abreviatura (URB., PP.JJ., ASOC., U.V.)']
+  tizo_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el catálogo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  Note: 'Clasificación legal de habilitaciones urbanas reconocidas por la MPCH.'
+}
+
+Table tb_zona {
+  zona_id bigint [pk, increment, note: 'Identificador único de la zona catastral']
+  tizo_id bigint [not null, ref: > tb_tipo_zona.tizo_id, note: 'Tipo de habilitación urbana']
+  zona_nombre varchar(250) [not null, note: 'Nombre de la habilitación sin prefijo (ej. SANTA VICTORIA, CAMPODONICO, FANNY ABANTO CALLE)']
+  zona_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la zona']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  indexes {
+    (zona_nombre) [name: 'idx_tb_zona_nombre']
+    (tizo_id, zona_nombre) [name: 'idx_tb_zona_tipo_nombre']
+  }
+
+  Note: 'Catálogo de habilitaciones urbanas y asentamientos legalmente delimitados.'
+}
+
+// ---------------------------------------------------------------------
+// 2. NÚCLEO CATASTRAL: DIRECCIÓN NORMALIZADA
+// ---------------------------------------------------------------------
+
+Table tb_direccion {
+  dire_id bigint [pk, increment, note: 'Identificador maestro de dirección normalizada (Surrogate Key)']
+  zona_id bigint [ref: > tb_zona.zona_id, note: 'FK opcional hacia tb_zona. Nullable si la vía está en el cercado histórico sin zona formal']
+  dire_referencia text [note: 'Punto de referencia físico consolidado (ej. FRENTE A PARQUE INFANTIL)']
+  dire_estado varchar(3) [not null, default: 'ACT', note: 'Estado administrativo: ACT = Activo']
+  dire_esquema varchar(500) [note: 'Esquema de origen (ej. licencias, rentas, catastro)']
+  dire_tabla varchar(500) [note: 'Nombre de la tabla de origen (ej. tb_licencia, tb_contribuyente)']
+  dire_tabla_id bigint [note: 'Clave primaria del registro en la tabla de origen']
+  dire_valor_origen varchar(500) [note: 'Texto crudo original de la dirección extraída de la fuente']
+  dire_es_procesado boolean [note: 'Semántica Tri-State: NULL = Pendiente | TRUE = Normalizado 100% Certeza | FALSE = Rechazado / Incoherente']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la dirección']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación de la dirección en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación o normalización']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  indexes {
+    (zona_id) [name: 'idx_tb_direccion_zona']
+    (dire_esquema, dire_tabla, dire_es_procesado) [name: 'idx_tb_direccion_proc']
+    (dire_esquema, dire_tabla, dire_tabla_id) [name: 'idx_tb_direccion_origen_lookup']
+  }
+
+  Note: 'Entidad central que consolida una dirección física válida de la MPCH y almacena la procedencia cruda.'
+}
+
+// ---------------------------------------------------------------------
+// 3. VÍAS ASOCIADAS A LA DIRECCIÓN (SOPORTE 1..N: SIMPLE, ESQUINAS, INTERSECCIONES)
+// ---------------------------------------------------------------------
+
+Table tb_direccion_via {
+  divi_id bigint [pk, increment, note: 'Identificador de la arteria asociada']
+  dire_id bigint [not null, ref: > tb_direccion.dire_id, note: 'FK hacia la dirección normalizada']
+  via_id bigint [not null, ref: > tb_via.via_id, note: 'FK hacia la vía catalogada']
+  divi_numero varchar(50) [default: 'S/N', note: 'Numeración de policía municipal (ej. 155, 882) o S/N']
+  divi_cuadra varchar(20) [note: 'Número de cuadra (ej. CDR 4)']
+  divi_orden int [not null, default: 1, note: 'Orden de prelación vial: 1 = Principal, 2 = Secundaria / Esquina, 3 = Intersección adicional']
+  divi_es_principal boolean [not null, default: true, note: 'True si es la arteria principal; False para arteria secundaria en esquinas/intersecciones']
+  divi_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+
+  indexes {
+    (dire_id, via_id) [name: 'idx_tb_direccion_via_lookup']
+    (divi_es_principal) [name: 'idx_tb_direccion_via_principal']
+  }
+
+  Note: 'Detalle de arterias asociadas. Soporta 1 vía (estándar) o múltiples vías (esquinas, intersecciones).'
+}
+
+// ---------------------------------------------------------------------
+// 4. COMPONENTES PREDIALES (EJE RÚSTICO / HABILITACIÓN URBANA)
+// ---------------------------------------------------------------------
+
+Table tb_componente_direccion {
+  codi_id bigint [pk, increment, note: 'Identificador del tipo de componente predial']
+  codi_nombre varchar(100) [not null, unique, note: 'Nombre del componente (MANZANA, LOTE, SUBLOTE, PISO, BLOCK, SECTOR, ETAPA)']
+  codi_abreviatura varchar(20) [note: 'Abreviatura (MZ, LT, SLT, PIS, BLK, SEC, ETP)']
+  codi_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el componente']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  Note: 'Catálogo de partes prediales y horizontales reconocidas.'
+}
+
+Table tb_contenido_componente_direccion {
+  diti_id bigint [pk, increment, note: 'Identificador del valor asignado al componente']
+  dire_id bigint [not null, ref: > tb_direccion.dire_id, note: 'FK hacia tb_direccion']
+  codi_id bigint [not null, ref: > tb_componente_direccion.codi_id, note: 'FK hacia el tipo de componente']
+  diti_valor varchar(100) [not null, note: 'Valor alfanumérico (ej. A, 14, 02, 3, B)']
+  diti_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+
+  indexes {
+    (dire_id, codi_id) [name: 'idx_tb_contenido_comp_lookup']
+  }
+
+  Note: 'Almacena la manzana, lote, piso, block u otros atributos prediales.'
+}
+
+// ---------------------------------------------------------------------
+// 5. MÓDULOS DE PROPIEDAD EXCLUSIVA (INTERIORES, TIENDAS, DEPARTAMENTOS, STANDS)
+// ---------------------------------------------------------------------
+
+Table tb_tipo_modulo {
+  timo_id bigint [pk, increment, note: 'Identificador único del tipo de módulo inmobiliario']
+  timo_nombre varchar(100) [not null, unique, note: 'Nombre oficial del módulo (INTERIOR, TIENDA, DEPARTAMENTO, STAND, OFICINA, PUESTO, KIOSKO, DEPOSITO, ALMACEN)']
+  timo_abreviatura varchar(20) [note: 'Abreviatura estandarizada (INT, TDA, DPTO, STD, OF, PTO, KSK, DEP, ALM)']
+  timo_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el módulo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
+
+  Note: 'Catálogo maestro de unidades inmobiliarias internas de propiedad exclusiva.'
+}
+
+Table tb_direccion_tipo_modulo {
+  ditm_id bigint [pk, increment, note: 'Identificador del módulo asignado']
+  dire_id bigint [not null, ref: > tb_direccion.dire_id, note: 'FK hacia tb_direccion']
+  timo_id bigint [not null, ref: > tb_tipo_modulo.timo_id, note: 'FK hacia el tipo de módulo']
+  ditm_nombre varchar(100) [not null, note: 'Identificador alfanumérico legítimo del módulo (ej. 1A, 204, 1116, B-3)']
+  ditm_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+
+  indexes {
+    (dire_id, timo_id) [name: 'idx_tb_direccion_modulo_lookup']
+  }
+
+  Note: 'Almacena interiores, tiendas, departamentos y stands con sus numeraciones internas reales.'
+}
+
+// ---------------------------------------------------------------------
+// 6. TABLA FUENTE / DE NEGOCIO (EJEMPLO REPRESENTATIVO: tb_licencia / tb_xxx)
+// ---------------------------------------------------------------------
+
+Table tb_fuente_negocio {
+  id_registro bigint [pk, increment, note: 'PK de la tabla emisora o trámite']
+  dire_id bigint [ref: > tb_direccion.dire_id, note: 'FK hacia la dirección en catastro central public.tb_direccion']
+  xxxx bigint [note: 'Campos de negocio propios del sistema emisor']
+  xxxx_2 bigint [note: 'Campos de negocio propios del sistema emisor']
+
+  indexes {
+    (dire_id) [name: 'idx_fuente_dire_id']
+  }
+
+  Note: '''
+    Representación genérica de las tablas fuente de la MPCH tras la Fase A (ej. tb_licencia, tb_contribuyente, tb_predio).
+    Desacoplada de cadenas de texto y referenciada exclusivamente a public.tb_direccion.
+  '''
+}

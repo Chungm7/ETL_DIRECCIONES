@@ -207,13 +207,14 @@
       color: #ffffff;
     }
 
-    /* ── Contenedor Principal ── */
+    /* ── Contenedor Principal (Lienzo Ampliado) ── */
     main {
       flex: 1;
-      max-width: 960px;
+      max-width: min(96vw, 1560px);
       width: 100%;
-      margin: 24px auto;
-      padding: 0 20px;
+      margin: 20px auto;
+      padding: 0 24px;
+      box-sizing: border-box;
     }
 
     .panel {
@@ -663,36 +664,106 @@
       word-break: break-all;
     }
 
-    .record-breakdown {
+    /* ── Matriz Catastral Enriquecida ── */
+    .catastro-matrix {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-      gap: 8px;
-      font-size: 12px;
+      grid-template-columns: 2.2fr 1.6fr 1.6fr 1.3fr 1.3fr;
+      gap: 10px;
+      margin-top: 8px;
     }
-    .breakdown-item {
-      background: #ffffff;
+    @media (max-width: 1280px) {
+      .catastro-matrix {
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      }
+    }
+    .matrix-col {
+      background: var(--slate-50);
       border: 1px solid var(--slate-200);
       border-radius: 6px;
-      padding: 6px 10px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .matrix-lbl {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--slate-500);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 6px;
     }
-    .breakdown-lbl {
-      font-size: 10.5px;
-      font-weight: 600;
-      color: var(--slate-500);
-      text-transform: uppercase;
-    }
-    .breakdown-val {
+    .matrix-val {
+      font-size: 12.5px;
       font-weight: 600;
       color: var(--slate-800);
-      text-align: right;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      line-height: 1.4;
+      word-break: normal;
+    }
+    .via-entry {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-bottom: 2px;
+    }
+    .via-badge-num {
+      background: #eff6ff;
+      color: #1d4ed8;
+      border: 1px solid #bfdbfe;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: monospace;
+      padding: 1px 6px;
+      border-radius: 4px;
       white-space: nowrap;
     }
+    .via-corner-divider {
+      font-size: 10.5px;
+      font-weight: 700;
+      color: var(--slate-400);
+      text-transform: uppercase;
+      margin: 2px 0;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .chip-predio {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: monospace;
+      margin: 1px 3px 2px 0;
+    }
+    .chip-mz { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .chip-lt { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .chip-slt { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .chip-block { background: #f3e8ff; color: #6b21a8; border: 1px solid #e9d5ff; }
+    .chip-piso { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .chip-mod {
+      background: #ede9fe;
+      color: #5b21b6;
+      border: 1px solid #ddd6fe;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 4px;
+      display: inline-flex;
+      margin: 1px 3px 2px 0;
+    }
+    .chip-ref-text {
+      color: var(--slate-700);
+      font-size: 12px;
+      font-weight: 500;
+    }
+
     .chip-id {
       font-size: 10px;
       font-family: monospace;
@@ -704,13 +775,15 @@
     .chip-zona { background: #dcfce7; color: #166534; }
 
     .record-diagnosis {
-      margin-top: 8px;
-      padding: 6px 10px;
+      margin-top: 10px;
+      padding: 8px 12px;
       border-radius: 6px;
       font-size: 12px;
       display: flex;
-      align-items: center;
-      gap: 6px;
+      align-items: flex-start;
+      gap: 8px;
+      line-height: 1.45;
+      word-break: break-word;
     }
     .record-diagnosis.diag-obs {
       background: var(--amber-bg);
@@ -721,6 +794,73 @@
       background: var(--red-bg);
       border: 1px solid var(--red-border);
       color: #991b1b;
+    }
+
+    /* ── Vista Tabla Compacta del Inspector ── */
+    .table-inspector-wrap {
+      max-height: 580px;
+      overflow: auto;
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      background: #ffffff;
+      box-shadow: var(--shadow-sm);
+    }
+    table.table-inspector {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+      text-align: left;
+    }
+    table.table-inspector th {
+      background: var(--mpch-navy);
+      color: #ffffff;
+      padding: 10px 12px;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      white-space: nowrap;
+      border-bottom: 2px solid var(--mpch-gold);
+    }
+    table.table-inspector td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--slate-100);
+      vertical-align: top;
+      color: var(--slate-800);
+    }
+    table.table-inspector tr:hover td {
+      background: #f8fafc;
+    }
+
+    /* ── Controles de Vista del Inspector ── */
+    .view-toggle-wrap {
+      display: inline-flex;
+      background: var(--slate-200);
+      border-radius: 6px;
+      padding: 2px;
+    }
+    .view-toggle-btn {
+      border: none;
+      background: transparent;
+      padding: 4px 10px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--slate-600);
+      border-radius: 4px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: all 0.12s;
+    }
+    .view-toggle-btn:hover {
+      color: var(--slate-900);
+    }
+    .view-toggle-btn.active {
+      background: #ffffff;
+      color: var(--mpch-navy);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+      font-weight: 700;
     }
 
     /* ── Tabla de Previsualización ── */
@@ -813,10 +953,30 @@
       justify-content: flex-end;
       gap: 10px;
     }
+    .btn-modal-close {
+      background: transparent;
+      border: none;
+      font-size: 22px;
+      line-height: 1;
+      color: var(--slate-400);
+      cursor: pointer;
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: auto;
+    }
+    .btn-modal-close:hover {
+      background: var(--slate-100);
+      color: var(--slate-700);
+    }
 
-    /* ── Modal de Exportación Catastral ── */
+    /* ── Modal de Exportación Catastral (Ampliación) ── */
     .modal-dialog-export {
-      max-width: 600px;
+      max-width: 780px;
+      width: 95%;
     }
     .modal-icon-badge-export {
       background: var(--blue-bg);
@@ -888,6 +1048,15 @@
     .export-btn-csv:hover:not(:disabled) {
       background: var(--slate-200);
     }
+    .export-btn-json {
+      background: var(--blue-bg);
+      border: 1px solid var(--blue-border);
+      color: var(--mpch-navy);
+    }
+    .export-btn-json:hover:not(:disabled) {
+      background: #dbeafe;
+      border-color: #3b82f6;
+    }
     .export-btn-dl:disabled {
       opacity: 0.6;
       cursor: not-allowed;
@@ -914,6 +1083,139 @@
       font-weight: 700;
       box-shadow: var(--shadow-sm);
     }
+
+    /* ── Tarjetas de Selección de Modalidad / Bifurcación ── */
+    .mode-card {
+      background: #ffffff;
+      border: 2px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .mode-card:hover {
+      border-color: #3b82f6;
+      background: #f8fafc;
+    }
+    .mode-card.selected {
+      border-color: #2563eb;
+      background: #eff6ff;
+      box-shadow: 0 0 0 1px #2563eb;
+    }
+
+    /* ── Franja Armónica de Controles (Paso 5) ── */
+    .control-panel-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    .params-strip {
+      background: var(--slate-50);
+      border: 1px solid var(--slate-200);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-start;
+      flex-wrap: wrap;
+      gap: 14px;
+    }
+    .param-box {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .param-box label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--slate-600);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin: 0;
+    }
+    .param-box input, .param-box select {
+      padding: 5px 8px;
+      font-size: 12px;
+      border: 1px solid var(--slate-300);
+      border-radius: 5px;
+      background: #ffffff;
+      color: var(--slate-800);
+      font-weight: 600;
+      min-width: 75px;
+    }
+    .actions-strip {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding-top: 4px;
+    }
+    .actions-cluster-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .actions-cluster-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-export-hub {
+      background: var(--mpch-navy);
+      color: #ffffff;
+      border: 1px solid var(--mpch-navy);
+      padding: 7px 14px;
+      font-size: 12.5px;
+      font-weight: 700;
+      border-radius: var(--radius);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+      box-shadow: 0 2px 4px rgba(12, 35, 64, 0.15);
+    }
+    .btn-export-hub:hover {
+      background: var(--mpch-navy-light);
+      transform: translateY(-1px);
+    }
+    .quick-export-pills {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid var(--slate-300);
+      border-radius: 6px;
+      background: #ffffff;
+      overflow: hidden;
+      box-shadow: var(--shadow-sm);
+    }
+    .quick-dl-btn {
+      padding: 6px 9px;
+      font-size: 11px;
+      font-weight: 700;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      transition: background 0.12s;
+      border-right: 1px solid var(--slate-200);
+    }
+    .quick-dl-btn:last-child {
+      border-right: none;
+    }
+    .quick-dl-btn.dl-excel { color: #059669; }
+    .quick-dl-btn.dl-excel:hover { background: #ecfdf5; }
+    .quick-dl-btn.dl-csv { color: #475569; }
+    .quick-dl-btn.dl-csv:hover { background: #f1f5f9; }
+    .quick-dl-btn.dl-json { color: #2563eb; }
+    .quick-dl-btn.dl-json:hover { background: #eff6ff; }
 
     /* ── Spinners y Utilidades ── */
     .spinner {
@@ -969,7 +1271,7 @@
 <nav class="wizard-bar" id="wizardBar" aria-label="Progreso de configuración">
   <div class="step-tab active" id="tab1" onclick="tryGoStep(1)">
     <span class="tab-icon" id="tabIcon1">1</span>
-    <span>Conexión IA</span>
+    <span>Conexión IA (Extractor)</span>
   </div>
   <div class="step-tab locked" id="tab2" onclick="tryGoStep(2)">
     <span class="tab-icon" id="tabIcon2">2</span>
@@ -992,14 +1294,14 @@
 <!-- CONTENEDOR PRINCIPAL -->
 <main>
 
-  <!-- ════ PASO 1: CONEXIÓN AL MOTOR IA ════ -->
+  <!-- ════ PASO 1: CONEXIÓN AL MOTOR IA (EXTRACTOR) ════ -->
   <section id="step1">
     <div class="panel">
       <div class="panel-title">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/>
         </svg>
-        Paso 1: Configuración del Motor de Inteligencia Artificial (Ollama)
+        Paso 1: Configuración del Motor de Inteligencia Artificial (Modelo Extractor)
       </div>
 
       <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
@@ -1017,7 +1319,7 @@
         </div>
         <div class="field full">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <label for="ai_model_select" style="margin:0;">Modelo de Lenguaje (LLM)</label>
+            <label for="ai_model_select" style="margin:0;">Modelo de Lenguaje (LLM - Extractor)</label>
             <button type="button" class="btn btn-ghost" style="padding:3px 10px; font-size:11.5px;" onclick="detectAIModels()">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
               <span>Detectar modelos instalados</span>
@@ -1100,10 +1402,36 @@
       <!-- Tarjeta de Diagnóstico Interactivo de BD -->
       <div id="diagDB"></div>
 
+      <!-- Acceso Rápido Directo a Reanudación / Normalización Catastral en public.tb_direccion -->
+      <div id="cardCentralDirectResume" class="hidden" style="margin-top:16px; padding:16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); box-shadow:var(--shadow-sm);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-valid" style="font-size:11px;">⚡ CATASTRO CENTRAL DETECTADO</span>
+              <strong style="color:#166534; font-size:14px;">Datos ya migrados en public.tb_direccion</strong>
+            </div>
+            <p style="font-size:12.5px; color:#14532d; margin:6px 0 0 0;">
+              Se detectaron <strong id="lblCentralTotal">0</strong> registros migrados en el catastro central (<strong id="lblCentralPending">0</strong> pendientes de normalizar con IA).
+              Puede pasar a normalizar directamente sin tener que seleccionar esquema ni tabla origen.
+            </p>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-green" id="btnDirectNormalizeCentral" onclick="resumeAllCentral()" style="padding:7px 14px; font-weight:700;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>⚡ Normalizar Todo public.tb_direccion (<span id="btnLblCentralPending">0</span>)</span>
+            </button>
+            <button class="btn btn-action" onclick="goToResumeMode()" style="padding:7px 12px; font-size:12px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Ver Fuentes Ingestadas</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div style="margin-top:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="goStep(1)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          <span>Volver a IA</span>
+          <span>Volver a Extractor</span>
         </button>
         <button class="btn btn-primary" id="btnConnectDB" onclick="verifyDBConnection()">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
@@ -1132,7 +1460,35 @@
         Seleccione el esquema de PostgreSQL que contiene la tabla de direcciones a normalizar.
       </p>
 
+      <!-- Salto Rápido a Catastro Central en Paso 3 -->
+      <div id="bannerStep3CentralResume" class="hidden" style="margin-bottom:14px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:12.5px; color:#14532d;">
+          ⚡ Hay <strong id="lblStep3CentralPending">0</strong> registros pendientes en <code>public.tb_direccion</code>. Puede normalizarlos de inmediato.
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-green" style="padding:4px 10px; font-size:11.5px; font-weight:700;" onclick="resumeAllCentral()">
+            <span>⚡ Normalizar Todo Ahora</span>
+          </button>
+          <button class="btn btn-action" style="padding:4px 10px; font-size:11.5px;" onclick="goToResumeMode()">
+            <span>Ver Fuentes</span>
+          </button>
+        </div>
+      </div>
+
       <div id="alertSchema"></div>
+
+      <!-- Buscador de Esquemas -->
+      <div style="margin-bottom:12px; display:flex; gap:10px; align-items:center;">
+        <div style="position:relative; width:100%; max-width:320px;">
+          <input type="text" id="searchSchema" placeholder="Buscar esquema por nombre..." style="width:100%; padding:8px 12px 8px 34px; font-size:12.5px; border-radius:var(--radius); border:1px solid var(--slate-300); background:#ffffff; outline:none; transition:border-color 0.15s, box-shadow 0.15s;" oninput="filterSchemaCards()" onkeydown="handleSchemaSearchKey(event)" />
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--slate-400); pointer-events:none;">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+        </div>
+        <span id="schemaCountBadge" style="font-size:11.5px; color:var(--slate-500); background:var(--slate-100); border:1px solid var(--slate-200); padding:4px 9px; border-radius:12px; font-weight:600;"></span>
+      </div>
+
       <div class="cards-grid" id="schemaCards"></div>
 
       <div style="margin-top:16px; display:flex; gap:12px; align-items:center;">
@@ -1163,72 +1519,197 @@
         Esquema activo: <strong id="labelSchema" style="color:var(--mpch-navy);"></strong>
       </div>
 
+      <!-- ── Bifurcación Clara de Modalidad de Trabajo ── -->
+      <div style="background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius); padding:14px; margin-bottom:16px;">
+        <div style="font-size:11px; font-weight:700; color:var(--slate-500); text-transform:uppercase; margin-bottom:8px; letter-spacing:0.5px;">
+          Modalidad de Trabajo: Seleccione el proceso que desea realizar
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+          <div id="cardModeMigrate" class="mode-card selected" onclick="switchWorkflowMode('migrate')">
+            <div style="display:flex; align-items:center; gap:8px; font-weight:700; color:var(--mpch-navy);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+              <span>1. Ingestar / Migrar Tabla a Catastro Central (Fase A)</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--slate-600); margin-top:3px;">
+              Seleccione una tabla del esquema emisor, migre sus direcciones crudas a <code>public.tb_direccion</code> y vincule la clave foránea <code>dire_id</code>.
+            </div>
+          </div>
+          <div id="cardModeResume" class="mode-card" onclick="switchWorkflowMode('resume')">
+            <div style="display:flex; align-items:center; gap:8px; font-weight:700; color:var(--mpch-navy);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>2. Reanudar / Normalizar con IA en tb_direccion (Fase B)</span>
+            </div>
+            <div style="font-size:11.5px; color:var(--slate-600); margin-top:3px;">
+              Procese directamente direcciones pendientes en <code>public.tb_direccion</code> con IA sin tocar la tabla de origen del sistema emisor.
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="alertTable"></div>
 
-      <!-- Buscador de Tablas -->
-      <div style="margin-bottom:10px; display:flex; gap:8px;">
-        <input type="text" id="searchTable" placeholder="Filtrar tablas por nombre..." style="max-width:280px; padding:7px 12px; font-size:12.5px;" oninput="filterTableCards()" />
-      </div>
-
-      <div class="cards-grid" id="tableCards"></div>
-
-      <!-- Configuración y Mapeo de Columnas -->
-      <div id="colConfig" class="hidden" style="margin-top:16px; padding:18px; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius);">
-        <div style="font-size:13.5px; font-weight:700; color:var(--mpch-navy); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
-          <span>Mapeo de Columnas: <strong id="labelTable"></strong></span>
-          <span style="font-size:11px; background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); padding:2px 8px; border-radius:4px; font-weight:600;">Columnas auto-detectadas</span>
-        </div>
-
-        <div class="form-grid">
-          <div class="field">
-            <label for="sel_id_col">Columna Identificador Único (ID / Clave Primaria)</label>
-            <select id="sel_id_col"></select>
+      <!-- ── VISTA MODO 1: MIGRACIÓN E INGESTA (FASE A) ── -->
+      <div id="viewModeMigrate">
+        <!-- Buscador de Tablas -->
+        <div style="margin-bottom:12px; display:flex; gap:10px; align-items:center;">
+          <div style="position:relative; width:100%; max-width:320px;">
+            <input type="text" id="searchTable" placeholder="Filtrar tablas por nombre..." style="width:100%; padding:8px 12px 8px 34px; font-size:12.5px; border-radius:var(--radius); border:1px solid var(--slate-300); background:#ffffff; outline:none; transition:border-color 0.15s, box-shadow 0.15s;" oninput="filterTableCards()" />
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--slate-400); pointer-events:none;">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
           </div>
-          <div class="field">
-            <label for="sel_addr_col">Columna de Dirección (Texto completo)</label>
-            <select id="sel_addr_col"></select>
+          <span id="tableCountBadge" style="font-size:11.5px; color:var(--slate-500); background:var(--slate-100); border:1px solid var(--slate-200); padding:4px 9px; border-radius:12px; font-weight:600;"></span>
+        </div>
+
+        <div class="cards-grid" id="tableCards"></div>
+
+        <!-- Configuración y Mapeo de Columnas -->
+        <div id="colConfig" class="hidden" style="margin-top:16px; padding:18px; background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius);">
+          <div style="font-size:13.5px; font-weight:700; color:var(--mpch-navy); margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+            <span>Mapeo de Columnas: <strong id="labelTable"></strong></span>
+            <span style="font-size:11px; background:var(--green-bg); color:var(--green); border:1px solid var(--green-border); padding:2px 8px; border-radius:4px; font-weight:600;">Columnas auto-detectadas</span>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="sel_id_col">Columna Identificador Único (ID / Clave Primaria)</label>
+              <select id="sel_id_col"></select>
+            </div>
+            <div class="field">
+              <label for="sel_addr_col">Columna de Dirección (Texto completo)</label>
+              <select id="sel_addr_col"></select>
+            </div>
+          </div>
+
+          <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
+            <button class="btn btn-action" id="btnPreview" onclick="previewTable()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span>Previsualizar Primeras Filas</span>
+            </button>
+            <span id="spinPreview" class="hidden"><div class="spinner"></div></span>
           </div>
         </div>
 
-        <div style="margin-top:14px; display:flex; gap:10px; align-items:center;">
-          <button class="btn btn-action" id="btnPreview" onclick="previewTable()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Previsualizar Primeras Filas</span>
+        <!-- Vista Previa de Registros Reales -->
+        <div id="previewSection" class="hidden" style="margin-top:16px;">
+          <div style="font-size:12px; font-weight:700; color:var(--slate-600); text-transform:uppercase; margin-bottom:8px;">
+            Muestra de Datos Reales (Primeras Filas)
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+            <div id="tableCountInfo" style="display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px;"></div>
+            <button class="btn btn-ghost hidden" id="btnStep4ExportDirect" onclick="openExportModal()" style="padding:4px 10px; font-size:11.5px; border-color:var(--slate-300);" title="Descargar registros procesados de esta tabla directamente sin ejecutar ETL">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Exportar Existentes</span>
+            </button>
+          </div>
+          <div class="preview-wrap">
+            <table class="data-table" id="previewTable">
+              <thead><tr><th style="width:120px;">ID</th><th>Dirección Registrada</th></tr></thead>
+              <tbody id="previewBody"></tbody>
+            </table>
+          </div>
+
+          <!-- Caja de Ingesta / Pre-migración Desacoplada -->
+          <div id="migrationBox" style="margin-top:16px; padding:16px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:var(--radius);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <strong style="color:#1e40af; font-size:13.5px;">Fase A: Migración a Catastro Central (public.tb_direccion)</strong>
+                <div style="font-size:12px; color:#3b82f6; margin-top:2px;">
+                  Copia todas las direcciones a <code>public.tb_direccion</code>. La tabla fuente NO se modifica (cero llaves ni campos agregados).
+                </div>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                <label style="font-size:12px; color:var(--slate-700); display:flex; align-items:center; gap:6px; cursor:pointer; margin:0;" title="Opcional: Si desea eliminar la columna de texto original tras migrar el 100%">
+                  <input type="checkbox" id="chkDropSourceCol" style="cursor:pointer;" />
+                  <span>Eliminar columna de dirección en tabla origen tras migrar</span>
+                </label>
+                <button class="btn btn-action" id="btnMigrateSource" onclick="openMigrationConfirmModal()" style="background:#2563eb; color:#fff; border-color:#1d4ed8;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                  <span>Migrar e Ingestar a tb_direccion</span>
+                </button>
+              </div>
+            </div>
+            <div id="migrationStatusBanner" class="hidden" style="margin-top:12px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <span id="migrationStatusText" style="font-size:12.5px; color:#166534; font-weight:600;"></span>
+              <button class="btn btn-green" id="btnGoToNormalizeFromStep4" onclick="goToResumeWorkflow()" style="padding:5px 12px; font-size:12px;">
+                <span>Ir a Reanudar Normalizaciones</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top:22px; display:flex; gap:12px; align-items:center;">
+          <button class="btn btn-ghost" onclick="goStep(3)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            <span>Volver a Esquemas</span>
           </button>
-          <span id="spinPreview" class="hidden"><div class="spinner"></div></span>
         </div>
       </div>
 
-      <!-- Vista Previa de Registros Reales -->
-      <div id="previewSection" class="hidden" style="margin-top:16px;">
-        <div style="font-size:12px; font-weight:700; color:var(--slate-600); text-transform:uppercase; margin-bottom:8px;">
-          Muestra de Datos Reales (Primeras Filas)
+      <!-- ── VISTA MODO 2: REANUDAR EN CATASTRO CENTRAL (FASE B) ── -->
+      <div id="viewModeResume" class="hidden">
+        <div id="ingestedSourcesSection" style="padding:16px; background:#f8fafc; border:1px solid var(--slate-200); border-radius:var(--radius);">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <div style="font-size:13.5px; font-weight:700; color:var(--mpch-navy); display:flex; align-items:center; gap:8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span>Fuentes Ingestadas en Catastro Central (Listas para Normalizar o Reanudar con IA)</span>
+              </div>
+              <p style="font-size:12px; color:var(--slate-500); margin:3px 0 0 0;">
+                Estas tablas ya tienen sus direcciones migradas en <code>public.tb_direccion</code>. Puede reanudar o ejecutar la normalización directamente sin afectar la base de datos de origen.
+              </p>
+            </div>
+            <button class="btn btn-ghost" style="padding:4px 8px; font-size:11.5px;" onclick="loadIngestedSources()">
+              <span>Actualizar lista</span>
+            </button>
+          </div>
+
+          <!-- Caja de Acción Rápida: Normalización Global de Catastro Central -->
+          <div id="boxResumeAllCentral" style="margin-bottom:14px; padding:14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#166534; font-size:13.5px; display:flex; align-items:center; gap:6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Normalización Global del Catastro Central (public.tb_direccion)</span>
+              </div>
+              <div style="font-size:12px; color:#14532d; margin-top:2px;">
+                Normalice con Inteligencia Artificial todas las direcciones pendientes en <code>public.tb_direccion</code> a máxima velocidad sin importar su procedencia.
+              </div>
+            </div>
+            <button class="btn btn-green" id="btnResumeAllCentral" onclick="resumeAllCentral()" style="padding:8px 16px; font-size:12.5px; font-weight:700;">
+              <span>⚡ Normalizar Todo public.tb_direccion (<span id="btnLblResumeAll">0</span> pendientes)</span>
+            </button>
+          </div>
+
+          <div id="ingestedSourcesTableWrap" style="overflow-x:auto;">
+            <table class="data-table" id="tblIngestedSources">
+              <thead>
+                <tr>
+                  <th>Esquema</th>
+                  <th>Tabla</th>
+                  <th>Total Registros</th>
+                  <th>Pendientes (Tri-State NULL)</th>
+                  <th>Normalizados (TRUE)</th>
+                  <th>Rechazados (FALSE)</th>
+                  <th style="text-align:right;">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="bodyIngestedSources">
+                <tr><td colspan="7" style="text-align:center; color:var(--slate-400);">Cargando fuentes ingestadas...</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
-          <div id="tableCountInfo" style="display:flex; gap:16px; flex-wrap:wrap; font-size:12.5px;"></div>
-          <button class="btn btn-ghost hidden" id="btnStep4ExportDirect" onclick="openExportModal()" style="padding:4px 10px; font-size:11.5px; border-color:var(--slate-300);" title="Descargar registros procesados de esta tabla directamente sin ejecutar ETL">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            <span>Exportar Existentes</span>
+
+        <div style="margin-top:22px; display:flex; gap:12px; align-items:center;">
+          <button class="btn btn-ghost" onclick="switchWorkflowMode('migrate')">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            <span>Ir a Migrar Nueva Tabla</span>
           </button>
-        </div>
-        <div class="preview-wrap">
-          <table class="data-table" id="previewTable">
-            <thead><tr><th style="width:120px;">ID</th><th>Dirección Registrada</th></tr></thead>
-            <tbody id="previewBody"></tbody>
-          </table>
         </div>
       </div>
 
-      <div style="margin-top:22px; display:flex; gap:12px; align-items:center;">
-        <button class="btn btn-ghost" onclick="goStep(3)">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-          <span>Volver a Esquemas</span>
-        </button>
-        <button class="btn btn-green" id="btnConfirmTable" onclick="confirmTable()" disabled>
-          <span>Confirmar Tabla y Continuar</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
-        </button>
-      </div>
     </div>
   </section>
 
@@ -1268,8 +1749,10 @@
         </div>
 
         <div style="border-left:1px solid var(--slate-300); padding-left:20px;">
-          <div class="summary-col-label">Motor de Inteligencia Artificial</div>
-          <div class="summary-col-val" style="color:var(--green);" id="summAiModel">Ollama</div>
+          <div class="summary-col-label">Motor de Inteligencia Artificial (Extractor Seguro 100%)</div>
+          <div class="summary-col-val" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <span style="color:var(--green); font-size:13px;" id="summAiModel">Extractor: Ollama</span>
+          </div>
           <div class="summary-col-sub">
             Endpoint: <span id="summAiHost" style="font-family:monospace;"></span> &nbsp;|&nbsp; Instancias IA: <strong id="summWorkers">4</strong>
           </div>
@@ -1299,62 +1782,134 @@
       </div>
     </div>
 
-    <!-- Panel de Control y Ejecución -->
-    <div class="panel">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-        <div>
-          <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px;">
-            Control de Procesamiento Catastral
-          </div>
-          <div style="font-size:12px; color:var(--slate-500); margin-top:2px;" id="statusLabel">
-            Listo para iniciar
+    <!-- Panel de Control y Ejecución Armónico -->
+    <div class="panel" style="padding: 20px 24px;">
+      <div class="control-panel-wrap">
+        <!-- Encabezado del Panel -->
+        <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div class="panel-title" style="margin:0; border:none; padding:0; font-size:15px; display:flex; align-items:center; gap:8px;">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              <span>Control de Procesamiento Catastral</span>
+            </div>
+            <div style="font-size:12px; color:var(--slate-500); margin-top:3px;" id="statusLabel">
+              Listo para iniciar
+            </div>
           </div>
         </div>
 
-        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;">
-          <div class="field" style="margin:0; min-width:80px;">
-            <label for="inp_limit" style="font-size:11px;">Límite</label>
-            <input type="number" id="inp_limit" placeholder="Sin límite" min="1" style="padding:6px 8px; font-size:12.5px;" />
+        <!-- Franja 1: Parámetros Técnicos Alineados -->
+        <div class="params-strip">
+          <div class="param-box">
+            <label for="inp_limit">Límite</label>
+            <input type="number" id="inp_limit" placeholder="Sin límite" min="1" />
           </div>
-          <div class="field" style="margin:0; min-width:80px;">
-            <label for="inp_batch" style="font-size:11px;" title="Cantidad de registros extraídos y confirmados en la BD por ciclo de trabajo (Paginación interna). Por defecto: 50.">
-              Lote <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Cantidad de registros leídos de la BD por consulta (Paginación interna). Por defecto: 50">(?)</span>
+          <div class="param-box">
+            <label for="inp_batch" title="Cantidad de registros extraídos y confirmados en la BD por ciclo de trabajo. Por defecto: 50.">
+              Lote BD <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Registros por lote SQL">(?)</span>
             </label>
-            <input type="number" id="inp_batch" value="50" min="1" max="100" style="padding:6px 8px; font-size:12.5px;" title="Registros por paquete de consulta SQL (1-100)" />
+            <input type="number" id="inp_batch" value="50" min="1" max="100" />
           </div>
-          <div class="field" style="margin:0; min-width:85px;">
-            <label for="inp_num_workers" style="font-size:11px;" title="Número de hilos o instancias concurrentes que procesan contra Ollama en paralelo.">
-              Instancias <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Instancias concurrentes de IA (1 a 16)">(?)</span>
+          <div class="param-box">
+            <label for="inp_num_workers" title="Número de hilos o instancias concurrentes que procesan contra Ollama en paralelo.">
+              Instancias IA <span style="font-weight:normal; color:var(--slate-400); cursor:help;" title="Instancias paralelas de IA (1-16)">(?)</span>
             </label>
-            <input type="number" id="inp_num_workers" value="2" min="1" max="16" style="padding:6px 8px; font-size:12.5px;" title="Instancias paralelas de IA (1-16)" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
+            <input type="number" id="inp_num_workers" value="2" min="1" max="16" oninput="syncNumWorkers(this.value)" onchange="syncNumWorkers(this.value)" />
           </div>
-          <div class="field" style="margin:0;">
-            <label for="inp_filter" style="font-size:11px;">Filtro</label>
-            <select id="inp_filter" style="padding:6px 8px; font-size:12.5px;">
+          <div class="param-box">
+            <label for="inp_filter">Filtro de Proceso</label>
+            <select id="inp_filter">
               <option value="pending">Pendientes</option>
               <option value="all">Todos los registros</option>
               <option value="observed">Solo Observados</option>
             </select>
           </div>
-          <div style="display:flex; align-items:center; gap:6px; padding-bottom:5px;">
-            <input type="checkbox" id="inp_require_ai" checked style="width:15px; height:15px; cursor:pointer;" />
-            <label for="inp_require_ai" style="font-size:12px; font-weight:600; color:var(--slate-700); cursor:pointer; white-space:nowrap;">Requiere IA</label>
+          <div style="display:flex; align-items:center; gap:6px; margin-top:14px;">
+            <input type="checkbox" id="inp_require_ai" checked style="width:16px; height:16px; cursor:pointer;" />
+            <label for="inp_require_ai" style="font-size:12px; font-weight:700; color:var(--slate-700); cursor:pointer; margin:0; text-transform:none;">Requiere IA</label>
+          </div>
+        </div>
+
+        <!-- Franja de Programación Horaria Diaria (Fuera de Horario / Nocturno) -->
+        <div id="schedulerBox" style="margin-top:14px; padding:12px 16px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:var(--radius);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--mpch-navy);"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <strong style="color:var(--mpch-navy); font-size:13px;">Programación Automática Diaria (Fuera de Horario)</strong>
+              <span id="schedulerBadgeStatus" class="badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">Inactivo</span>
+            </div>
+            <div id="schedulerCountdownText" style="font-size:11.5px; color:#166534; font-weight:600;"></div>
+          </div>
+          <div style="font-size:11.5px; color:var(--slate-500); margin:4px 0 10px 0;">
+            Permite persistir un horario nocturno para que el servidor ejecute la normalización automáticamente cada día sin saturar la IA durante las horas de oficina compartidas con otros sistemas.
+          </div>
+          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
+              <input type="checkbox" id="chkSchedulerEnabled" onchange="toggleSchedulerUI(this.checked)" style="cursor:pointer;" />
+              <span>Activar ejecución diaria</span>
+            </label>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="inpSchedulerTime" style="font-size:12px; color:var(--slate-700); font-weight:600;">Hora de inicio:</label>
+              <input type="time" id="inpSchedulerTime" value="23:00" style="padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--slate-300);" />
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="inpSchedulerEndTime" style="font-size:12px; color:var(--slate-700); font-weight:600;" title="Hora máxima de operación. El proceso no iniciará después de esta hora.">Hora de fin:</label>
+              <input type="time" id="inpSchedulerEndTime" value="" placeholder="Sin límite" style="padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--slate-300);" />
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="inpSchedulerWorkers" style="font-size:12px; color:var(--slate-700); font-weight:600;" title="Instancias paralelas de IA para la ejecución programada (se recomienda 2 para bajo consumo nocturno)">Instancias IA:</label>
+              <input type="number" id="inpSchedulerWorkers" value="2" min="1" max="8" style="width:55px; padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--slate-300);" />
+            </div>
+            <button class="btn btn-action" id="btnSaveScheduler" onclick="saveSchedulerSettings()" style="padding:4px 12px; font-size:12px;">
+              <span>Guardar Horario</span>
+            </button>
+            <button class="btn btn-ghost" id="btnTestTriggerScheduler" onclick="triggerSchedulerNow()" style="padding:4px 10px; font-size:11px; border-color:var(--slate-300);" title="Probar disparo inmediato en segundo plano">
+              <span>Probar Ahora</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Franja 2: Clúster Armónico de Acciones de Ejecución y Exportación -->
+        <div class="actions-strip">
+          <div class="actions-cluster-left">
+            <button class="btn btn-green" id="btnStart" onclick="startETL()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Iniciar Normalización</span>
+            </button>
+            <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
+              <span>Detener</span>
+            </button>
+            <button class="btn btn-ghost" id="btnChangeTable" onclick="goStep(4)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+              <span>Cambiar tabla</span>
+            </button>
+            <button class="btn btn-ghost" id="btnNewSession" onclick="resetToNewSession()" title="Reiniciar el asistente desde el Paso 1 para configurar otra base o modelo">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              <span>Nueva Sesión</span>
+            </button>
           </div>
 
-          <button class="btn btn-green" id="btnStart" onclick="startETL()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            <span>Iniciar Normalización</span>
-          </button>
-          <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
-            <span>Detener</span>
-          </button>
-          <button class="btn btn-ghost" id="btnChangeTable" onclick="goStep(3)">
-            <span>Cambiar tabla</span>
-          </button>
-          <button class="btn btn-ghost" id="btnNewSession" onclick="resetToNewSession()" title="Reiniciar el asistente desde el Paso 1 para configurar otra base o modelo">
-            <span>Nueva Sesión</span>
-          </button>
+          <div class="actions-cluster-right">
+            <button class="btn-export-hub" id="btnMainExport" onclick="openExportModal()" title="Abrir Centro de Descargas y Exportación Catastral">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+              <span>Centro de Exportación</span>
+            </button>
+            <div class="quick-export-pills" title="Descarga rápida de registros procesados con 1 solo clic">
+              <button type="button" class="quick-dl-btn dl-excel" onclick="executeExport('processed', 'excel')" title="Descarga rápida Excel (.xlsx)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span>XLSX</span>
+              </button>
+              <button type="button" class="quick-dl-btn dl-csv" onclick="executeExport('processed', 'csv')" title="Descarga rápida CSV">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                <span>CSV</span>
+              </button>
+              <button type="button" class="quick-dl-btn dl-json" onclick="executeExport('processed', 'json')" title="Descarga rápida JSON V2">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
+                <span>JSON</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1362,11 +1917,18 @@
       <div class="progress-bar-wrap">
         <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
       </div>
-      <div style="display:flex; justify-content:space-between; font-size:11.5px; color:var(--slate-500); margin-bottom:12px; align-items:center;">
-        <span id="progressLabel">0 de 0 registros</span>
-        <div style="display:flex; gap:12px; align-items:center;">
-          <span id="speedLabel" style="font-weight:600; color:var(--mpch-navy-light); background:var(--slate-100); padding:2px 8px; border-radius:4px; border:1px solid var(--slate-200);">0.0 reg/s</span>
-          <span id="elapsedLabel">—</span>
+      <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--slate-600); margin-bottom:12px; align-items:center; flex-wrap:wrap; gap:8px;">
+        <span id="progressLabel" style="font-weight:600; color:var(--slate-700);">0 de 0 registros (0%)</span>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <span id="speedLabel" style="font-weight:600; color:var(--mpch-navy-light); background:var(--slate-100); padding:3px 9px; border-radius:4px; border:1px solid var(--slate-200);" title="Velocidad actual de procesamiento">0.0 reg/s</span>
+          <span id="elapsedLabel" style="font-weight:600; color:var(--slate-700); background:var(--slate-100); padding:3px 9px; border-radius:4px; border:1px solid var(--slate-200); display:inline-flex; align-items:center; gap:5px;" title="Tiempo transcurrido en horas, minutos y segundos">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Tiempo: 00h 00m 00s</span>
+          </span>
+          <span id="etaLabel" style="font-weight:600; color:#b45309; background:#fef3c7; padding:3px 9px; border-radius:4px; border:1px solid #fde68a; display:inline-flex; align-items:center; gap:5px;" title="Tiempo restante estimado según registros pendientes y velocidad actual">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 8 14"/></svg>
+            <span>Restante: —</span>
+          </span>
         </div>
       </div>
     </div>
@@ -1384,10 +1946,20 @@
           </div>
         </div>
 
-        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-          <label style="font-size:12px; color:var(--slate-700); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none; margin-right:4px;">
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <div class="view-toggle-wrap">
+            <button class="view-toggle-btn active" id="btnViewCards" onclick="setInspectorViewMode('cards')" title="Vista enriquecida de tarjetas con matriz catastral">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+              <span>Tarjetas</span>
+            </button>
+            <button class="view-toggle-btn" id="btnViewTable" onclick="setInspectorViewMode('table')" title="Vista tabular compacta estilo hoja de cálculo">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+              <span>Tabla</span>
+            </button>
+          </div>
+          <label style="font-size:12px; color:var(--slate-700); display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
             <input type="checkbox" id="chkAutoScroll" checked onchange="toggleAutoScroll(this.checked)" />
-            Seguir en vivo (auto-scroll)
+            <span>Auto-scroll</span>
           </label>
           <button class="btn btn-action" id="btnOpenExportModal" style="padding:5px 12px; font-size:12px; font-weight:600;" onclick="openExportModal()" title="Exportar registros en Excel o CSV desde la Base de Datos o la Vista Actual">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
@@ -1433,13 +2005,39 @@
           Los registros procesados aparecerán aquí en tiempo real a medida que avance el pipeline.
         </p>
       </div>
+
+      <!-- Vista Tabular Compacta Alternativa -->
+      <div id="inspectorTableWrap" class="table-inspector-wrap hidden">
+        <table class="table-inspector">
+          <thead>
+            <tr>
+              <th style="width:70px;">ID</th>
+              <th style="width:105px;">Estado</th>
+              <th style="width:90px;">Motor</th>
+              <th style="min-width:180px;">Entrada Registrada</th>
+              <th style="min-width:200px;">Vía(s) Normalizada(s)</th>
+              <th style="min-width:160px;">Zona Catastral</th>
+              <th style="min-width:170px;">Predio (Mz / Lt / Block / Piso)</th>
+              <th style="min-width:120px;">Módulo(s)</th>
+              <th style="min-width:220px;">Diagnóstico / Observación</th>
+            </tr>
+          </thead>
+          <tbody id="inspectorTableBody">
+            <tr>
+              <td colspan="9" style="text-align:center; color:var(--slate-400); padding:40px;">
+                Los registros procesados aparecerán aquí en tiempo real a medida que avance el pipeline.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
   </section>
 </main>
 
 <!-- MODAL INSTITUCIONAL DE EXPORTACIÓN CATASTRAL (EXCEL Y CSV) -->
-<div id="modalExportOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+<div id="modalExportOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if (event.target === this) closeExportModal()">
   <div class="modal-dialog modal-dialog-export">
     <div class="modal-header">
       <div class="modal-icon-badge modal-icon-badge-export">
@@ -1447,10 +2045,11 @@
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
       </div>
-      <div>
+      <div style="flex:1;">
         <h3 style="margin:0; font-size:16px; color:var(--mpch-navy);">Centro de Descargas y Exportación Catastral</h3>
-        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Exporte registros procesados en Excel (.xlsx) institucional o CSV delimitado</p>
+        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Exporte registros procesados en Excel (.xlsx), CSV delimitado o JSON estructurado V2</p>
       </div>
+      <button type="button" class="btn-modal-close" onclick="closeExportModal()" aria-label="Cerrar modal" title="Cerrar modal">&times;</button>
     </div>
 
     <div class="modal-body" style="margin-bottom:14px;">
@@ -1500,6 +2099,10 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>CSV</span>
           </button>
+          <button class="export-btn-dl export-btn-json" id="btnDlJsonProcessed" onclick="executeExport('processed', 'json')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>JSON</span>
+          </button>
         </div>
       </div>
 
@@ -1523,6 +2126,10 @@
           <button class="export-btn-dl export-btn-csv" id="btnDlCsvObserved" onclick="executeExport('observed', 'csv')">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>CSV</span>
+          </button>
+          <button class="export-btn-dl export-btn-json" id="btnDlJsonObserved" onclick="executeExport('observed', 'json')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>JSON</span>
           </button>
         </div>
       </div>
@@ -1548,18 +2155,22 @@
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             <span>CSV</span>
           </button>
+          <button class="export-btn-dl export-btn-json" id="btnDlJsonValid" onclick="executeExport('valid', 'json')">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>JSON</span>
+          </button>
         </div>
       </div>
     </div>
 
-    <div class="modal-footer" style="border-top:1px solid var(--slate-200); padding-top:12px; margin-top:0;">
-      <button class="btn btn-ghost" onclick="closeExportModal()">Cerrar</button>
+    <div class="modal-footer" style="border-top:1px solid var(--slate-200); padding-top:14px; margin-top:4px;">
+      <button type="button" class="btn btn-ghost" onclick="closeExportModal()">Cerrar</button>
     </div>
   </div>
 </div>
 
 <!-- MODAL INSTITUCIONAL DE APAGADO DE SERVICIO -->
-<div id="modalShutdownOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+<div id="modalShutdownOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if (event.target === this) closeShutdownModal()">
   <div class="modal-dialog">
     <div class="modal-header">
       <div class="modal-icon-badge">
@@ -1567,7 +2178,10 @@
           <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10"/>
         </svg>
       </div>
-      <h3 id="shutdownModalTitle">¿Desea apagar el servicio?</h3>
+      <div style="flex:1;">
+        <h3 id="shutdownModalTitle" style="margin:0;">¿Desea apagar el servicio?</h3>
+      </div>
+      <button type="button" class="btn-modal-close" onclick="closeShutdownModal()" aria-label="Cerrar modal" title="Cerrar modal">&times;</button>
     </div>
     <div class="modal-body" id="shutdownModalBody">
       <p id="shutdownWarningText">
@@ -1578,6 +2192,174 @@
       <button class="btn btn-ghost" onclick="closeShutdownModal()">Cancelar</button>
       <button class="btn btn-red" id="btnConfirmShutdown" onclick="executeShutdown()">
         Sí, Apagar Servicio
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 1: CONFIRMACIÓN INSTITUCIONAL DE PRE-MIGRACIÓN (FASE A) -->
+<div id="modalConfirmMigrationOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if (event.target === this) closeMigrationConfirmModal()">
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <div class="modal-icon-badge" style="background:#eff6ff; border-color:#bfdbfe; color:#2563eb;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </div>
+      <div style="flex:1;">
+        <h3 style="margin:0; font-size:16px; color:var(--mpch-navy);">Confirmación de Ingesta a Catastro Central</h3>
+        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Pre-migración desacoplada a <code>public.tb_direccion</code></p>
+      </div>
+      <button type="button" class="btn-modal-close" onclick="closeMigrationConfirmModal()" aria-label="Cerrar modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px; color:var(--slate-700); margin-bottom:14px;">
+        Se migrarán las direcciones de la tabla seleccionada hacia <code>public.tb_direccion</code> para permitir su posterior normalización independiente sin afectar la tabla operativa.
+      </p>
+
+      <div style="background:var(--slate-50); border:1px solid var(--slate-200); border-radius:var(--radius); padding:12px 14px; margin-bottom:14px; font-size:12.5px;">
+        <div style="display:grid; grid-template-columns: 140px 1fr; gap:6px 12px; align-items:center;">
+          <span style="font-weight:600; color:var(--slate-600);">Esquema de Origen:</span>
+          <span style="font-weight:700; color:var(--mpch-navy);" id="modalMigrateSchemaText">—</span>
+
+          <span style="font-weight:600; color:var(--slate-600);">Tabla de Origen:</span>
+          <span style="font-weight:700; color:var(--mpch-navy);" id="modalMigrateTableText">—</span>
+
+          <span style="font-weight:600; color:var(--slate-600);">Columna ID (PK):</span>
+          <span style="font-family:monospace; color:var(--slate-800);" id="modalMigrateIdColText">—</span>
+
+          <span style="font-weight:600; color:var(--slate-600);">Columna Dirección:</span>
+          <span style="font-family:monospace; color:var(--slate-800);" id="modalMigrateAddrColText">—</span>
+
+          <span style="font-weight:600; color:var(--slate-600);">Eliminar Columna:</span>
+          <span id="modalMigrateDropColBadge">—</span>
+        </div>
+      </div>
+
+      <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); padding:10px 12px; font-size:12px; color:#166534;">
+        <strong>Garantía de Cero Alteración:</strong> La tabla de origen NO será modificada (cero columnas agregadas ni llaves foráneas impuestas). El 100% de los registros se migran a <code>public.tb_direccion</code> con su identificación de procedencia. Las direcciones vacías se registran como no procesables (FALSE) sin dejar registros fuera.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeMigrationConfirmModal()">Cancelar</button>
+      <button class="btn btn-primary" id="btnExecuteConfirmedMigration" onclick="executeConfirmedMigration()" style="background:#2563eb; border-color:#1d4ed8;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        <span>Confirmar e Iniciar Migración</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 2: CARGA EN VIVO / PROGRESO DE PRE-MIGRACIÓN (FASE A) -->
+<div id="modalMigrationProgressOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-dialog" style="max-width:440px; text-align:center;">
+    <div style="padding:28px 20px;">
+      <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:#eff6ff; margin-bottom:16px;">
+        <div class="spinner" style="width:36px; height:36px; border-width:3.5px; border-top-color:#2563eb;"></div>
+      </div>
+      <h3 style="margin:0 0 8px 0; font-size:17px; color:var(--mpch-navy);">Migrando Registros a tb_direccion...</h3>
+      <p style="margin:0; font-size:13px; color:var(--slate-600); line-height:1.5;">
+        Copiando direcciones a <code>public.tb_direccion</code> de manera autónoma sin alterar la estructura del esquema de origen.
+      </p>
+      <div style="margin-top:16px; font-size:11.5px; color:var(--slate-400); font-weight:600;">
+        Por favor espere. No cierre ni recargue esta ventana.
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 3: RESULTADO EXITOSO DE PRE-MIGRACIÓN CON BIFURCACIÓN DE ACCIONES -->
+<div id="modalMigrationResultOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
+  <div class="modal-dialog" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-icon-badge" style="background:#f0fdf4; border-color:#bbf7d0; color:#16a34a;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <div style="flex:1;">
+        <h3 style="margin:0; font-size:16px; color:#166534;">¡Migración Completada con Éxito!</h3>
+        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Las direcciones han sido integradas a Catastro Central (public.tb_direccion)</p>
+      </div>
+    </div>
+    <div class="modal-body">
+      <div style="background:#f8fafc; border:1px solid var(--slate-200); border-radius:var(--radius); padding:12px 14px; margin-bottom:16px; font-size:12.5px;">
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+          <div style="background:#ffffff; border:1px solid var(--slate-200); border-radius:6px; padding:8px 10px;">
+            <div style="font-size:11px; color:var(--slate-500); font-weight:600;">Total Tabla Origen</div>
+            <div style="font-size:18px; font-weight:700; color:var(--mpch-navy);" id="resMigrateTotalSource">0</div>
+          </div>
+          <div style="background:#ffffff; border:1px solid var(--slate-200); border-radius:6px; padding:8px 10px;">
+            <div style="font-size:11px; color:var(--slate-500); font-weight:600;">Migrados a tb_direccion</div>
+            <div style="font-size:18px; font-weight:700; color:#16a34a;" id="resMigrateLinked">0</div>
+          </div>
+          <div style="background:#ffffff; border:1px solid var(--slate-200); border-radius:6px; padding:8px 10px;">
+            <div style="font-size:11px; color:var(--slate-500); font-weight:600;">Pendientes por Migrar</div>
+            <div style="font-size:18px; font-weight:700; color:#2563eb;" id="resMigrateUnlinked">0</div>
+          </div>
+          <div style="background:#ffffff; border:1px solid var(--slate-200); border-radius:6px; padding:8px 10px;">
+            <div style="font-size:11px; color:var(--slate-500); font-weight:600;">Columna en Origen</div>
+            <div style="font-size:13px; font-weight:700; color:var(--slate-700); margin-top:4px;" id="resMigrateColDropped">Conservada</div>
+          </div>
+        </div>
+      </div>
+
+      <div style="font-size:13px; color:var(--slate-700); margin-bottom:6px; font-weight:600;">
+        ¿Qué desea hacer a continuación?
+      </div>
+      <p style="font-size:12px; color:var(--slate-500); margin:0 0 16px 0;">
+        La migración se completó con éxito. Puede ir a Reanudar Normalizaciones para consultar las direcciones pendientes en Catastro Central y normalizarlas cuando lo desee, o migrar otra tabla.
+      </p>
+    </div>
+    <div class="modal-footer" style="flex-wrap:wrap; justify-content:space-between; gap:10px;">
+      <button class="btn btn-ghost" onclick="migrateAnotherTable()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+        <span>Migrar otra tabla</span>
+      </button>
+      <button class="btn btn-green" id="btnGoToResumeMode" onclick="goToResumeWorkflow()">
+        <span>Ir a Reanudar Normalizaciones</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL 4: NOTIFICACIÓN / ALERTA INSTITUCIONAL MPCH (REEMPLAZO DE ALERT/LOCALHOST) -->
+<div id="modalAlertOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true" onclick="if (event.target === this) closeAlertModal()">
+  <div class="modal-dialog" style="max-width:440px;">
+    <div class="modal-header">
+      <div class="modal-icon-badge" id="modalAlertIconBadge" style="background:#eff6ff; border-color:#bfdbfe; color:#2563eb;">
+        <svg id="modalAlertIconInfo" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <svg id="modalAlertIconWarning" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+          <line x1="12" y1="9" x2="12" y2="13"></line>
+          <line x1="12" y1="17" x2="12.01" y2="17"></line>
+        </svg>
+        <svg id="modalAlertIconError" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="15" y1="9" x2="9" y2="15"></line>
+          <line x1="9" y1="9" x2="15" y2="15"></line>
+        </svg>
+        <svg id="modalAlertIconSuccess" class="hidden" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+      <div style="flex:1;">
+        <h3 id="modalAlertTitle" style="margin:0; font-size:16px; color:var(--mpch-navy);">Aviso del Sistema</h3>
+        <p style="margin:2px 0 0 0; font-size:12px; color:var(--slate-500);">Municipalidad Provincial de Chiclayo</p>
+      </div>
+      <button type="button" class="btn-modal-close" onclick="closeAlertModal()" aria-label="Cerrar modal" title="Cerrar modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p id="modalAlertMessage" style="font-size:13.5px; color:var(--slate-700); line-height:1.5; margin:0; white-space:pre-wrap;"></p>
+    </div>
+    <div class="modal-footer" style="justify-content:flex-end;">
+      <button class="btn btn-primary" id="modalAlertBtnOk" onclick="closeAlertModal()" style="min-width:100px;">
+        Entendido
       </button>
     </div>
   </div>

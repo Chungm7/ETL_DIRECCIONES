@@ -5,12 +5,13 @@ import json
 import logging
 import os
 import queue
+import re
 import signal
 import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,7 @@ from src.loaders.db_loader import DatabaseLoader
 from src.pipelines.etl_pipeline import ETLPipeline
 from src.services.db_service import DatabaseService
 from src.services.ollama_service import OllamaService
+from src.services.scheduler_service import SchedulerConfig, SchedulerService
 from src.transformers.ai_parser import AIAddressParser
 from src.transformers.pipeline_transformer import PipelineTransformer
 
@@ -45,6 +47,7 @@ class ExecutionState:
         self.active_table: str = settings.db.table
         self.num_workers: int = 4
         self.active_model: Optional[str] = None
+        self.active_judge_model: Optional[str] = None
         # Conexiones dinámicas establecidas por el wizard (independientes de .env)
         self.dynamic_db_service: Optional[DatabaseService] = None
         self.dynamic_db_settings: Optional[Any] = None
@@ -67,6 +70,8 @@ class ExecutionState:
             "progress_pct": 0.0,
             "start_time": None,
             "elapsed_seconds": 0,
+            "eta_seconds": 0,
+            "speed_rps": 0.0,
         }
         self.clients: List[asyncio.Queue] = []
         self._lock = threading.Lock()
@@ -79,6 +84,7 @@ class ExecutionState:
         table: str,
         num_workers: int = 4,
         model: Optional[str] = None,
+        judge_model: Optional[str] = None,
     ):
         with self._lock:
             self.is_running = True
@@ -86,6 +92,7 @@ class ExecutionState:
             self.active_table = table
             self.num_workers = max(1, int(num_workers or 1))
             self.active_model = model
+            self.active_judge_model = judge_model
             # No vaciar self.recent_records para preservar el historial acumulado de la sesión
             self.stats = {
                 "status": "RUNNING",
@@ -100,6 +107,8 @@ class ExecutionState:
                 "progress_pct": 0.0,
                 "start_time": time.time(),
                 "elapsed_seconds": 0,
+                "eta_seconds": 0,
+                "speed_rps": 0.0,
             }
 
     def clear_session(self):
@@ -119,6 +128,8 @@ class ExecutionState:
                 "progress_pct": 0.0,
                 "start_time": None,
                 "elapsed_seconds": 0,
+                "eta_seconds": 0,
+                "speed_rps": 0.0,
             }
 
     def add_log(self, message: str):
@@ -147,6 +158,11 @@ class ExecutionState:
         log_line = f"[{idx}/{tot} | ID: {pk}]{worker_tag} [{status_tag}] [{motor}] \"{raw}\" -> {via} | {zona}"
         if cat:
             log_line += f" | {cat}"
+        mods = record_data.get("modulos") or []
+        if mods and "Módulos:" not in cat:
+            mod_strs = [f"{m.get('timo_nombre') or m.get('tipo', 'MOD')} {m.get('ditm_nombre') or m.get('numero', '')}".strip() for m in mods]
+            if mod_strs:
+                log_line += f" | Módulos: {', '.join(mod_strs)}"
         if ref:
             log_line += f" | Ref: {ref}"
         if obs:
@@ -178,6 +194,9 @@ class ExecutionState:
             elapsed = round(time.time() - start_t, 1) if start_t else 0
             speed_rps = round(processed / elapsed, 2) if elapsed > 0 else 0.0
 
+            remaining = max(0, total - processed) if total > 0 else 0
+            eta_seconds = round(remaining / speed_rps, 1) if speed_rps > 0 and remaining > 0 else 0
+
             self.stats.update({
                 "processed": processed,
                 "valid": record_data.get("valid_count", 0),
@@ -188,6 +207,7 @@ class ExecutionState:
                 "heuristic_records": record_data.get("heuristic_records", 0),
                 "progress_pct": pct,
                 "elapsed_seconds": elapsed,
+                "eta_seconds": eta_seconds,
                 "speed_rps": speed_rps,
                 "num_workers": self.num_workers,
             })
@@ -201,6 +221,7 @@ class ExecutionState:
             self.is_running = False
             self.pipeline = None
             self.stats["status"] = "ERROR" if error else "FINISHED"
+            self.stats["eta_seconds"] = 0
             if error:
                 self.stats["error"] = error
         if error:
@@ -254,11 +275,19 @@ state = ExecutionState()
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
-    """Ciclo de vida de FastAPI: registra el event loop activo en el estado."""
+    """Ciclo de vida de FastAPI: registra el event loop activo en el estado e inicia el scheduler."""
     state.loop = asyncio.get_running_loop()
     try:
+        try:
+            scheduler_service.start()
+        except Exception as ex_sched:
+            logger.debug("Aviso al iniciar scheduler en startup: %s", ex_sched)
         yield
     finally:
+        try:
+            scheduler_service.stop()
+        except Exception:
+            pass
         state.shutdown()
 
 
@@ -296,10 +325,19 @@ if STATIC_DIR.exists():
 class AIConnectRequest(BaseModel):
     host: str = Field(default="localhost", description="Host o IP del servidor Ollama")
     port: int = Field(default=11434, description="Puerto de conexión a Ollama")
-    model: str = Field(default="patroclo-artesano-7b:latest", description="Nombre del modelo seleccionado")
+    model: str = Field(default="patroclo-artesano-7b:latest", description="Nombre del modelo seleccionado (Modelo 1 - Extractor)")
+    judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
     timeout: Optional[int] = Field(default=60, description="Timeout en segundos")
     temperature: Optional[float] = Field(default=0.0, description="Temperatura de inferencia")
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de trabajadores concurrentes a Ollama")
+
+
+class AIJudgeConnectRequest(BaseModel):
+    host: str = Field(default="localhost", description="Host o IP del servidor Ollama")
+    port: int = Field(default=11434, description="Puerto de conexión a Ollama")
+    judge_model: str = Field(..., description="Nombre del modelo seleccionado para el Juez / Observador")
+    timeout: Optional[int] = Field(default=60, description="Timeout en segundos")
+    temperature: Optional[float] = Field(default=0.0, description="Temperatura de inferencia")
 
 
 class DetectModelsRequest(BaseModel):
@@ -319,11 +357,25 @@ class InspectSchemaRequest(BaseModel):
     schema_name: str = Field(..., description="Nombre del esquema a inspeccionar")
 
 
+class SeedCatalogsRequest(BaseModel):
+    schema_name: Optional[str] = Field(default=None, description="Nombre del esquema a sembrar")
+    force: bool = Field(default=True, description="Forzar importación de los catálogos completos")
+
+
 class InspectTableRequest(BaseModel):
     schema_name: str = Field(..., description="Nombre del esquema")
     table_name: str = Field(..., description="Nombre de la tabla de direcciones")
     id_col: Optional[str] = Field(default=None, description="Columna que actúa como ID/PK")
     address_col: Optional[str] = Field(default=None, description="Columna con la dirección completa")
+
+
+class MigrateSourceTableRequest(BaseModel):
+    schema_name: str = Field(..., description="Nombre del esquema origen (ej. licencias)")
+    table_name: str = Field(..., description="Nombre de la tabla origen (ej. tb_licencia)")
+    id_col: str = Field(..., description="Columna ID / PK de la tabla origen")
+    address_col: str = Field(..., description="Columna con la dirección completa no estructurada")
+    drop_source_column: bool = Field(default=False, description="Si es True, elimina la columna de dirección en la tabla origen tras migrar")
+    batch_size: Optional[int] = Field(default=1000, description="Tamaño de lote para migración")
 
 
 class StartPipelineRequest(BaseModel):
@@ -336,6 +388,8 @@ class StartPipelineRequest(BaseModel):
     filter_mode: Optional[str] = Field(default="pending", description="Modo de filtro: pending, all, observed")
     require_ai: bool = Field(default=True, description="Si es True, falla de inmediato si Ollama no está operativo")
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de peticiones concurrentes a Ollama")
+    judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
+    source_mode: Optional[str] = Field(default="central_tb_direccion", description="Modo de fuente: 'central_tb_direccion' o 'source_table'")
 
 
 @app.get("/", response_class=FileResponse)
@@ -373,10 +427,30 @@ async def get_system_status():
         )
         table_counts = extractor.get_status_counts()
     except Exception as e:
-        logger.warning("No se pudo obtener conteo de tabla: %s", e)
+        logger.debug("No se pudo obtener conteo de tabla: %s", e)
         table_counts = {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
-    current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or ollama_svc.model_name)
+    current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or getattr(ollama_svc, "model_name", None) or settings.ollama.model)
+    ollama_base_url = getattr(ollama_svc, "base_url", settings.ollama.base_url)
+
+    # Extraer host y port de ollama_base_url para la UI
+    ai_host = "localhost"
+    ai_port = 11434
+    try:
+        from urllib.parse import urlparse
+        parsed_url = urlparse(ollama_base_url)
+        if parsed_url.hostname:
+            ai_host = parsed_url.hostname
+        if parsed_url.port:
+            ai_port = parsed_url.port
+    except Exception:
+        pass
+
+    central_catalog = {"total": 0, "pendientes": 0, "normalizados": 0, "rechazados": 0, "has_records": False}
+    try:
+        central_catalog = db_svc.get_central_tb_direccion_stats("public")
+    except Exception as e:
+        logger.debug("Aviso al consultar estadísticas de central_catalog en /api/status: %s", e)
 
     return {
         "running": state.is_running,
@@ -387,6 +461,19 @@ async def get_system_status():
         "num_workers": state.num_workers,
         "has_completed_session": (state.stats.get("status") == "FINISHED" and len(state.recent_records) > 0),
         "available_schemas": db_health.get("available_schemas", ["public"]),
+        "defaults": {
+            "db_host": getattr(settings.db, "host", "localhost"),
+            "db_port": getattr(settings.db, "port", 5432),
+            "db_name": getattr(settings.db, "database", "bd_mpch"),
+            "db_user": getattr(settings.db, "user", "postgres"),
+            "db_schema": getattr(settings.db, "schema", "public"),
+            "db_table": getattr(settings.db, "table", "direcciones_actual"),
+            "db_id_col": getattr(settings.db, "id_col", "id_licencia"),
+            "db_addr_col": getattr(settings.db, "dir_col", "emp_direccion"),
+            "ai_host": ai_host,
+            "ai_port": ai_port,
+            "ai_model": current_model,
+        },
         "db": {
             "connected": db_health.get("connected", False),
             "schema": db_health.get("schema", state.active_schema),
@@ -398,9 +485,10 @@ async def get_system_status():
             "model": current_model,
             "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
-            "base_url": ollama_svc.base_url,
+            "base_url": ollama_base_url,
             "message": ai_health.get("message", ""),
         },
+        "central_catalog": central_catalog,
         "table_counts": table_counts,
         "stats": state.stats,
         "recent_records": state.recent_records[-100:],
@@ -412,7 +500,7 @@ async def get_system_status():
 async def get_schemas():
     """Devuelve la lista de esquemas accesibles en la base de datos."""
     try:
-        db_svc = DatabaseService()
+        db_svc = state.dynamic_db_service or DatabaseService()
         schemas = db_svc.get_available_schemas()
         return {"schemas": schemas}
     except Exception as e:
@@ -422,12 +510,19 @@ async def get_schemas():
 @app.get("/api/counts")
 async def get_table_counts(
     schema: str = Query("public"),
-    table: str = Query("direcciones_actual")
+    table: str = Query("direcciones_actual"),
+    source_mode: Optional[str] = Query(None)
 ):
-    """Devuelve los conteos catastrales de la tabla especificada."""
+    """Devuelve los conteos catastrales de la tabla especificada o del catastro central."""
     try:
         db_svc = state.dynamic_db_service or DatabaseService()
-        extractor = DatabaseExtractor(db_service=db_svc, schema=schema, table=table)
+        mode = source_mode or ("central_tb_direccion" if table == "tb_direccion" or schema == "public" else "source_table")
+        extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema=schema,
+            table=table,
+            source_mode=mode,
+        )
         counts = extractor.get_status_counts()
         return counts
     except Exception as e:
@@ -514,6 +609,10 @@ async def wizard_connect_ai(req: AIConnectRequest):
     # Guardar en estado compartido de la sesión
     state.dynamic_ollama_service = ollama_svc
     state.dynamic_ollama_settings = dyn_settings
+    if req.judge_model:
+        dyn_settings.judge_model = req.judge_model
+        ollama_svc.judge_model_name = req.judge_model
+        state.active_judge_model = req.judge_model
     if req.num_workers:
         state.num_workers = max(1, min(16, int(req.num_workers)))
 
@@ -522,12 +621,75 @@ async def wizard_connect_ai(req: AIConnectRequest):
         "host": req.host,
         "port": req.port,
         "model": req.model,
+        "judge_model": state.active_judge_model,
         "num_workers": state.num_workers,
         "model_available": True,
         "available_models": available_models,
         "latency_ms": latency_ms,
         "message": f"Conexión exitosa con Ollama ({req.model}) en {base_url} ({latency_ms} ms)",
     }
+
+
+@app.post("/api/connect-ai-judge")
+async def wizard_connect_ai_judge(req: AIJudgeConnectRequest):
+    """Paso 2 del wizard: prueba y guarda la configuración del Modelo 2 (El Juez / Observador)."""
+    import time
+    base_url = f"http://{req.host}:{req.port}".rstrip("/")
+    target_judge = req.judge_model.strip()
+
+    if state.dynamic_ollama_service:
+        ollama_svc = state.dynamic_ollama_service
+    else:
+        dyn_settings = OllamaSettings(
+            OLLAMA_BASE_URL=base_url,
+            OLLAMA_MODEL=target_judge,
+            OLLAMA_JUDGE_MODEL=target_judge,
+            OLLAMA_TIMEOUT=req.timeout or 60,
+            OLLAMA_TEMPERATURE=req.temperature or 0.0,
+        )
+        ollama_svc = OllamaService(settings=dyn_settings)
+        state.dynamic_ollama_service = ollama_svc
+        state.dynamic_ollama_settings = dyn_settings
+
+    ollama_svc.judge_model_name = target_judge
+    state.active_judge_model = target_judge
+    if state.dynamic_ollama_settings:
+        state.dynamic_ollama_settings.judge_model = target_judge
+
+    t0 = time.perf_counter()
+    health = ollama_svc.check_judge_connection()
+    latency_ms = round((time.perf_counter() - t0) * 1000, 1)
+
+    if not health.get("connected"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se pudo conectar al servidor Ollama en {base_url}. Verifique que Ollama esté ejecutándose."
+        )
+
+    available_models = health.get("available_models", [])
+    model_match = health.get("model_available", False)
+
+    if not model_match:
+        model_list_str = ", ".join(available_models) if available_models else "ninguno"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Conexión con Ollama establecida, pero el modelo Juez '{target_judge}' "
+                f"no está disponible en el servidor. Modelos detectados: [{model_list_str}]."
+            )
+        )
+
+    return {
+        "success": True,
+        "host": req.host,
+        "port": req.port,
+        "judge_model": target_judge,
+        "model_available": True,
+        "available_models": available_models,
+        "latency_ms": latency_ms,
+        "message": f"Modelo Juez '{target_judge}' verificado exitosamente ({latency_ms} ms)",
+    }
+
 
 
 @app.post("/api/connect")
@@ -557,6 +719,27 @@ async def wizard_connect(req: ConnectRequest):
         state.dynamic_db_service = db_svc
         state.dynamic_db_settings = dyn_settings
 
+        # Asegurar desde el primer momento (antes de cualquier proceso) que tb_direccion y sus 8 columnas de auditoría existan
+        try:
+            db_svc.ensure_tb_direccion_exists("public")
+        except Exception as ex_tb:
+            logger.debug("Aviso al asegurar tb_direccion en /api/connect: %s", ex_tb)
+
+        ingested_sources = []
+        central_stats = {
+            "total": 0,
+            "pendientes": 0,
+            "normalizados": 0,
+            "rechazados": 0,
+            "has_records": False,
+            "sources_count": 0,
+        }
+        try:
+            ingested_sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
+            central_stats = db_svc.get_central_tb_direccion_stats(catalog_schema="public")
+        except Exception as ex_ing:
+            logger.debug("Aviso al consultar fuentes ingestadas en /api/connect: %s", ex_ing)
+
         return {
             "success": True,
             "message": f"Conexión exitosa a '{req.dbname}' en {req.host}:{req.port}",
@@ -564,6 +747,8 @@ async def wizard_connect(req: ConnectRequest):
             "host": req.host,
             "port": req.port,
             "dbname": req.dbname,
+            "ingested_sources": ingested_sources,
+            "central_stats": central_stats,
         }
     except HTTPException:
         raise
@@ -573,41 +758,90 @@ async def wizard_connect(req: ConnectRequest):
 
 @app.post("/api/inspect-schema")
 async def wizard_inspect_schema(req: InspectSchemaRequest):
-    """Paso 2 del wizard: lista tablas del esquema seleccionado con columnas y cantidad de filas."""
+    """Paso 3 del wizard: lista tablas del esquema seleccionado con columnas y cantidad de filas estimadas/exactas."""
     db_svc = state.dynamic_db_service or DatabaseService()
 
     try:
         from sqlalchemy import text as sa_text
-
         tables_info = []
         with db_svc.get_session() as session:
-            # Consultar tablas del esquema
+            # 1. Detectar si es PostgreSQL para estimación ultra-rápida vía pg_class
+            is_postgres = False
+            try:
+                dialect_name = db_svc._engine.dialect.name if db_svc._engine else ""
+                is_postgres = (dialect_name == "postgresql")
+            except Exception:
+                pass
+
+            counts_by_table: Dict[str, int] = {}
+            if is_postgres:
+                try:
+                    rel_rows = session.execute(sa_text("""
+                        SELECT c.relname, GREATEST(0, c.reltuples::bigint)
+                        FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE n.nspname = :schema AND c.relkind = 'r';
+                    """), {"schema": req.schema_name}).fetchall()
+                    for rname, rcount in rel_rows:
+                        counts_by_table[str(rname)] = int(rcount)
+                except Exception as ex_cnt:
+                    logger.debug("Aviso al consultar reltuples de pg_class en %s: %s", req.schema_name, ex_cnt)
+                    session.rollback()
+
+            # 2. Obtener todas las columnas del esquema en una sola consulta agrupada
+            cols_by_table: Dict[str, list] = {}
+            try:
+                col_rows = session.execute(sa_text("""
+                    SELECT table_name, column_name, data_type
+                    FROM information_schema.columns
+                    WHERE table_schema = :schema
+                    ORDER BY table_name, ordinal_position;
+                """), {"schema": req.schema_name}).fetchall()
+                for tname, cname, ctype in col_rows:
+                    if tname not in cols_by_table:
+                        cols_by_table[tname] = []
+                    cols_by_table[tname].append({"name": str(cname), "type": str(ctype)})
+            except Exception as ex_cols:
+                logger.warning("Aviso al consultar columnas agrupadas de %s: %s", req.schema_name, ex_cols)
+                session.rollback()
+
+            # 3. Listar tablas base del esquema excluyendo catálogos del sistema relacional
             rows = session.execute(sa_text("""
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = :schema
-                  AND table_type = 'BASE TABLE'
+                  AND table_type IN ('BASE TABLE', 'TABLE')
                 ORDER BY table_name;
             """), {"schema": req.schema_name}).fetchall()
 
+            system_excluded_tables = {
+                "tb_direccion",
+                "tb_via",
+                "tb_zona",
+                "tb_tipo_via",
+                "tb_tipo_zona",
+                "tb_direccion_via",
+                "tb_componente_direccion",
+                "tb_contenido_componente_direccion",
+                "tb_tipo_modulo",
+                "tb_direccion_tipo_modulo",
+            }
+
             for (tname,) in rows:
-                # Obtener columnas de cada tabla
-                col_rows = session.execute(sa_text("""
-                    SELECT column_name, data_type
-                    FROM information_schema.columns
-                    WHERE table_schema = :schema AND table_name = :table
-                    ORDER BY ordinal_position;
-                """), {"schema": req.schema_name, "table": tname}).fetchall()
+                if str(tname).lower() in system_excluded_tables:
+                    continue
+                columns = cols_by_table.get(tname, [])
+                count_val = counts_by_table.get(tname, -1)
 
-                columns = [{"name": c[0], "type": c[1]} for c in col_rows]
-
-                # Obtener conteo de filas
-                try:
-                    count_val = session.execute(
-                        sa_text(f'SELECT COUNT(*) FROM "{req.schema_name}"."{tname}";')
-                    ).scalar() or 0
-                except Exception:
-                    count_val = -1
+                # Si no es postgres (ej. SQLite en tests) o no se obtuvo conteo, contar de forma aislada
+                if count_val == -1 and not is_postgres:
+                    try:
+                        with session.begin_nested():
+                            count_val = session.execute(
+                                sa_text(f'SELECT COUNT(*) FROM "{tname}";')
+                            ).scalar() or 0
+                    except Exception:
+                        count_val = -1
 
                 tables_info.append({
                     "name": tname,
@@ -620,7 +854,30 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
             "tables": tables_info,
         }
     except Exception as e:
+        logger.error("Error inspeccionando esquema '%s': %s", req.schema_name, e)
         raise HTTPException(status_code=400, detail=f"Error inspeccionando esquema '{req.schema_name}': {str(e)}")
+
+
+@app.post("/api/seed-catalogs")
+async def seed_catalogs_endpoint(req: SeedCatalogsRequest):
+    """Importa y siembra forzosamente la totalidad de los catálogos oficiales V2
+    (2,935 vías oficiales, 460 zonas oficiales, 12 tipos de vía y 28 tipos de zona).
+    """
+    db_svc = state.dynamic_db_service or DatabaseService()
+    target_schema = (req.schema_name or state.active_schema or getattr(db_svc.settings, "schema", "public")).strip()
+
+    try:
+        res = db_svc.seed_v2_catalogs(schema=target_schema, force=req.force)
+        from src.transformers.catalog_matcher import CatalogMatcher
+        CatalogMatcher.sync_with_db(db_svc, target_schema)
+        return {
+            "success": True,
+            "message": f"Catálogos maestros sembrados e importados exitosamente en '{target_schema}'.",
+            "data": res,
+        }
+    except Exception as e:
+        logger.error("Error al sembrar catálogos en %s: %s", target_schema, e)
+        raise HTTPException(status_code=500, detail=f"Error al sembrar catálogos: {str(e)}")
 
 
 @app.post("/api/inspect-table")
@@ -629,44 +886,141 @@ async def wizard_inspect_table(req: InspectTableRequest):
     db_svc = state.dynamic_db_service or DatabaseService()
     settings = get_settings()
 
-    id_col = req.id_col or settings.db.id_col
-    address_col = req.address_col or settings.db.dir_col
-
     try:
         from sqlalchemy import text as sa_text
 
+        # 1. Obtener las columnas reales existentes en la tabla
+        actual_cols = db_svc.get_table_columns(req.table_name, req.schema_name)
+        if not actual_cols:
+            raise HTTPException(
+                status_code=404,
+                detail=f"La tabla '{req.schema_name}.{req.table_name}' no existe o no tiene columnas accesibles."
+            )
+        col_lookup = {c.lower(): c for c in actual_cols}
+
+        # 2. Resolver columna ID inteligentemente
+        id_col = None
+        if req.id_col and req.id_col.lower() in col_lookup:
+            id_col = col_lookup[req.id_col.lower()]
+        else:
+            id_cands = [settings.db.id_col, "id_licencia", "xxxx_id", "id", "id_direccion", "codigo", "cod", "nro", "pk"]
+            for cand in id_cands:
+                if cand and cand.lower() in col_lookup:
+                    id_col = col_lookup[cand.lower()]
+                    break
+            if not id_col:
+                for col_name in actual_cols:
+                    if col_name.lower().endswith("_id") or col_name.lower() == "id":
+                        id_col = col_name
+                        break
+            if not id_col:
+                id_col = actual_cols[0]
+
+        # 3. Resolver columna de dirección inteligentemente
+        # Puede haber sido eliminada si ya se migró y desacopló en tb_direccion
+        address_col = None
+        if req.address_col and req.address_col.lower() in col_lookup:
+            address_col = col_lookup[req.address_col.lower()]
+        else:
+            addr_cands = [settings.db.dir_col, "emp_direccion", "xxxx_direccion_original", "direccion", "dir", "address", "raw_text", "domicilio", "ubicacion", "calle"]
+            for cand in addr_cands:
+                if cand and cand.lower() in col_lookup:
+                    address_col = col_lookup[cand.lower()]
+                    break
+            if not address_col:
+                for col_name in actual_cols:
+                    lower = col_name.lower()
+                    if any(term in lower for term in ("dir", "direc", "address", "domicilio", "ubica")):
+                        address_col = col_name
+                        break
+
+        # 4. Comprobar si ya fue migrada a catastro central (tb_direccion)
+        central_extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema=req.schema_name,
+            table=req.table_name,
+            source_mode="central_tb_direccion",
+        )
+        central_counts = central_extractor.get_status_counts()
+        is_ingested = central_counts.get("total", 0) > 0
+        has_dire_id = "dire_id" in col_lookup
+
+        # Si la columna de dirección ya fue eliminada tras la migración exitosa:
+        is_decoupled = False
+        if not address_col and has_dire_id:
+            address_col = col_lookup["dire_id"]
+            is_decoupled = True
+        elif not address_col:
+            # Tomar la siguiente columna disponible que quede libre
+            available_cols = [c for c in actual_cols if c != id_col]
+            address_col = available_cols[0] if available_cols else id_col
+
+        # 5. Obtener preview de forma 100% segura y resiliente
+        preview = []
         with db_svc.get_session() as session:
-            # Obtener preview de primeras 10 filas con las columnas clave
-            preview_rows = session.execute(sa_text(f"""
-                SELECT "{id_col}", "{address_col}"
-                FROM "{req.schema_name}"."{req.table_name}"
-                LIMIT 10;
-            """)).fetchall()
-
-            preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
-
-            # Conteo total
-            total = session.execute(
-                sa_text(f'SELECT COUNT(*) FROM "{req.schema_name}"."{req.table_name}";')
-            ).scalar() or 0
-
-            # Intentar obtener conteos de estado si la columna es_procesado existe
             try:
-                counts = session.execute(sa_text(f"""
-                    SELECT
-                        COUNT(*) FILTER (WHERE es_procesado IS NULL)     AS pendientes,
-                        COUNT(*) FILTER (WHERE es_procesado = TRUE)       AS validos,
-                        COUNT(*) FILTER (WHERE es_procesado = FALSE)      AS observados
-                    FROM "{req.schema_name}"."{req.table_name}";
-                """)).fetchone()
-                status_counts = {
-                    "total": total,
-                    "pendientes": counts[0] if counts else total,
-                    "validos": counts[1] if counts else 0,
-                    "observados": counts[2] if counts else 0,
-                }
+                addr_in_actual = any(c.lower() == str(address_col).lower() for c in actual_cols)
+                if (not addr_in_actual or is_decoupled) and is_ingested:
+                    # Traer desde tb_direccion mediante enlace polimórfico limpio
+                    prev_sql = sa_text(f"""
+                        SELECT src."{id_col}", COALESCE(d.dire_valor_origen, '(Migrado a tb_direccion)')
+                        FROM "{req.schema_name}"."{req.table_name}" src
+                        LEFT JOIN "public"."tb_direccion" d 
+                          ON d.dire_esquema = :esq 
+                         AND d.dire_tabla = :tab 
+                         AND d.dire_tabla_id = src."{id_col}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql, {"esq": req.schema_name, "tab": req.table_name}).fetchall()
+                    preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
+                elif addr_in_actual:
+                    prev_sql = sa_text(f"""
+                        SELECT "{id_col}", "{address_col}"
+                        FROM "{req.schema_name}"."{req.table_name}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql).fetchall()
+                    preview = [{"id": r[0], "direccion": r[1]} for r in preview_rows]
+                else:
+                    c1 = actual_cols[0]
+                    c2 = actual_cols[1] if len(actual_cols) > 1 else actual_cols[0]
+                    prev_sql = sa_text(f"""
+                        SELECT "{c1}", "{c2}"
+                        FROM "{req.schema_name}"."{req.table_name}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql).fetchall()
+                    preview = [{"id": r[0], "direccion": str(r[1])} for r in preview_rows]
+            except Exception as ex_prev:
+                logger.warning("Aviso al obtener vista previa de %s.%s: %s", req.schema_name, req.table_name, ex_prev)
+                try:
+                    c1 = actual_cols[0]
+                    c2 = actual_cols[1] if len(actual_cols) > 1 else actual_cols[0]
+                    prev_sql = sa_text(f"""
+                        SELECT "{c1}", "{c2}"
+                        FROM "{req.schema_name}"."{req.table_name}"
+                        LIMIT 10;
+                    """)
+                    preview_rows = session.execute(prev_sql).fetchall()
+                    preview = [{"id": r[0], "direccion": str(r[1])} for r in preview_rows]
+                except Exception:
+                    preview = []
+
+        # 6. Conteos de estado
+        if is_ingested:
+            status_counts = central_counts
+        else:
+            try:
+                extractor = DatabaseExtractor(
+                    db_service=db_svc,
+                    schema=req.schema_name,
+                    table=req.table_name,
+                    id_col=id_col,
+                    dir_col=address_col,
+                )
+                status_counts = extractor.get_status_counts()
             except Exception:
-                status_counts = {"total": total, "pendientes": total, "validos": 0, "observados": 0}
+                status_counts = central_counts
 
         return {
             "schema": req.schema_name,
@@ -674,13 +1028,70 @@ async def wizard_inspect_table(req: InspectTableRequest):
             "id_col": id_col,
             "address_col": address_col,
             "counts": status_counts,
+            "central_counts": central_counts,
+            "is_ingested": is_ingested,
+            "is_decoupled": is_decoupled or (has_dire_id and is_ingested),
             "preview": preview,
         }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error("Error al inspeccionar tabla %s.%s: %s", req.schema_name, req.table_name, e)
         raise HTTPException(
             status_code=400,
             detail=f"Error al inspeccionar tabla '{req.schema_name}.{req.table_name}': {str(e)}"
         )
+
+
+@app.post("/api/migrate-source-table")
+async def wizard_migrate_source_table(req: MigrateSourceTableRequest):
+    """Paso 4A: Migra direcciones crudas desde la tabla origen a public.tb_direccion,
+    vincula dire_id en la tabla origen mediante FK, y opcionalmente elimina la columna
+    de texto original para desacoplamiento definitivo.
+    """
+    db_svc = state.dynamic_db_service or DatabaseService()
+    try:
+        res = db_svc.migrate_source_table_to_tb_direccion(
+            source_schema=req.schema_name,
+            source_table=req.table_name,
+            id_col=req.id_col,
+            addr_col=req.address_col,
+            drop_source_col=req.drop_source_column,
+            batch_size=req.batch_size or 1000,
+        )
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Error durante la migración"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error al migrar tabla fuente a tb_direccion: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/ingested-sources")
+async def get_ingested_sources():
+    """Retorna el listado de tablas y esquemas ya migrados a public.tb_direccion
+    junto a sus estadísticas globales para permitir reanudar o normalizar directamente.
+    """
+    db_svc = state.dynamic_db_service or DatabaseService()
+    try:
+        try:
+            db_svc.ensure_tb_direccion_exists("public")
+        except Exception as ex_ensure:
+            logger.debug("Aviso al asegurar tb_direccion en /api/ingested-sources: %s", ex_ensure)
+
+        sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
+        stats = db_svc.get_central_tb_direccion_stats(catalog_schema="public")
+        return {"success": True, "sources": sources, "stats": stats}
+    except Exception as e:
+        logger.debug("Aviso al consultar fuentes ingestadas: %s", e)
+        return {
+            "success": False,
+            "sources": [],
+            "stats": {"total": 0, "pendientes": 0, "normalizados": 0, "rechazados": 0, "has_records": False, "sources_count": 0},
+            "error": str(e),
+        }
 
 
 @app.post("/api/test-ai")
@@ -720,25 +1131,78 @@ async def test_ai_connection(sample_address: Optional[str] = None):
         }
 
 
+@app.post("/api/test-ai-judge")
+async def test_ai_judge(sample_address: Optional[str] = None):
+    """Ejecuta una prueba de inferencia de juicio en vivo con el Modelo 2 (El Juez) configurado."""
+    ollama_svc = state.dynamic_ollama_service or OllamaService()
+    test_addr = sample_address or "CALLE BALTA - CHICLAYO"
+
+    health = ollama_svc.check_judge_connection()
+    if not health.get("connected"):
+        return {
+            "success": False,
+            "judge_model": ollama_svc.judge_model_name,
+            "latency_ms": 0,
+            "message": health.get("message", "Ollama fuera de línea"),
+        }
+
+    try:
+        res = ollama_svc.test_judge_inference(sample_address=test_addr)
+        return {
+            "success": res.get("model_ready", False),
+            "judge_model": ollama_svc.judge_model_name,
+            "latency_ms": round(res.get("latency_seconds", 0.0) * 1000, 1),
+            "input": test_addr,
+            "observation": res.get("observation"),
+            "message": res.get("message"),
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "judge_model": ollama_svc.judge_model_name,
+            "latency_ms": 0,
+            "message": f"Error de inferencia del Juez: {e}",
+        }
+
+
 def _run_pipeline_worker(req: StartPipelineRequest):
     """Función que ejecuta el pipeline ETL en un hilo secundario para no bloquear el servidor."""
     settings = get_settings()
     # Usar conexiones y configuraciones dinámicas del wizard si están disponibles
     db_svc = state.dynamic_db_service or DatabaseService()
     ollama_svc = state.dynamic_ollama_service or OllamaService()
+    if req.judge_model:
+        ollama_svc.judge_model_name = req.judge_model
+        state.active_judge_model = req.judge_model
+    elif state.active_judge_model:
+        ollama_svc.judge_model_name = state.active_judge_model
+
     dynamic_db_settings = state.dynamic_db_settings or getattr(db_svc, "settings", None) or settings.db
 
-    target_schema = req.schema_name or getattr(dynamic_db_settings, "schema", "public")
-    target_table  = req.table_name  or getattr(dynamic_db_settings, "table", "direcciones_actual")
-    state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
-
-    try:
-        # Resolver columnas: las del wizard tienen prioridad sobre cualquier default
+    source_mode = req.source_mode or "central_tb_direccion"
+    if source_mode == "central_tb_direccion":
+        if not req.table_name or str(req.table_name).strip().lower() in ("tb_direccion", "*", "todas", "all"):
+            target_schema = "public"
+            target_table = "tb_direccion"
+            id_col = "dire_id"
+            dir_col = "dire_valor_origen"
+            state.add_log("Iniciando normalización de Catastro Central [public.tb_direccion] (Todas las fuentes)...")
+        else:
+            target_schema = req.schema_name or "public"
+            target_table = req.table_name
+            id_col = "dire_id"
+            dir_col = "dire_valor_origen"
+            state.add_log(f"Iniciando normalización de Catastro Central [public.tb_direccion] para fuente [{target_schema}.{target_table}]...")
+    else:
+        target_schema = req.schema_name or getattr(dynamic_db_settings, "schema", "public")
+        target_table  = req.table_name  or getattr(dynamic_db_settings, "table", "direcciones_actual")
         id_col   = req.id_col      or getattr(dynamic_db_settings, "id_col", "id_licencia")
         dir_col  = req.address_col or getattr(dynamic_db_settings, "dir_col", "emp_direccion")
+        state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
+    try:
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
-        state.add_log(f"Motor IA: [{ollama_svc.base_url}] | Modelo: [{ollama_svc.model_name}]")
+        state.add_log(f"Modo de origen: [{source_mode}]")
 
         # Construir el extractor con las columnas identificadas por el usuario en el wizard
         custom_extractor = DatabaseExtractor(
@@ -747,6 +1211,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             table=target_table,
             id_col=id_col,
             dir_col=dir_col,
+            source_mode=source_mode,
         )
 
         # Construir el transformador con el servicio de IA dinámico
@@ -762,6 +1227,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             schema=target_schema,
             table=target_table,
             mode="in_place",
+            source_mode=source_mode,
             db_settings=dynamic_db_settings,
         )
 
@@ -780,6 +1246,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             loader=custom_loader,
             on_record_processed=state.add_record,
             num_workers=workers_count,
+            source_mode=source_mode,
         )
         state.pipeline = pipeline
 
@@ -793,21 +1260,21 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         pending_avail = status_counts.get("pendientes", 0)
         observed_avail = status_counts.get("observados", 0)
 
-        # Normalizar modo de filtro (soporta 'pending', 'observed', 'all', 'unprocessed')
-        raw_filter = str(req.filter_mode or "pending").strip().lower()
-        if raw_filter in ("unprocessed", "observados", "observed"):
-            filter_mode = "observed"
-        elif raw_filter in ("pending", "pendientes"):
+        # En modo central_tb_direccion, la normalización automatizada aplica ESTRICTAMENTE a dire_es_procesado IS NULL
+        if req.source_mode == "central_tb_direccion" or target_table == "tb_direccion":
             filter_mode = "pending"
-        else:
-            filter_mode = "all"
-
-        if filter_mode == "pending":
             target_pool = pending_avail
-        elif filter_mode == "observed":
-            target_pool = observed_avail
         else:
-            target_pool = total_avail
+            raw_filter = str(req.filter_mode or "pending").strip().lower()
+            if raw_filter in ("unprocessed", "observados", "observed"):
+                filter_mode = "observed"
+                target_pool = observed_avail
+            elif raw_filter in ("pending", "pendientes"):
+                filter_mode = "pending"
+                target_pool = pending_avail
+            else:
+                filter_mode = "all"
+                target_pool = total_avail
 
         to_process = min(req.limit, target_pool) if req.limit else target_pool
         state.reset_for_run(
@@ -816,6 +1283,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             table=target_table,
             num_workers=workers_count,
             model=ollama_svc.model_name,
+            judge_model=ollama_svc.judge_model_name,
         )
         state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()}, Instancias concurrentes: {workers_count})")
 
@@ -901,7 +1369,555 @@ async def clear_session_endpoint():
     return {"status": "CLEARED", "message": "Historial de registros de la sesión reiniciado correctamente."}
 
 
-def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
+# ── SCHEDULER DE EJECUCIÓN HORARIA DIARIA DESATENDIDA ────────────────────────
+def _on_scheduler_trigger(sched_cfg: SchedulerConfig):
+    """Callback invocado automáticamente por el SchedulerService cuando coincide la hora diaria."""
+    if state.is_running:
+        logger.warning("[SCHEDULER] Omitiendo disparo automático: Ya hay un pipeline activo en ejecución.")
+        state.add_log("[SCHEDULER] ⚠️ Aviso: Se omitió el disparo programado porque ya había un proceso activo en ejecución.")
+        return
+
+    state.add_log(f"[SCHEDULER] ⏰ Ejecutando normalización automática diaria programada ({sched_cfg.time_str})...")
+    req = StartPipelineRequest(
+        schema_name=sched_cfg.target_schema,
+        table_name=sched_cfg.target_table,
+        source_mode=sched_cfg.source_mode,
+        filter_mode=sched_cfg.filter_mode,
+        batch_size=sched_cfg.batch_size,
+        limit=sched_cfg.max_records,
+        require_ai=sched_cfg.require_ai,
+        num_workers=sched_cfg.num_workers,
+    )
+    state.active_schema = req.schema_name
+    state.active_table = req.table_name
+    state.num_workers = req.num_workers
+
+    worker = threading.Thread(
+        target=_run_pipeline_worker,
+        args=(req,),
+        name="ETLSchedulerWorkerThread",
+        daemon=True,
+    )
+    state.thread = worker
+    worker.start()
+
+
+scheduler_service = SchedulerService(on_trigger=_on_scheduler_trigger)
+
+
+class UpdateSchedulerRequest(BaseModel):
+    enabled: bool
+    time_str: Optional[str] = None
+    scheduled_time: Optional[str] = None
+    end_time_str: Optional[str] = None
+    num_workers: Optional[int] = 2
+    max_records: Optional[int] = None
+    batch_size: Optional[int] = 50
+    target_schema: Optional[str] = "public"
+    target_table: Optional[str] = "tb_direccion"
+    source_mode: Optional[str] = "central_tb_direccion"
+    id_col: Optional[str] = "dire_id"
+    addr_col: Optional[str] = "dire_nom_via"
+
+
+@app.get("/api/scheduler/config")
+async def get_scheduler_config_endpoint():
+    """Retorna la configuración actual del scheduler diario y cuenta regresiva."""
+    return scheduler_service.get_status_dict()
+
+
+@app.post("/api/scheduler/config")
+async def update_scheduler_config_endpoint(req: UpdateSchedulerRequest):
+    """Actualiza y persiste la configuración del scheduler diario desatendido."""
+    time_val = req.scheduled_time or req.time_str or "23:00"
+    updated = scheduler_service.update_settings(
+        enabled=req.enabled,
+        time_str=time_val,
+        num_workers=req.num_workers,
+        max_records=req.max_records,
+        batch_size=req.batch_size,
+        target_schema=req.target_schema,
+        target_table=req.target_table,
+        end_time_str=req.end_time_str,
+    )
+    return {
+        "status": "SAVED",
+        "message": f"Programación diaria {('activada: ' + updated.time_str + (' – ' + updated.end_time_str if updated.end_time_str else '')) if updated.enabled else 'desactivada'}.",
+        "config": scheduler_service.get_status_dict(),
+    }
+
+
+@app.post("/api/scheduler/trigger-now")
+async def trigger_scheduler_now_endpoint():
+    """Fuerza un disparo inmediato de prueba para la configuración programada."""
+    res = scheduler_service.trigger_now()
+    return res
+
+
+
+V2_EXPORT_HEADERS = [
+    "ID",
+    "ID_Direccion",
+    "Estado",
+    "Direccion_Original",
+    "Via_Principal_Tipo",
+    "Via_Principal_Nombre",
+    "Via_Principal_Numero",
+    "Via_Secundaria_Tipo",
+    "Via_Secundaria_Nombre",
+    "Via_Secundaria_Numero",
+    "Todas_Las_Vias",
+    "Tipo_Zona",
+    "Nombre_Zona",
+    "Manzana",
+    "Lote",
+    "Sublote",
+    "Block",
+    "Piso",
+    "Otros_Componentes",
+    "Tipo_Modulo",
+    "Numero_Modulo",
+    "Todos_Los_Modulos",
+    "Referencia",
+    "Metodo_Normalizacion",
+    "Fecha_Hora_Proceso",
+]
+
+
+def build_dynamic_export_headers(records: List[Dict[str, Any]]) -> Tuple[List[str], Dict[str, Any]]:
+    """Calcula dinámicamente las columnas de exportación según la cardinalidad máxima
+    de vías, módulos y componentes presentes en el conjunto de registros.
+    """
+    if not records:
+        return list(V2_EXPORT_HEADERS), {"max_vias": 2, "max_modulos": 1, "max_extra_comps": 0}
+
+    # 1. Determinar cardinalidad máxima de vías
+    max_vias = 1
+    for r in records:
+        raw_vias = r.get("vias") or []
+        num_v = len(raw_vias)
+        if not num_v and (r.get("nom_via") or r.get("id_via")):
+            num_v = 1
+        if num_v > max_vias:
+            max_vias = num_v
+
+    # 2. Determinar cardinalidad máxima de módulos
+    max_modulos = 0
+    sub_placeholder_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+    for r in records:
+        raw_mods = [
+            m for m in (r.get("modulos") or [])
+            if (m.get("ditm_nombre") or m.get("valor"))
+            and not re.match(sub_placeholder_pat, str(m.get("ditm_nombre") or m.get("valor")).strip(), re.I)
+            and str(m.get("timo_nombre") or m.get("tipo_modulo") or "").upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L")
+        ]
+        num_m = len(raw_mods)
+        if not num_m and (r.get("tipo_modulo") or r.get("numero_modulo")):
+            t_m = str(r.get("tipo_modulo") or "")
+            n_m = str(r.get("numero_modulo") or "")
+            if not re.match(sub_placeholder_pat, n_m, re.I) and t_m.upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L"):
+                num_m = 1
+        elif not num_m and r.get("slote"):
+            sl_str = str(r.get("slote") or "")
+            if re.search(r"\b(INT(?:ERIOR)?|DPTO|DEP|STAND|TIENDA|OFICINA|PUERTA)\b", sl_str, re.IGNORECASE):
+                parts = [p for p in re.split(r",|\s+Y\s+", sl_str, flags=re.IGNORECASE) if p.strip()]
+                num_m = max(1, len(parts)) if len(parts) > 1 else 1
+        if num_m > max_modulos:
+            max_modulos = num_m
+
+    # 3. Determinar cardinalidad máxima de componentes adicionales (rurales / no estándar)
+    standard_comp_names = {"MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO"}
+    max_extra_comps = 0
+    for r in records:
+        raw_comps = r.get("componentes") or []
+        extra_c = [
+            c for c in raw_comps
+            if (c.get("codi_nombre") or "").upper().strip() not in standard_comp_names
+        ]
+        if len(extra_c) > max_extra_comps:
+            max_extra_comps = len(extra_c)
+
+    # 4. Construcción dinámica de cabeceras
+    headers: List[str] = [
+        "ID",
+        "ID_Direccion",
+        "Estado",
+        "Direccion_Original",
+    ]
+
+    # Vías (sin IDs técnicos)
+    if max_vias == 1:
+        headers.extend([
+            "Via_Principal_Tipo",
+            "Via_Principal_Nombre",
+            "Via_Principal_Numero",
+        ])
+    elif max_vias == 2:
+        headers.extend([
+            "Via_Principal_Tipo",
+            "Via_Principal_Nombre",
+            "Via_Principal_Numero",
+            "Via_Secundaria_Tipo",
+            "Via_Secundaria_Nombre",
+            "Via_Secundaria_Numero",
+        ])
+    else:
+        # 3 o más vías
+        headers.extend([
+            "Via_Principal_Tipo",
+            "Via_Principal_Nombre",
+            "Via_Principal_Numero",
+            "Via_Secundaria_Tipo",
+            "Via_Secundaria_Nombre",
+            "Via_Secundaria_Numero",
+        ])
+        for v in range(3, max_vias + 1):
+            headers.extend([
+                f"Via_{v}_Tipo",
+                f"Via_{v}_Nombre",
+                f"Via_{v}_Numero",
+            ])
+
+    headers.append("Todas_Las_Vias")
+
+    # Zona (sin ID técnico)
+    headers.extend([
+        "Tipo_Zona",
+        "Nombre_Zona",
+    ])
+
+    # Componentes Catastrales Estándar (incluye Block y Piso)
+    headers.extend([
+        "Manzana",
+        "Lote",
+        "Sublote",
+        "Block",
+        "Piso",
+    ])
+
+    # Componentes Catastrales Adicionales (Rurales / Otros) si existen
+    if max_extra_comps > 0:
+        for k in range(1, max_extra_comps + 1):
+            headers.extend([
+                f"Componente_{k}_Nombre",
+                f"Componente_{k}_Valor",
+                f"Componente_{k}_Tipo",
+            ])
+        headers.append("Otros_Componentes")
+
+    # Módulos Inmobiliarios (Interiores, Dptos, Stands, etc.)
+    # SOLO si max_modulos > 0 (si no hay módulos en el dataset, NO se crean columnas vacías)
+    if max_modulos == 1:
+        headers.extend([
+            "Tipo_Modulo",
+            "Numero_Modulo",
+            "Todos_Los_Modulos",
+        ])
+    elif max_modulos > 1:
+        for m in range(1, max_modulos + 1):
+            headers.extend([
+                f"Modulo_{m}_Tipo",
+                f"Modulo_{m}_Valor",
+            ])
+        headers.append("Todos_Los_Modulos")
+
+    # Metadatos del proceso
+    headers.extend([
+        "Referencia",
+        "Metodo_Normalizacion",
+        "Fecha_Hora_Proceso",
+    ])
+
+    meta = {
+        "max_vias": max_vias,
+        "max_modulos": max_modulos,
+        "max_extra_comps": max_extra_comps,
+    }
+    return headers, meta
+
+
+def extract_v2_export_row(
+    r: Dict[str, Any],
+    max_vias: int = 2,
+    max_modulos: int = 1,
+    max_extra_comps: int = 0,
+) -> Dict[str, Any]:
+    """Extrae y normaliza un registro individual hacia las columnas relacionales V2 dinámicas."""
+    import re
+    from datetime import datetime
+    from src.transformers.catalog_matcher import CatalogMatcher
+
+    # 1. ID Origen y 2. ID_Direccion (tb_direccion.dire_id)
+    id_val = r.get("id_licencia") if r.get("id_licencia") is not None else (r.get("dire_tabla_id") or r.get("id") or r.get("dire_id") or "")
+    dire_id_val = r.get("dire_id") or ""
+
+    # 3. Estado
+    estado = r.get("estado")
+    if estado not in ("NORMALIZADO", "OBSERVADO", "PENDIENTE", "ERROR"):
+        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
+        if is_err:
+            estado = "ERROR"
+        else:
+            es_proc = r.get("es_procesado")
+            if es_proc is True:
+                estado = "NORMALIZADO"
+            elif es_proc is False:
+                estado = "OBSERVADO"
+            else:
+                estado = "PENDIENTE"
+
+    # 4. Dirección Original
+    dir_orig = r.get("raw_text") or r.get("dire_valor_origen") or r.get("direccion") or r.get("emp_direccion") or ""
+
+    # 5-13. Vías (Principal, Secundaria, Terciaria, Consolidado)
+    raw_vias = r.get("vias") or []
+    vias_sorted = sorted(raw_vias, key=lambda v: v.get("divi_orden", 1)) if raw_vias else []
+
+    row_vias_data: Dict[str, Any] = {}
+    v_parts = []
+
+    limit_vias = max(3, max_vias, len(vias_sorted))
+    for v_idx in range(1, limit_vias + 1):
+        if v_idx <= len(vias_sorted):
+            v_curr = vias_sorted[v_idx - 1]
+            vt = v_curr.get("tipo_via_name")
+            if not vt and v_curr.get("tipo_via") is not None:
+                vn = CatalogMatcher.get_via_name(v_curr["tipo_via"])
+                vt = vn if vn != "SIN VIA" else ""
+            v_tipo = vt or ""
+            v_nombre = v_curr.get("via_nombre") or ""
+            v_numero = str(v_curr.get("divi_numero") or "")
+            v_id = v_curr.get("via_id") or ""
+        elif v_idx == 1 and not vias_sorted:
+            # Fallback plano V1
+            t_via_name = r.get("tipo_via_name")
+            if not t_via_name and r.get("tipo_via") is not None:
+                vn = CatalogMatcher.get_via_name(r["tipo_via"])
+                t_via_name = vn if vn != "SIN VIA" else ""
+            v_tipo = t_via_name or ""
+            v_nombre = r.get("nom_via") or ""
+            v_numero = str(r.get("num_via") or "")
+            v_id = r.get("id_via") or ""
+        else:
+            v_tipo = ""
+            v_nombre = ""
+            v_numero = ""
+            v_id = ""
+
+        row_vias_data[f"Via_{v_idx}_Tipo"] = v_tipo
+        row_vias_data[f"Via_{v_idx}_Nombre"] = v_nombre
+        row_vias_data[f"Via_{v_idx}_Numero"] = v_numero
+        row_vias_data[f"Via_{v_idx}_ID"] = v_id
+
+        if v_idx == 1:
+            row_vias_data["Via_Principal_Tipo"] = v_tipo
+            row_vias_data["Via_Principal_Nombre"] = v_nombre
+            row_vias_data["Via_Principal_Numero"] = v_numero
+            row_vias_data["Via_Principal_ID"] = v_id
+        elif v_idx == 2:
+            row_vias_data["Via_Secundaria_Tipo"] = v_tipo
+            row_vias_data["Via_Secundaria_Nombre"] = v_nombre
+            row_vias_data["Via_Secundaria_Numero"] = v_numero
+            row_vias_data["Via_Secundaria_ID"] = v_id
+
+        if v_nombre:
+            part = f"{v_tipo} {v_nombre}".strip()
+            if v_numero and v_numero.upper() not in ("S/N", "SN"):
+                part += f" N° {v_numero}"
+            elif v_numero.upper() in ("S/N", "SN"):
+                part += " S/N"
+            if part and part not in v_parts:
+                v_parts.append(part)
+
+    todas_las_vias = " con ".join(v_parts)
+
+    # 14-16. Zona
+    t_zona_name = r.get("tipo_zona_name")
+    if not t_zona_name and r.get("tipo_zona") is not None:
+        zn = CatalogMatcher.get_zona_name(r["tipo_zona"])
+        t_zona_name = zn if zn != "SIN ZONA" else ""
+    tipo_zona = t_zona_name or ""
+    nombre_zona = r.get("nom_zona") or r.get("zona_nombre") or ""
+    id_zona = r.get("id_zona") or r.get("zona_id") or ""
+
+    # 17-21. Componentes Catastrales (Manzana, Lote, Sublote, Block, Piso, Otros)
+    mz = str(r.get("manzana") or "").strip()
+    lt = str(r.get("lote") or "").strip()
+    sl = str(r.get("slote") or "").strip()
+    block = str(r.get("block") or "").strip()
+    piso = str(r.get("piso") or "").strip()
+    otros_comp_list = []
+    extra_comps_list = []
+
+    sub_placeholder_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+    clean_sl_val = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", sl, flags=re.IGNORECASE).strip(" -:,.")
+    if not clean_sl_val or re.match(sub_placeholder_pat, sl, re.I) or re.match(sub_placeholder_pat, clean_sl_val, re.I):
+        sl = ""
+    else:
+        sl = clean_sl_val
+
+    raw_comps = r.get("componentes") or []
+    standard_names = {"MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO"}
+    for c in raw_comps:
+        c_nom = (c.get("codi_nombre") or "").upper().strip()
+        c_val = str(c.get("diti_nombre") or "").strip()
+        if not c_val:
+            continue
+        if "MANZANA" in c_nom and not mz:
+            mz = c_val
+        elif "SUBLOTE" in c_nom and not sl:
+            clean_c = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val, flags=re.IGNORECASE).strip(" -:,.")
+            is_placeholder = bool(not clean_c or re.match(sub_placeholder_pat, c_val, re.I) or re.match(sub_placeholder_pat, clean_c, re.I))
+            has_mod = bool(re.search(
+                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
+                c_val,
+                re.IGNORECASE,
+            ))
+            if not has_mod and not is_placeholder and "PISO" not in c_val.upper() and not re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", c_val, re.I):
+                sl = clean_c
+        elif "LOTE" in c_nom and not lt:
+            lt = c_val
+        elif ("BLOCK" in c_nom or "BLOQUE" in c_nom or "TORRE" in c_nom) and not block:
+            block = c_val
+        elif "PISO" in c_nom and not piso:
+            piso = c_val
+        else:
+            item_desc = f"{c.get('codi_nombre')}: {c_val}"
+            if item_desc not in otros_comp_list:
+                otros_comp_list.append(item_desc)
+            if c_nom not in standard_names:
+                extra_comps_list.append(c)
+
+    if not block and sl and re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\b", sl, re.IGNORECASE):
+        b_m = re.search(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*([0-9A-Z\-]+)", sl, re.IGNORECASE)
+        if b_m:
+            block = b_m.group(1)
+            sl = re.sub(r"\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s*[0-9A-Z\-]+", "", sl, flags=re.IGNORECASE).strip(" -/,.")
+
+    if not piso and sl and "PISO" in sl.upper():
+        p_m = re.search(r"PISO\s*([0-9A-Z]+)", sl, re.IGNORECASE)
+        if p_m:
+            piso = p_m.group(1)
+            sl = re.sub(r"PISO\s*[0-9A-Z]+", "", sl, flags=re.IGNORECASE).strip(" -/,.")
+
+    otros_componentes = "; ".join(otros_comp_list)
+
+    row_comp_data: Dict[str, Any] = {}
+    limit_comps = max(1, max_extra_comps, len(extra_comps_list))
+    for k in range(1, limit_comps + 1):
+        if k <= len(extra_comps_list):
+            ck = extra_comps_list[k - 1]
+            row_comp_data[f"Componente_{k}_Nombre"] = ck.get("codi_nombre") or ""
+            row_comp_data[f"Componente_{k}_Valor"] = str(ck.get("diti_nombre") or "")
+            row_comp_data[f"Componente_{k}_Tipo"] = "Urbano" if ck.get("codi_es_urbano", True) else "Rural"
+        else:
+            row_comp_data[f"Componente_{k}_Nombre"] = ""
+            row_comp_data[f"Componente_{k}_Valor"] = ""
+            row_comp_data[f"Componente_{k}_Tipo"] = ""
+
+    # 22-24. Módulos Inmobiliarios (Tipo, Número, Resumen)
+    raw_mods = r.get("modulos") or []
+    extracted_mods = []
+    if raw_mods:
+        for m in raw_mods:
+            m_t = m.get("timo_nombre") or ""
+            m_v = str(m.get("ditm_nombre") or "").strip()
+            # Descartar residuos espurios que son etiquetas de sublote o placeholders
+            if (
+                m_v
+                and not re.match(sub_placeholder_pat, m_v, re.I)
+                and m_t.upper() not in ("SLT", "SLOTE", "SUBLOTE", "S/L")
+            ):
+                extracted_mods.append((m_t, m_v))
+    if sl:
+        has_mod_in_sl = bool(re.search(
+            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|STAND|TIENDA|TDA|PUERTA|PTA|LOCAL|OFICINA|OF|PUESTO|PTO)\b",
+            sl,
+            re.IGNORECASE,
+        ))
+        if has_mod_in_sl:
+            if not extracted_mods:
+                kw = r"(?:INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)"
+                m_pattern = re.compile(
+                    rf"\b({kw})\b\.?\s*[:\-]?\s*([A-Z0-9\-]+(?:\s*(?:,|Y|-)\s*(?!{kw}\b)[A-Z0-9\-]+)*)",
+                    re.IGNORECASE,
+                )
+                for m_match in m_pattern.finditer(sl):
+                    t_name = m_match.group(1).upper()
+                    raw_val = m_match.group(2).strip()
+                    parts = [p.strip() for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_val, flags=re.IGNORECASE) if p.strip()]
+                    if len(parts) > 1 and all(len(p) <= 6 for p in parts):
+                        for p in parts:
+                            extracted_mods.append((t_name, p))
+                    else:
+                        extracted_mods.append((t_name, raw_val))
+            # Limpiar sl para que no figure falsamente como sublote predial
+            sl = ""
+
+    row_mod_data: Dict[str, Any] = {}
+    limit_mods = max(1, max_modulos, len(extracted_mods))
+    todos_mod_parts = []
+    for m_idx in range(1, limit_mods + 1):
+        if m_idx <= len(extracted_mods):
+            m_t, m_v = extracted_mods[m_idx - 1]
+            row_mod_data[f"Modulo_{m_idx}_Tipo"] = m_t
+            row_mod_data[f"Modulo_{m_idx}_Valor"] = m_v
+            todos_mod_parts.append(f"{m_t} {m_v}".strip())
+        else:
+            row_mod_data[f"Modulo_{m_idx}_Tipo"] = ""
+            row_mod_data[f"Modulo_{m_idx}_Valor"] = ""
+
+    tipo_modulo = row_mod_data.get("Modulo_1_Tipo", "")
+    numero_modulo = row_mod_data.get("Modulo_1_Valor", "")
+    todos_los_modulos = ", ".join(todos_mod_parts)
+
+    # 25. Referencia Espacial
+    referencia = r.get("dire_referencia") or r.get("referencia") or ""
+
+    # 26. Método de Normalización
+    metodo = r.get("metodo") or r.get("metodo_normalizacion") or "IA"
+
+    # 27. Fecha / Hora de Proceso (alimentado por auditoría update_at o create_at)
+    raw_dt = r.get("update_at") or r.get("create_at") or r.get("time") or r.get("fecha_hora") or ""
+    if hasattr(raw_dt, "strftime"):
+        fecha_hora = raw_dt.strftime("%Y-%m-%d %H:%M:%S")
+    elif raw_dt and str(raw_dt).strip() not in ("", "-"):
+        fecha_hora = str(raw_dt).strip()
+    else:
+        fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    row = {
+        "ID": id_val,
+        "ID_Direccion": dire_id_val,
+        "Estado": estado,
+        "Direccion_Original": dir_orig,
+        "Todas_Las_Vias": todas_las_vias,
+        "Tipo_Zona": tipo_zona,
+        "Nombre_Zona": nombre_zona,
+        "ID_Zona": id_zona,
+        "Manzana": mz,
+        "Lote": lt,
+        "Sublote": sl,
+        "Block": block,
+        "Piso": piso,
+        "Otros_Componentes": otros_componentes,
+        "Tipo_Modulo": tipo_modulo,
+        "Numero_Modulo": numero_modulo,
+        "Todos_Los_Modulos": todos_los_modulos,
+        "Referencia": referencia,
+        "Metodo_Normalizacion": metodo,
+        "Fecha_Hora_Proceso": fecha_hora,
+    }
+    row.update(row_vias_data)
+    row.update(row_comp_data)
+    row.update(row_mod_data)
+    return row
+
+
+def generate_excel_report(records: List[Dict[str, Any]], headers: Optional[List[str]] = None) -> Any:
+    """Genera un libro de Excel (.xlsx) estilizado institucionalmente para la MPCH
+    con columnas dinámicas adaptadas al conjunto de registros.
+    """
     import io
     import openpyxl
     from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
@@ -909,37 +1925,27 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "Direcciones MPCH"
+    ws.title = "Normalización Catastral V2"
+    ws.freeze_panes = "A2"
 
-    headers = [
-        "ID Licencia",
-        "Dirección Registrada",
-        "Tipo Vía",
-        "Nombre Vía Homologada",
-        "N° Vía",
-        "ID Vía Oficial",
-        "Tipo Zona",
-        "Nombre Zona Homologada",
-        "ID Zona Oficial",
-        "Manzana",
-        "Lote",
-        "Sublote",
-        "Referencia",
-        "Método Normalización",
-        "Estado Catastral",
-        "Diagnóstico / Observación",
-        "Hora de Procesamiento",
-    ]
-    ws.append(headers)
+    if headers is None:
+        dynamic_headers, meta = build_dynamic_export_headers(records)
+    else:
+        dynamic_headers = list(headers)
+        meta = {"max_vias": 2, "max_modulos": 1, "max_extra_comps": 0}
+
+    ws.append(dynamic_headers)
 
     header_fill = PatternFill(start_color="0C2340", end_color="0C2340", fill_type="solid")
     header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
 
-    for col_idx in range(1, len(headers) + 1):
+    for col_idx in range(1, len(dynamic_headers) + 1):
         cell = ws.cell(row=1, column=col_idx)
         cell.fill = header_fill
         cell.font = header_font
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    ws.row_dimensions[1].height = 28
 
     thin_border = Border(
         left=Side(style="thin", color="E2E8F0"),
@@ -954,61 +1960,60 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     font_obs   = Font(name="Calibri", size=11, bold=True, color="92400E")
     fill_err   = PatternFill(start_color="FEF2F2", end_color="FEF2F2", fill_type="solid")
     font_err   = Font(name="Calibri", size=11, bold=True, color="991B1B")
+    fill_pen   = PatternFill(start_color="F1F5F9", end_color="F1F5F9", fill_type="solid")
+    font_pen   = Font(name="Calibri", size=11, bold=True, color="475569")
     fill_zebra = PatternFill(start_color="F8FAFC", end_color="F8FAFC", fill_type="solid")
 
-    for row_idx, r in enumerate(records, start=2):
-        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
-        is_obs = not r.get("es_procesado", False) and not is_err
-        estado = "ERROR" if is_err else ("OBSERVADO" if is_obs else "NORMALIZADO")
+    center_cols = {
+        col_idx for col_idx, col_name in enumerate(dynamic_headers, start=1)
+        if any(kw in col_name for kw in ("ID", "Estado", "Numero", "Piso", "Manzana", "Lote", "Sublote", "Tipo", "Fecha"))
+    }
+    estado_col_idx = dynamic_headers.index("Estado") + 1 if "Estado" in dynamic_headers else 3
 
-        row_data = [
-            r.get("id_licencia", ""),
-            r.get("raw_text", ""),
-            r.get("tipo_via_name", ""),
-            r.get("nom_via", ""),
-            r.get("num_via", ""),
-            r.get("id_via", "") or "",
-            r.get("tipo_zona_name", ""),
-            r.get("nom_zona", ""),
-            r.get("id_zona", "") or "",
-            r.get("manzana", ""),
-            r.get("lote", ""),
-            r.get("slote", ""),
-            r.get("referencia", ""),
-            r.get("metodo", ""),
-            estado,
-            r.get("observacion", ""),
-            r.get("time", ""),
-        ]
+    for row_idx, r in enumerate(records, start=2):
+        row_dict = extract_v2_export_row(
+            r,
+            max_vias=meta.get("max_vias", 2),
+            max_modulos=meta.get("max_modulos", 1),
+            max_extra_comps=meta.get("max_extra_comps", 0),
+        )
+        estado = row_dict.get("Estado", "")
+
+        row_data = [row_dict.get(col, "") for col in dynamic_headers]
         ws.append(row_data)
 
         is_even = (row_idx % 2 == 0)
-        for col_idx in range(1, len(headers) + 1):
+        for col_idx in range(1, len(dynamic_headers) + 1):
             cell = ws.cell(row=row_idx, column=col_idx)
             cell.border = thin_border
-            if col_idx == 15:  # Columna Estado
+
+            if col_idx == estado_col_idx:
                 if estado == "NORMALIZADO":
                     cell.fill = fill_valid
                     cell.font = font_valid
                 elif estado == "OBSERVADO":
                     cell.fill = fill_obs
                     cell.font = font_obs
+                elif estado == "PENDIENTE":
+                    cell.fill = fill_pen
+                    cell.font = font_pen
                 else:
                     cell.fill = fill_err
                     cell.font = font_err
-                cell.alignment = Alignment(horizontal="center")
-            elif col_idx in (1, 5, 6, 9):
-                cell.alignment = Alignment(horizontal="center")
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            elif col_idx in center_cols:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
                 if is_even:
                     cell.fill = fill_zebra
             else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
                 if is_even:
                     cell.fill = fill_zebra
 
     for col in ws.columns:
         max_len = max(len(str(cell.value or "")) for cell in col)
         col_letter = get_column_letter(col[0].column)
-        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 60)
+        ws.column_dimensions[col_letter].width = min(max(max_len + 3, 12), 65)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -1016,63 +2021,215 @@ def generate_excel_report(records: List[Dict[str, Any]]) -> Any:
     return buf
 
 
-def generate_csv_report(records: List[Dict[str, Any]]) -> Any:
+def generate_csv_report(records: List[Dict[str, Any]], headers: Optional[List[str]] = None) -> Any:
     """Genera un archivo CSV con codificación UTF-8 con BOM para compatibilidad directa con Excel en español."""
     import csv
     import io
 
+    if headers is None:
+        dynamic_headers, meta = build_dynamic_export_headers(records)
+    else:
+        dynamic_headers = list(headers)
+        meta = {"max_vias": 2, "max_modulos": 1, "max_extra_comps": 0}
+
     output = io.StringIO()
-    output.write("\ufeff")  # UTF-8 BOM
-
-    headers = [
-        "ID",
-        "Direccion_Original",
-        "Tipo_Via",
-        "Nombre_Via",
-        "Numero_Via",
-        "ID_Via",
-        "Tipo_Zona",
-        "Nombre_Zona",
-        "ID_Zona",
-        "Manzana",
-        "Lote",
-        "Sublote",
-        "Referencia",
-        "Metodo_Normalizacion",
-        "Estado",
-        "Diagnostico_Observacion",
-        "Hora_Proceso",
-    ]
-
     writer = csv.writer(output, delimiter=",", quoting=csv.QUOTE_MINIMAL)
-    writer.writerow(headers)
+    writer.writerow(dynamic_headers)
 
     for r in records:
-        is_err = not r.get("success", True) or r.get("metodo") == "ERROR"
-        is_obs = not r.get("es_procesado", False) and not is_err
-        estado = "ERROR" if is_err else ("OBSERVADO" if is_obs else "NORMALIZADO")
-
-        writer.writerow([
-            r.get("id_licencia", ""),
-            r.get("raw_text", ""),
-            r.get("tipo_via_name", ""),
-            r.get("nom_via", ""),
-            r.get("num_via", ""),
-            r.get("id_via", "") or "",
-            r.get("tipo_zona_name", ""),
-            r.get("nom_zona", ""),
-            r.get("id_zona", "") or "",
-            r.get("manzana", ""),
-            r.get("lote", ""),
-            r.get("slote", ""),
-            r.get("referencia", ""),
-            r.get("metodo", ""),
-            estado,
-            r.get("observacion", ""),
-            r.get("time", ""),
-        ])
+        row_dict = extract_v2_export_row(
+            r,
+            max_vias=meta.get("max_vias", 2),
+            max_modulos=meta.get("max_modulos", 1),
+            max_extra_comps=meta.get("max_extra_comps", 0),
+        )
+        writer.writerow([row_dict.get(h, "") for h in dynamic_headers])
 
     buf = io.BytesIO(output.getvalue().encode("utf-8-sig"))
+    buf.seek(0)
+    return buf
+
+
+def generate_json_report(records: List[Dict[str, Any]]) -> Any:
+    """Genera un archivo JSON con estructura institucional MPCH normalizada V2 e indentación legible."""
+    import io
+    import json
+    from datetime import datetime
+    from src.transformers.catalog_matcher import CatalogMatcher
+
+    formatted_records = []
+    for r in records:
+        row_dict = extract_v2_export_row(r)
+
+        # Desglose de Vías anidadas
+        vias_nested = []
+        raw_vias = r.get("vias") or []
+        if raw_vias:
+            for v in raw_vias:
+                t_name = v.get("tipo_via_name")
+                if not t_name and v.get("tipo_via") is not None:
+                    vn = CatalogMatcher.get_via_name(v["tipo_via"])
+                    t_name = vn if vn != "SIN VIA" else ""
+                vias_nested.append({
+                    "orden": v.get("divi_orden", 1),
+                    "id_via": v.get("via_id") or None,
+                    "tipo_via": t_name or None,
+                    "nombre_via": v.get("via_nombre") or None,
+                    "numero_via": v.get("divi_numero") or None,
+                })
+        elif row_dict["Via_Principal_Nombre"]:
+            vias_nested.append({
+                "orden": 1,
+                "id_via": row_dict["Via_Principal_ID"] or None,
+                "tipo_via": row_dict["Via_Principal_Tipo"] or None,
+                "nombre_via": row_dict["Via_Principal_Nombre"] or None,
+                "numero_via": row_dict["Via_Principal_Numero"] or None,
+            })
+            if row_dict["Via_Secundaria_Nombre"]:
+                vias_nested.append({
+                    "orden": 2,
+                    "id_via": row_dict["Via_Secundaria_ID"] or None,
+                    "tipo_via": row_dict["Via_Secundaria_Tipo"] or None,
+                    "nombre_via": row_dict["Via_Secundaria_Nombre"] or None,
+                    "numero_via": row_dict["Via_Secundaria_Numero"] or None,
+                })
+
+        # Desglose de Componentes anidados (lista de componentes relacionales tb_contenido_componente_direccion)
+        componentes_nested = []
+        raw_comps = r.get("componentes") or []
+        if raw_comps:
+            for c in raw_comps:
+                c_nom = str(c.get("codi_nombre") or c.get("tipo_componente") or c.get("nombre") or "").upper()
+                c_val = str(c.get("diti_nombre") or c.get("valor") or "").strip()
+                if "SUBLOTE" in c_nom:
+                    has_mod = bool(re.search(
+                        r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                        c_val,
+                        re.IGNORECASE,
+                    ))
+                    if has_mod or "PISO" in c_val.upper():
+                        continue
+                componentes_nested.append({
+                    "codi_id": c.get("codi_id") or None,
+                    "tipo_componente": c.get("codi_nombre") or None,
+                    "nombre": c.get("codi_nombre") or None,
+                    "codi_nombre": c.get("codi_nombre") or None,
+                    "diti_nombre": c_val,
+                    "valor": c_val,
+                })
+        else:
+            if row_dict["Manzana"]:
+                componentes_nested.append({"codi_id": 1, "tipo_componente": "MANZANA", "nombre": "MANZANA", "codi_nombre": "MANZANA", "valor": row_dict["Manzana"], "diti_nombre": row_dict["Manzana"]})
+            if row_dict["Lote"]:
+                componentes_nested.append({"codi_id": 2, "tipo_componente": "LOTE", "nombre": "LOTE", "codi_nombre": "LOTE", "valor": row_dict["Lote"], "diti_nombre": row_dict["Lote"]})
+            if row_dict["Sublote"]:
+                has_mod = bool(re.search(
+                    r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                    row_dict["Sublote"],
+                    re.IGNORECASE,
+                ))
+                if not has_mod and "PISO" not in row_dict["Sublote"].upper():
+                    componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"]})
+            if row_dict.get("Block"):
+                componentes_nested.append({"codi_id": 11, "tipo_componente": "BLOCK", "nombre": "BLOCK", "codi_nombre": "BLOCK", "valor": row_dict["Block"], "diti_nombre": row_dict["Block"]})
+            if row_dict["Piso"]:
+                componentes_nested.append({"codi_id": 4, "tipo_componente": "PISO", "nombre": "PISO", "codi_nombre": "PISO", "valor": row_dict["Piso"], "diti_nombre": row_dict["Piso"]})
+
+        # Desglose de Módulos anidados (lista de módulos relacionales tb_direccion_tipo_modulo)
+        modulos_nested = []
+        raw_modulos = r.get("modulos") or []
+        if raw_modulos:
+            for m in raw_modulos:
+                modulos_nested.append({
+                    "timo_id": m.get("timo_id") or None,
+                    "tipo": m.get("timo_nombre") or None,
+                    "timo_nombre": m.get("timo_nombre") or None,
+                    "numero": m.get("ditm_nombre") or None,
+                    "ditm_nombre": m.get("ditm_nombre") or None,
+                })
+        elif row_dict["Tipo_Modulo"] or row_dict["Numero_Modulo"]:
+            modulos_nested.append({
+                "timo_id": None,
+                "tipo": row_dict["Tipo_Modulo"] or None,
+                "timo_nombre": row_dict["Tipo_Modulo"] or None,
+                "numero": row_dict["Numero_Modulo"] or None,
+                "ditm_nombre": row_dict["Numero_Modulo"] or None,
+            })
+
+        # Zona anidada
+        zona_nested = {
+            "id_zona": row_dict.get("ID_Zona") or None,
+            "nombre_zona": row_dict["Nombre_Zona"] or None,
+            "tipo_zona": row_dict["Tipo_Zona"] or None,
+        }
+
+        sub_pat_json = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+        clean_sublote_final = (
+            row_dict["Sublote"]
+            if (
+                row_dict["Sublote"]
+                and not re.search(r"\b(INT|DEP|STAND|TIENDA|TDA|OF|BLOCK|LOCAL|PUESTO|PUERTA)\b", str(row_dict["Sublote"]), re.I)
+                and not re.match(sub_pat_json, str(row_dict["Sublote"]).strip(), re.I)
+            )
+            else None
+        )
+
+        # Objeto unificado V2 con retrocompatibilidad
+        rec_obj = {
+            "id": row_dict["ID"],
+            "id_licencia": row_dict["ID"],
+            "dire_id": row_dict["ID_Direccion"] or None,
+            "estado": row_dict["Estado"],
+            "direccion_original": row_dict["Direccion_Original"],
+            "raw_text": row_dict["Direccion_Original"],
+            "zona": zona_nested,
+            "vias": vias_nested,
+            "componentes": componentes_nested,
+            "modulos": modulos_nested,
+            "referencia": row_dict["Referencia"] or None,
+            "dire_referencia": row_dict["Referencia"] or None,
+            "metodo_normalizacion": row_dict["Metodo_Normalizacion"],
+            "fecha_hora_proceso": row_dict["Fecha_Hora_Proceso"],
+            # Accesores directos de compatibilidad
+            "es_procesado": (row_dict["Estado"] == "NORMALIZADO"),
+            "nom_via": row_dict["Via_Principal_Nombre"] or None,
+            "tipo_via_name": row_dict["Via_Principal_Tipo"] or None,
+            "num_via": row_dict["Via_Principal_Numero"] or None,
+            "id_via": row_dict.get("Via_Principal_ID") or None,
+            "nom_zona": row_dict["Nombre_Zona"] or None,
+            "tipo_zona_name": row_dict["Tipo_Zona"] or None,
+            "id_zona": row_dict.get("ID_Zona") or None,
+            "manzana": row_dict["Manzana"] or None,
+            "lote": row_dict["Lote"] or None,
+            "sublote": clean_sublote_final,
+            "slote": clean_sublote_final,
+            "block": row_dict.get("Block") or None,
+            "piso": row_dict["Piso"] or None,
+            "catastro": {
+                "manzana": row_dict["Manzana"] or None,
+                "lote": row_dict["Lote"] or None,
+                "sublote": clean_sublote_final,
+                "slote": clean_sublote_final,
+                "block": row_dict.get("Block") or None,
+                "piso": row_dict["Piso"] or None,
+                "otros": [c.strip() for c in row_dict["Otros_Componentes"].split(";") if c.strip()] if row_dict["Otros_Componentes"] else [],
+            },
+        }
+        formatted_records.append(rec_obj)
+
+    payload = {
+        "metadata": {
+            "institucion": "Municipalidad Provincial de Chiclayo - MPCH",
+            "sistema": "ETL Normalizador Catastral V2",
+            "version": "2.0",
+            "total_registros": len(formatted_records),
+            "generado_el": datetime.now().isoformat(),
+        },
+        "direcciones": formatted_records,
+    }
+
+    raw_json = json.dumps(payload, indent=2, ensure_ascii=False, default=str)
+    buf = io.BytesIO(raw_json.encode("utf-8"))
     buf.seek(0)
     return buf
 
@@ -1081,37 +2238,72 @@ def fetch_db_records_for_export(
     db_svc: DatabaseService,
     schema: Optional[str] = None,
     table: Optional[str] = None,
-    scope: str = "processed",  # 'processed', 'observed', 'valid', 'all'
+    scope: str = "processed",  # 'processed', 'observed', 'valid', 'all', 'pending'
     id_col: Optional[str] = None,
     dir_col: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Consulta la tabla en PostgreSQL con resolución dinámica de esquemas, catálogos y nombres estándar."""
+    """Consulta la tabla en PostgreSQL/SQLite con resolución dinámica de esquemas,
+    catálogos, vinculación con tb_direccion y enriquecimiento relacional V2.
+    """
     from sqlalchemy import text as sa_text
     from src.transformers.catalog_matcher import CatalogMatcher
     from src.config.settings import get_settings
 
     settings = get_settings()
-    schema = (schema or state.active_schema or settings.db.schema).strip()
-    table = (table or state.active_table or settings.db.table).strip()
+
+    is_postgres = False
+    try:
+        if db_svc._engine and hasattr(db_svc._engine, "dialect"):
+            is_postgres = "postgresql" in str(db_svc._engine.dialect.name).lower()
+    except Exception:
+        is_postgres = False
+
+    cat_schema = "public" if is_postgres else ""
+
+    schema = (schema or state.active_schema or settings.db.schema or "public").strip()
+    table = (table or state.active_table or settings.db.table or "tb_direccion").strip()
+
+    if table == "tb_direccion" and is_postgres and not schema:
+        schema = cat_schema
 
     try:
-        CatalogMatcher.sync_with_db(db_svc, schema)
+        CatalogMatcher.sync_with_db(db_svc, schema if is_postgres else "public")
     except Exception as e:
         logger.debug("Aviso al sincronizar catálogos para exportación en '%s': %s", schema, e)
 
     with db_svc.get_session() as session:
-        # 1. Comprobar si la tabla existe en el esquema. Si no existe, buscar nombres estándar comunes.
-        def check_table_exists(t_name: str) -> bool:
-            return bool(session.execute(sa_text("""
-                SELECT COUNT(*) 
-                FROM information_schema.tables 
-                WHERE table_schema = :schema AND table_name = :table;
-            """), {"schema": schema, "table": t_name}).scalar())
+        def check_table_exists(t_name: str, t_schema: Optional[str] = None) -> bool:
+            t_sch = t_schema if t_schema is not None else schema
+            if is_postgres:
+                return bool(session.execute(sa_text("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.tables 
+                    WHERE table_schema = :schema AND table_name = :table;
+                """), {"schema": t_sch, "table": t_name}).scalar())
+            else:
+                return bool(session.execute(sa_text("""
+                    SELECT COUNT(*) 
+                    FROM sqlite_master 
+                    WHERE type = 'table' AND name = :table;
+                """), {"table": t_name}).scalar())
 
-        if not check_table_exists(table):
+        def cat_table_ref(t_name: str) -> str:
+            if is_postgres and cat_schema:
+                return f'"{cat_schema}"."{t_name}"'
+            return f'"{t_name}"'
+
+        def table_ref(t_name: str, t_sch: Optional[str] = None) -> str:
+            sch_to_use = t_sch if t_sch is not None else schema
+            if is_postgres and sch_to_use:
+                return f'"{sch_to_use}"."{t_name}"'
+            return f'"{t_name}"'
+
+        # 1. Comprobar si la tabla existe en el esquema. Si no, buscar candidatos
+        if not check_table_exists(table, schema):
             candidates = [
                 state.active_table,
                 settings.db.table,
+                "tb_direccion",
                 "direcciones_licencias",
                 "direcciones_actual",
                 f"{table}_actual",
@@ -1120,26 +2312,37 @@ def fetch_db_records_for_export(
             ]
             found = False
             for cand in candidates:
-                if cand and check_table_exists(cand):
+                if cand and check_table_exists(cand, schema):
                     logger.info("Tabla '%s' no existe en '%s'. Usando estándar detectado: '%s'", table, schema, cand)
                     table = cand
+                    found = True
+                    break
+                elif cand and is_postgres and check_table_exists(cand, cat_schema):
+                    logger.info("Tabla '%s' detectada en esquema central '%s'", cand, cat_schema)
+                    table = cand
+                    schema = cat_schema
                     found = True
                     break
             if not found:
                 raise ValueError(f"La tabla '{table}' no existe en el esquema '{schema}'.")
 
         # 2. Inspeccionar columnas existentes en la tabla seleccionada
-        col_rows = session.execute(sa_text("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_schema = :schema AND table_name = :table;
-        """), {"schema": schema, "table": table}).fetchall()
+        if is_postgres:
+            col_rows = session.execute(sa_text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = :schema AND table_name = :table;
+            """), {"schema": schema, "table": table}).fetchall()
+        else:
+            col_rows = session.execute(sa_text(f"PRAGMA table_info({table_ref(table)});")).fetchall()
+            col_rows = [(r[1],) for r in col_rows]
+
         existing_cols = {r[0].lower() for r in col_rows}
         actual_cols_map = {r[0].lower(): r[0] for r in col_rows}
 
         # 3. Identificar columna ID estándar
         target_id_col = None
-        for candidate_id in [id_col, settings.db.id_col, "id_licencia", "id", "id_direccion", "codigo"]:
+        for candidate_id in [id_col, "dire_id", "dire_tabla_id", settings.db.id_col, "id_licencia", "id", "id_direccion", "codigo"]:
             if candidate_id and candidate_id.lower() in existing_cols:
                 target_id_col = actual_cols_map[candidate_id.lower()]
                 break
@@ -1148,7 +2351,7 @@ def fetch_db_records_for_export(
 
         # 4. Identificar columna Dirección estándar
         target_dir_col = None
-        for candidate_dir in [dir_col, settings.db.dir_col, "emp_direccion", "direccion", "dir", "raw_text", "texto_direccion"]:
+        for candidate_dir in [dir_col, "dire_valor_origen", settings.db.dir_col, "emp_direccion", "direccion", "dir", "raw_text", "texto_direccion"]:
             if candidate_dir and candidate_dir.lower() in existing_cols:
                 target_dir_col = actual_cols_map[candidate_dir.lower()]
                 break
@@ -1163,128 +2366,146 @@ def fetch_db_records_for_export(
 
         c_id_via       = get_col(settings.db.col_id_via, "id_via")
         c_num_via      = get_col(settings.db.col_num_via, "num_via")
-        c_id_zona      = get_col(settings.db.col_id_zona, "id_zona")
+        c_id_zona      = get_col(settings.db.col_id_zona, "zona_id") or get_col(None, "id_zona")
         c_manzana      = get_col(settings.db.col_manzana, "manzana")
         c_lote         = get_col(settings.db.col_lote, "lote")
         c_slote        = get_col(settings.db.col_slote, "slote")
-        c_referencia   = get_col(settings.db.col_referencia, "referencia")
-        c_es_procesado = get_col(settings.db.col_es_procesado, "es_procesado")
+        c_referencia   = get_col(settings.db.col_referencia, "dire_referencia") or get_col(None, "referencia")
+        c_es_procesado = get_col(settings.db.col_es_procesado, "dire_es_procesado") or get_col(None, "es_procesado")
         c_observacion  = get_col(settings.db.col_observacion, "observacion")
+        c_create_at    = get_col(None, "create_at")
+        c_update_at    = get_col(None, "update_at")
+
+        is_tb_direccion = (table.lower() == "tb_direccion")
+        has_central_tb = check_table_exists("tb_direccion", cat_schema)
+
+        join_central_td = False
+        c_dire_id = "dire_id" if "dire_id" in existing_cols else None
+
+        # Si es una tabla fuente sin columna de proceso, enlazar con central tb_direccion si existe
+        if not is_tb_direccion and not c_es_procesado and has_central_tb:
+            join_central_td = True
 
         # 6. Evaluar scope y filtro WHERE
         scope_lower = str(scope).lower().strip()
-        if c_es_procesado:
+        proc_field = 'td."dire_es_procesado"' if join_central_td else (f'd."{c_es_procesado}"' if c_es_procesado else None)
+
+        if proc_field:
             if scope_lower in ("observed", "observados"):
-                where_clause = f'd."{c_es_procesado}" IS FALSE'
+                where_clause = f'({proc_field} IS FALSE OR {proc_field} = 0)'
             elif scope_lower in ("valid", "validos", "normalizados"):
-                where_clause = f'd."{c_es_procesado}" IS TRUE'
+                where_clause = f'({proc_field} IS TRUE OR {proc_field} = 1)'
+            elif scope_lower in ("pending", "pendientes"):
+                where_clause = f'{proc_field} IS NULL'
             elif scope_lower in ("processed", "procesados"):
-                where_clause = f'd."{c_es_procesado}" IS NOT NULL'
+                where_clause = f'{proc_field} IS NOT NULL'
             else:
                 where_clause = "TRUE"
         else:
-            if scope_lower in ("observed", "observados", "valid", "validos", "normalizados", "processed", "procesados"):
+            if scope_lower in ("observed", "observados", "valid", "validos", "normalizados", "processed", "procesados", "pending", "pendientes"):
                 return []
             where_clause = "TRUE"
 
-        # 7. Inspeccionar tablas maestras en el esquema para resolver JOINs de forma estándar
-        vias_table = settings.db.table_vias
-        zonas_table = settings.db.table_zonas
-        tipo_via_table = settings.db.table_tipo_via
-        tipo_zona_table = settings.db.table_tipo_zona
-
-        has_vias = bool(c_id_via and check_table_exists(vias_table))
-        has_zonas = bool(c_id_zona and check_table_exists(zonas_table))
-        has_tipo_via = check_table_exists(tipo_via_table)
-        has_tipo_zona = check_table_exists(tipo_zona_table)
-
-        # Determinar columnas exactas en vias y zonas si existen
-        vias_cols = set()
-        if has_vias:
-            v_col_rows = session.execute(sa_text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_schema = :schema AND table_name = :table;
-            """), {"schema": schema, "table": vias_table}).fetchall()
-            vias_cols = {r[0].lower() for r in v_col_rows}
-
-        zonas_cols = set()
-        if has_zonas:
-            z_col_rows = session.execute(sa_text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_schema = :schema AND table_name = :table;
-            """), {"schema": schema, "table": zonas_table}).fetchall()
-            zonas_cols = {r[0].lower() for r in z_col_rows}
-
+        # 7. Construcción de SELECT y JOINs
         select_fields = [
             f'd."{target_id_col}" AS id_licencia',
             f'd."{target_dir_col}" AS raw_text' if target_dir_col else "NULL AS raw_text",
-            f'd."{c_id_via}" AS id_via' if c_id_via else "NULL AS id_via",
-            f'd."{c_num_via}" AS num_via' if c_num_via else "NULL AS num_via",
-            f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
-            f'd."{c_manzana}" AS manzana' if c_manzana else "NULL AS manzana",
-            f'd."{c_lote}" AS lote' if c_lote else "NULL AS lote",
-            f'd."{c_slote}" AS slote' if c_slote else "NULL AS slote",
-            f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
-            f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
-            f'd."{c_observacion}" AS observacion' if c_observacion else "NULL AS observacion",
         ]
 
         join_clauses = []
 
-        # Enriquecimiento Vías
-        if has_vias and "id_via" in vias_cols:
-            nom_via_expr = 'v."nom_via"' if "nom_via" in vias_cols else "NULL"
-            select_fields.append(f"{nom_via_expr} AS nom_via")
-            if "id_tipo_via" in vias_cols:
+        if is_tb_direccion:
+            select_fields.extend([
+                f'd."{target_id_col}" AS dire_id',
+                'd."dire_tabla_id" AS dire_tabla_id' if "dire_tabla_id" in existing_cols else "NULL AS dire_tabla_id",
+                f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
+                f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
+                f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
+                'd."create_at" AS create_at' if "create_at" in existing_cols else "NULL AS create_at",
+                'd."update_at" AS update_at' if "update_at" in existing_cols else "NULL AS update_at",
+                "NULL AS id_via", "NULL AS num_via", "NULL AS manzana", "NULL AS lote", "NULL AS slote",
+                "NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name",
+                "NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"
+            ])
+        elif join_central_td:
+            td_table = cat_table_ref("tb_direccion")
+            td_join_cond = (
+                f'd."{c_dire_id}" = td."dire_id"'
+                if c_dire_id
+                else f'(td.dire_esquema = \'{schema}\' AND td.dire_tabla = \'{table}\' AND td.dire_tabla_id = d."{target_id_col}")'
+            )
+            select_fields.extend([
+                'td."dire_id" AS dire_id',
+                f'd."{target_id_col}" AS dire_tabla_id',
+                'td."zona_id" AS id_zona',
+                'td."dire_referencia" AS referencia',
+                'td."dire_es_procesado" AS es_procesado',
+                'td."create_at" AS create_at',
+                'td."update_at" AS update_at',
+                "NULL AS id_via", "NULL AS num_via", "NULL AS manzana", "NULL AS lote", "NULL AS slote",
+                "NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name",
+                "NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"
+            ])
+            join_clauses.append(f'LEFT JOIN {td_table} td ON {td_join_cond}')
+        else:
+            select_fields.extend([
+                f'd."{c_dire_id}" AS dire_id' if c_dire_id else "NULL AS dire_id",
+                "NULL AS dire_tabla_id",
+                f'd."{c_id_via}" AS id_via' if c_id_via else "NULL AS id_via",
+                f'd."{c_num_via}" AS num_via' if c_num_via else "NULL AS num_via",
+                f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
+                f'd."{c_manzana}" AS manzana' if c_manzana else "NULL AS manzana",
+                f'd."{c_lote}" AS lote' if c_lote else "NULL AS lote",
+                f'd."{c_slote}" AS slote' if c_slote else "NULL AS slote",
+                f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
+                f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
+                f'd."{c_create_at}" AS create_at' if c_create_at else "NULL AS create_at",
+                f'd."{c_update_at}" AS update_at' if c_update_at else "NULL AS update_at",
+            ])
+
+            # Enriquecimiento V1 tradicional para tablas fuente planas con catálogos en el mismo esquema
+            vias_table = settings.db.table_vias
+            zonas_table = settings.db.table_zonas
+            tipo_via_table = settings.db.table_tipo_via
+            tipo_zona_table = settings.db.table_tipo_zona
+
+            has_vias = bool(c_id_via and check_table_exists(vias_table, schema))
+            has_zonas = bool(c_id_zona and check_table_exists(zonas_table, schema))
+            has_tipo_via = check_table_exists(tipo_via_table, schema)
+            has_tipo_zona = check_table_exists(tipo_zona_table, schema)
+
+            if has_vias:
+                select_fields.append('v."nom_via" AS nom_via')
                 select_fields.append('v."id_tipo_via" AS id_tipo_via')
                 if has_tipo_via:
                     select_fields.append('tv."nombre_tipo_via" AS tipo_via_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{tipo_via_table}" tv ON v."id_tipo_via" = tv."id_tipo_via"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(vias_table)} v ON d."{c_id_via}" = v."id_via"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(tipo_via_table)} tv ON v."id_tipo_via" = tv."id_tipo_via"')
                 else:
                     select_fields.append('NULL AS tipo_via_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
-            elif "tipo_via" in vias_cols:
-                select_fields.append('v."tipo_via" AS id_tipo_via')
-                select_fields.append('NULL AS tipo_via_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(vias_table)} v ON d."{c_id_via}" = v."id_via"')
             else:
-                select_fields.append('NULL AS id_tipo_via')
-                select_fields.append('NULL AS tipo_via_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
-        else:
-            select_fields.extend(["NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name"])
+                select_fields.extend(["NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name"])
 
-        # Enriquecimiento Zonas
-        if has_zonas and "id_zona" in zonas_cols:
-            nom_zona_expr = 'z."nom_zona"' if "nom_zona" in zonas_cols else "NULL"
-            select_fields.append(f"{nom_zona_expr} AS nom_zona")
-            if "id_tipo_zona" in zonas_cols:
+            if has_zonas:
+                select_fields.append('z."nom_zona" AS nom_zona')
                 select_fields.append('z."id_tipo_zona" AS id_tipo_zona')
                 if has_tipo_zona:
                     select_fields.append('tz."nombre_tipo_zona" AS tipo_zona_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{tipo_zona_table}" tz ON z."id_tipo_zona" = tz."id_tipo_zona"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(zonas_table)} z ON d."{c_id_zona}" = z."id_zona"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(tipo_zona_table)} tz ON z."id_tipo_zona" = tz."id_tipo_zona"')
                 else:
                     select_fields.append('NULL AS tipo_zona_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
-            elif "tipo_zona" in zonas_cols:
-                select_fields.append('z."tipo_zona" AS id_tipo_zona')
-                select_fields.append('NULL AS tipo_zona_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(zonas_table)} z ON d."{c_id_zona}" = z."id_zona"')
             else:
-                select_fields.append('NULL AS id_tipo_zona')
-                select_fields.append('NULL AS tipo_zona_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
-        else:
-            select_fields.extend(["NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"])
+                select_fields.extend(["NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"])
 
         fields_sql = ",\n            ".join(select_fields)
         joins_sql = "\n        ".join(join_clauses)
         query_sql = f"""
             SELECT 
                 {fields_sql}
-            FROM "{schema}"."{table}" d
+            FROM {table_ref(table)} d
             {joins_sql}
             WHERE {where_clause}
             ORDER BY d."{target_id_col}" ASC;
@@ -1309,19 +2530,24 @@ def fetch_db_records_for_export(
                 tipo_zona_name = CatalogMatcher.get_zona_name(id_tipo_zona)
 
             es_proc = r.get("es_procesado")
-            if es_proc is True:
+            if es_proc is True or es_proc == 1:
                 estado = "NORMALIZADO"
                 metodo = "Catastro Oficial"
-            elif es_proc is False:
+            elif es_proc is False or es_proc == 0:
                 estado = "OBSERVADO"
                 metodo = "Evaluado (Observado)"
             else:
                 estado = "PENDIENTE"
                 metodo = "Sin Procesar"
 
+            c_dt = r.get("update_at") or r.get("create_at")
+            time_str = c_dt.strftime("%Y-%m-%d %H:%M:%S") if hasattr(c_dt, "strftime") else (str(c_dt) if c_dt else "-")
+
             records.append({
                 "id_licencia": r.get("id_licencia"),
                 "raw_text": r.get("raw_text") or "",
+                "dire_id": r.get("dire_id"),
+                "dire_tabla_id": r.get("dire_tabla_id"),
                 "id_via": r.get("id_via"),
                 "nom_via": r.get("nom_via") or "",
                 "tipo_via": id_tipo_via,
@@ -1335,13 +2561,176 @@ def fetch_db_records_for_export(
                 "lote": r.get("lote") or "",
                 "slote": r.get("slote") or "",
                 "referencia": r.get("referencia") or "",
-                "es_procesado": bool(es_proc) if es_proc is not None else False,
-                "observacion": r.get("observacion") or "",
+                "dire_referencia": r.get("referencia") or "",
+                "vias": [],
+                "componentes": [],
+                "modulos": [],
+                "create_at": r.get("create_at"),
+                "update_at": r.get("update_at"),
+                "es_procesado": bool(es_proc) if es_proc is not None else None,
                 "estado": estado,
                 "metodo": metodo,
                 "success": True,
-                "time": "-",
+                "time": time_str,
             })
+
+        # Si existen dire_ids vinculados a la arquitectura relacional V2, enriquecer desde cat_schema
+        dire_ids = [r["dire_id"] for r in records if r.get("dire_id") is not None]
+        if dire_ids and check_table_exists("tb_direccion", cat_schema):
+            unique_ids = list(set(int(did) for did in dire_ids))
+            chunks = [unique_ids[i:i + 1000] for i in range(0, len(unique_ids), 1000)]
+
+            # 1. Enriquecer Vías (soporte multi-vía / esquinas)
+            vias_by_dire = {}
+            if check_table_exists("tb_direccion_via", cat_schema) and check_table_exists("tb_via", cat_schema):
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    dv_sql = f"""
+                        SELECT 
+                            dv.dire_id, dv.via_id, dv.divi_numero, dv.divi_orden,
+                            v.via_nombre, v.tivi_id,
+                            tv.tivi_nombre, tv.tivi_abreviatura
+                        FROM {cat_table_ref("tb_direccion_via")} dv
+                        JOIN {cat_table_ref("tb_via")} v ON dv.via_id = v.via_id
+                        LEFT JOIN {cat_table_ref("tb_tipo_via")} tv ON v.tivi_id = tv.tivi_id
+                        WHERE dv.dire_id IN ({id_list_str})
+                        ORDER BY dv.dire_id, dv.divi_orden ASC;
+                    """
+                    for row in session.execute(sa_text(dv_sql)).fetchall():
+                        did = row[0]
+                        v_item = {
+                            "via_id": row[1],
+                            "divi_numero": row[2] or "",
+                            "divi_orden": row[3],
+                            "via_nombre": row[4] or "",
+                            "tipo_via": row[5],
+                            "tipo_via_name": row[6] or "",
+                            "tivi_abreviatura": row[7] or "",
+                        }
+                        vias_by_dire.setdefault(did, []).append(v_item)
+
+            # 2. Enriquecer Componentes Catastrales (Mz, Lt, Piso, etc.) usando diti_valor
+            comp_by_dire = {}
+            if check_table_exists("tb_contenido_componente_direccion", cat_schema) and check_table_exists("tb_componente_direccion", cat_schema):
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    cd_sql = f"""
+                        SELECT 
+                            cd.dire_id, cd.codi_id, cd.diti_valor,
+                            c.codi_nombre, c.codi_es_urbano
+                        FROM {cat_table_ref("tb_contenido_componente_direccion")} cd
+                        JOIN {cat_table_ref("tb_componente_direccion")} c ON cd.codi_id = c.codi_id
+                        WHERE cd.dire_id IN ({id_list_str})
+                        ORDER BY cd.dire_id, cd.codi_id ASC;
+                    """
+                    for row in session.execute(sa_text(cd_sql)).fetchall():
+                        did = row[0]
+                        c_item = {
+                            "codi_id": row[1],
+                            "diti_valor": row[2] or "",
+                            "diti_nombre": row[2] or "",
+                            "codi_nombre": row[3] or "",
+                            "codi_es_urbano": row[4],
+                        }
+                        comp_by_dire.setdefault(did, []).append(c_item)
+
+            # 3. Enriquecer Módulos Inmobiliarios
+            mod_by_dire = {}
+            if check_table_exists("tb_direccion_tipo_modulo", cat_schema) and check_table_exists("tb_tipo_modulo", cat_schema):
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    dm_sql = f"""
+                        SELECT 
+                            dm.dire_id, dm.timo_id, dm.ditm_nombre,
+                            m.timo_nombre
+                        FROM {cat_table_ref("tb_direccion_tipo_modulo")} dm
+                        JOIN {cat_table_ref("tb_tipo_modulo")} m ON dm.timo_id = m.timo_id
+                        WHERE dm.dire_id IN ({id_list_str})
+                        ORDER BY dm.dire_id, dm.timo_id ASC;
+                    """
+                    for row in session.execute(sa_text(dm_sql)).fetchall():
+                        did = row[0]
+                        m_item = {
+                            "timo_id": row[1],
+                            "ditm_nombre": row[2] or "",
+                            "timo_nombre": row[3] or "",
+                        }
+                        mod_by_dire.setdefault(did, []).append(m_item)
+
+            # 4. Enriquecer Zona oficial, Referencia y Auditoría desde tb_direccion
+            dir_meta = {}
+            if check_table_exists("tb_direccion", cat_schema):
+                for chunk in chunks:
+                    id_list_str = ", ".join(str(did) for did in chunk)
+                    dir_sql = f"""
+                        SELECT 
+                            d.dire_id, d.zona_id, d.dire_referencia,
+                            z.zona_nombre, z.tizo_id,
+                            tz.tizo_nombre, tz.tizo_abreviatura,
+                            d.create_at, d.update_at
+                        FROM {cat_table_ref("tb_direccion")} d
+                        LEFT JOIN {cat_table_ref("tb_zona")} z ON d.zona_id = z.zona_id
+                        LEFT JOIN {cat_table_ref("tb_tipo_zona")} tz ON z.tizo_id = tz.tizo_id
+                        WHERE d.dire_id IN ({id_list_str});
+                    """
+                    for row in session.execute(sa_text(dir_sql)).fetchall():
+                        dir_meta[row[0]] = {
+                            "zona_id": row[1],
+                            "dire_referencia": row[2] or "",
+                            "zona_nombre": row[3] or "",
+                            "tizo_id": row[4],
+                            "tipo_zona_name": row[5] or "",
+                            "tizo_abreviatura": row[6] or "",
+                            "create_at": row[7],
+                            "update_at": row[8],
+                        }
+
+            # Asignar a cada registro
+            for rec in records:
+                did = rec.get("dire_id")
+                if did:
+                    rec["vias"] = vias_by_dire.get(did, [])
+                    rec["componentes"] = comp_by_dire.get(did, [])
+                    rec["modulos"] = mod_by_dire.get(did, [])
+
+                    if did in dir_meta:
+                        meta = dir_meta[did]
+                        if meta["dire_referencia"]:
+                            rec["referencia"] = meta["dire_referencia"]
+                            rec["dire_referencia"] = meta["dire_referencia"]
+                        if meta["zona_id"]:
+                            rec["id_zona"] = meta["zona_id"]
+                            rec["nom_zona"] = meta["zona_nombre"]
+                            rec["tipo_zona"] = meta["tizo_id"]
+                            rec["tipo_zona_name"] = meta["tipo_zona_name"]
+                        if meta.get("create_at") and not rec.get("create_at"):
+                            rec["create_at"] = meta["create_at"]
+                        if meta.get("update_at") and not rec.get("update_at"):
+                            rec["update_at"] = meta["update_at"]
+
+                    if rec["vias"]:
+                        v0 = rec["vias"][0]
+                        if not rec.get("id_via"):
+                            rec["id_via"] = v0["via_id"]
+                            rec["nom_via"] = v0["via_nombre"]
+                            rec["tipo_via"] = v0["tipo_via"]
+                            rec["tipo_via_name"] = v0["tipo_via_name"]
+                            rec["num_via"] = v0["divi_numero"]
+
+                    for c in rec["componentes"]:
+                        c_name = (c.get("codi_nombre") or "").upper()
+                        c_val = str(c.get("diti_valor") or c.get("diti_nombre") or "").strip()
+                        if "MANZANA" in c_name and not rec.get("manzana"):
+                            rec["manzana"] = c_val
+                        elif "LOTE" in c_name and "SUBLOTE" not in c_name and not rec.get("lote"):
+                            rec["lote"] = c_val
+                        elif "SUBLOTE" in c_name and not rec.get("slote"):
+                            sub_pat_load = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+                            clean_c_slt = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val, flags=re.IGNORECASE).strip(" -:,.")
+                            if clean_c_slt and not re.match(sub_pat_load, c_val, re.I) and not re.match(sub_pat_load, clean_c_slt, re.I):
+                                rec["slote"] = clean_c_slt
+                        elif "PISO" in c_name and not rec.get("piso"):
+                            rec["piso"] = c_val
 
     return records
 
@@ -1411,6 +2800,34 @@ async def export_csv_endpoint(payload: Optional[Dict[str, Any]] = None):
     )
 
 
+@app.post("/api/export-json")
+async def export_json_endpoint(payload: Optional[Dict[str, Any]] = None):
+    """Genera y descarga un archivo JSON estructurado normalizado V2 desde registros en memoria."""
+    from datetime import datetime
+
+    records = []
+    if payload and isinstance(payload, dict):
+        records = payload.get("records", [])
+    if not records:
+        records = state.recent_records
+
+    if not records:
+        raise HTTPException(status_code=400, detail="No hay registros disponibles para exportar.")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    buf = generate_json_report(records)
+    filename = f"reporte_catastral_mpch_{timestamp}.json"
+
+    return StreamingResponse(
+        buf,
+        media_type="application/json; charset=utf-8",
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "Access-Control-Expose-Headers": "Content-Disposition",
+        },
+    )
+
+
 @app.api_route("/api/export-db", methods=["GET", "POST"])
 async def export_db_endpoint(
     req: Optional[ExportDbRequest] = None,
@@ -1421,7 +2838,7 @@ async def export_db_endpoint(
     id_col: Optional[str] = Query(None),
     dir_col: Optional[str] = Query(None),
 ):
-    """Genera y descarga exportación masiva directamente desde PostgreSQL en Excel o CSV."""
+    """Genera y descarga exportación masiva directamente desde PostgreSQL en Excel, CSV o JSON."""
     from datetime import datetime
 
     db_svc = state.dynamic_db_service or DatabaseService()
@@ -1453,7 +2870,11 @@ async def export_db_endpoint(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     scope_slug = target_scope.lower()
 
-    if target_format.lower() in ("csv", "text/csv"):
+    if target_format.lower() in ("json", "application/json"):
+        buf = generate_json_report(records)
+        filename = f"reporte_{target_table}_{scope_slug}_{timestamp}.json"
+        media_type = "application/json; charset=utf-8"
+    elif target_format.lower() in ("csv", "text/csv"):
         buf = generate_csv_report(records)
         filename = f"reporte_{target_table}_{scope_slug}_{timestamp}.csv"
         media_type = "text/csv; charset=utf-8"

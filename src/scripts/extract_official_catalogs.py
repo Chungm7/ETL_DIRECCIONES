@@ -15,7 +15,7 @@ import openpyxl
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("extract_official_catalogs")
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DOCS_DIR = BASE_DIR / "docs" / "cod_vias_y_habilitaciones_urbanas"
 CATALOGS_DIR = BASE_DIR / "src" / "catalogs"
 

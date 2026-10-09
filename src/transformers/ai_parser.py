@@ -26,6 +26,11 @@ class AIAddressParser:
         if record.is_empty():
             return DireccionDestino(
                 id_licencia=record.id_licencia,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
                 es_procesado=False,
                 observacion="DIRECCIÓN VACÍA: El registro no contiene texto de dirección",
                 metodo_normalizacion="N/A",
@@ -69,16 +74,55 @@ class AIAddressParser:
                     heuristica_aplicada = True
 
             if nom_zona:
-                z_toks = CatalogMatcher._extract_sig_tokens(nom_zona, is_via=False)
-                r_toks = CatalogMatcher._extract_sig_tokens(raw_text, is_via=False)
-                is_syn_z = False
-                for cand_syn, target_name in CatalogManager.EXTRA_ZONAS_SYNONYMS.items():
-                    if target_name.upper() in nom_zona.upper() and cand_syn.upper() in raw_text.upper():
-                        is_syn_z = True
-                        break
-                if not is_syn_z and not (z_toks & r_toks):
-                    logger.warning("Descartando nom_zona alucinado por IA: '%s' no presente en '%s'", nom_zona, raw_text)
+                # Regla de Oro: CERCADO DE CHICLAYO solo es válido si la palabra CERCADO figura expresamente en raw_text
+                if "CERCADO" in nom_zona.upper() and "CERCADO" not in raw_text.upper():
+                    logger.warning("Descartando nom_zona '%s': palabra 'CERCADO' no presente en raw_text '%s'", nom_zona, raw_text)
                     nom_zona = None
+                    tipo_zona_detectada = None
+                    heuristica_aplicada = True
+                elif nom_zona.upper().strip() in CatalogManager.CITY_DISTRICT_STOPWORDS:
+                    logger.warning("Descartando nom_zona '%s': corresponde a stopword de distrito/ciudad", nom_zona)
+                    nom_zona = None
+                    tipo_zona_detectada = None
+                    heuristica_aplicada = True
+                else:
+                    z_toks = CatalogMatcher._extract_sig_tokens(nom_zona, is_via=False)
+                    r_toks = CatalogMatcher._extract_sig_tokens(raw_text, is_via=False)
+                    is_syn_z = False
+                    for cand_syn, target_name in CatalogManager.EXTRA_ZONAS_SYNONYMS.items():
+                        if target_name.upper() in nom_zona.upper() and cand_syn.upper() in raw_text.upper():
+                            is_syn_z = True
+                            break
+                    if not is_syn_z and not (z_toks & r_toks):
+                        logger.warning("Descartando nom_zona alucinado por IA: '%s' no presente en '%s'", nom_zona, raw_text)
+                        nom_zona = None
+                        heuristica_aplicada = True
+
+            # Guardrail de Duplicidad Homónima (Vía duplicada como Zona):
+            if nom_via and nom_zona:
+                v_clean_r = re.sub(r"\b(?:AV\.?|AVENIDA|CA\.?|CALLE|JR\.?|JIRON|PJE\.?|PASAJE)\b", "", nom_via, flags=re.IGNORECASE).strip().upper()
+                z_clean_r = re.sub(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?)\b", "", nom_zona, flags=re.IGNORECASE).strip().upper()
+                vt = CatalogMatcher._extract_sig_tokens(v_clean_r, is_via=True)
+                zt = CatalogMatcher._extract_sig_tokens(z_clean_r, is_via=False)
+                if vt and zt and (vt.issubset(zt) or zt.issubset(vt)) and not re.search(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?)\b", raw_text, re.IGNORECASE):
+                    logger.warning("Descartando nom_zona '%s' por duplicidad homónima con nom_via '%s'", nom_zona, nom_via)
+                    nom_zona = None
+                    tipo_zona_detectada = None
+                    heuristica_aplicada = True
+
+            # Guardrail Anti-Alucinación para Referencia preliminar provista por IA:
+            if referencia:
+                ref_clean_toks = [
+                    t for t in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]+", referencia.upper())
+                    if len(t) > 2 and t not in (
+                        "DEL", "LOS", "LAS", "POR", "CON", "PARA", "SIN", "FRENTE", "CERCA", "COSTADO",
+                        "ENTRE", "CRUCE", "ESQ", "ESQUINA", "PISO", "BLOCK", "LOTE", "MANZANA"
+                    )
+                ]
+                r_upper_raw = raw_text.upper()
+                if ref_clean_toks and not any(t in r_upper_raw for t in ref_clean_toks):
+                    logger.warning("Descartando referencia alucinada por IA: '%s' no presente en '%s'", referencia, raw_text)
+                    referencia = None
                     heuristica_aplicada = True
 
         # 2.5 Respaldo para vías emblemáticas con fechas o números cuando nom_via está vacío o truncado
@@ -166,7 +210,10 @@ class AIAddressParser:
                     posible_1 = match_zona_via.group(1).strip()
                     posible_2 = match_zona_via.group(2).strip()
                     posible_num = match_zona_via.group(3) or match_zona_via.group(4)
-                    if posible_1 not in ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO"):
+                    city_stopwords = ("CHICLAYO", "LAMBAYEQUE", "FERRENAFE", "PIMENTEL", "LA VICTORIA", "JLO")
+                    if (posible_1 not in city_stopwords 
+                        and posible_2 not in city_stopwords
+                        and not re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", posible_1, re.IGNORECASE)):
                         # Detectar y separar número pegado al final si existe
                         m_p2_num = re.search(r'(?:\s*N°?|\s*NUM°?|\s*NRO\.?|\s*N)?\s*(\d+)$', posible_2, re.IGNORECASE)
                         cand_p2_num = None
@@ -232,6 +279,21 @@ class AIAddressParser:
                                 referencia = trailing.upper()
                         heuristica_aplicada = True
 
+        # Filtrado de topónimos de ciudades o componentes prediales como vías falsas
+        if nom_via:
+            nv_upper = nom_via.strip().upper()
+            if re.match(r"^(?:MZ\.?|MZA\.?|MANZANA|LT\.?|LOTE)\b", nv_upper):
+                nom_via = None
+                num_via = None
+            else:
+                nv_noacc = TextCleaner.remove_accents(nv_upper)
+                if nv_upper in CatalogManager.CITY_DISTRICT_STOPWORDS or nv_noacc in CatalogManager.CITY_DISTRICT_STOPWORDS:
+                    via_prefixes = CatalogManager.get_via_prefix_regex_str()
+                    has_formal_via_prefix = bool(re.search(rf"\b(?:{via_prefixes})\s+{re.escape(nom_via)}\b", raw_text, re.IGNORECASE))
+                    if not has_formal_via_prefix:
+                        nom_via = None
+                        num_via = None
+
         # 5. Respaldo Heurístico para numeración de vía (SOLO si existe una vía)
         if not nom_via:
             num_via = None
@@ -254,14 +316,6 @@ class AIAddressParser:
                     if m_let and not slote:
                         slote = m_let.group(1).upper()
 
-        # 6. Respaldo Heurístico para interiores ("INT-I", "INT- 1", "DPTO 2")
-        if "INT-" in raw_text or "DPTO" in raw_text:
-            match_int = re.search(r"\b(INT-[A-Z0-9]+|DPTO-[A-Z0-9]+)\b", raw_text)
-            if match_int:
-                interior_val = match_int.group(1)
-                if not slote:
-                    slote = interior_val
-                    heuristica_aplicada = True
 
         # 6b. Respaldo Heurístico para Manzana y Lote
         if not manzana:
@@ -322,13 +376,17 @@ class AIAddressParser:
             # Caso 2: Prefijos dinámicos de zona (URB, PJ, etc.)
             if not nom_zona:
                 zona_prefixes = CatalogManager.get_zona_prefix_regex_str()
+                via_prefixes_str = CatalogManager.get_via_prefix_regex_str()
                 match_zona = re.search(
-                    rf"{zona_prefixes}\s+([^,;()\-]+?)(?:\s+(?:MZ|LT|LOTE|MANZANA|REF|\(|$)|,|-|$)",
+                    rf"{zona_prefixes}\s+([^,;()\-]+?)(?:\s+(?:{via_prefixes_str}|MZ|LT|LOTE|MANZANA|BLOCK|BLOQUE|BLQ|TORRE|DPTO|DEP|PISO|REF|\(|$)|,|-|$)",
                     raw_text,
                     re.IGNORECASE,
                 )
                 if match_zona:
                     cand_zona = match_zona.group(1).strip()
+                    m_via_in_zona = re.search(rf"\b(?:{via_prefixes_str})\b", cand_zona, re.IGNORECASE)
+                    if m_via_in_zona:
+                        cand_zona = cand_zona[:m_via_in_zona.start()].strip(" ,.-")
                     cand_zona = re.sub(r"\s+(?:CHICLAYO|LAMBAYEQUE|FERRENAFE)$", "", cand_zona, flags=re.IGNORECASE).strip(" ,.-")
                     if cand_zona:
                         nom_zona = cand_zona
@@ -368,20 +426,18 @@ class AIAddressParser:
                         referencia = comm_str
                         heuristica_aplicada = True
 
-        # Caso 3: Pisos o niveles (ej. '2DO. Y 3ER. PISO', '3ER. PISO')
+        # Caso 3: Pisos o niveles (ej. '2DO. Y 3ER. PISO', '3ER. PISO', '3 PISO')
+        detected_piso = None
         match_piso = re.search(
             r"\b((?:\d+(?:DO|ER|TO|VO|MO)?\.?\s*(?:Y\s*\d+(?:DO|ER|TO|VO|MO)?\.?\s*)?PISO)|(?:PISO\s*\d+))\b",
             raw_text,
             re.IGNORECASE,
         )
         if match_piso:
-            piso_val = match_piso.group(1).strip().upper()
-            if not referencia:
-                referencia = piso_val
-                heuristica_aplicada = True
-            elif not re.search(r"\bPISO\b", referencia, re.IGNORECASE):
-                referencia = f"{referencia} - {piso_val}".strip()
-                heuristica_aplicada = True
+            piso_raw = match_piso.group(1).strip().upper()
+            p_num = re.search(r"\d+", piso_raw)
+            detected_piso = p_num.group(0) if p_num else piso_raw
+            heuristica_aplicada = True
 
         # 7f. Resolución de Doble Vía, Desambiguación e Inversión Via/Zona
 
@@ -403,42 +459,43 @@ class AIAddressParser:
                     heuristica_aplicada = True
                     break
 
-        # Respaldo Heurístico para Blocks / Pabellones / Torres
-        match_block = re.search(r"(?<!DE LA\s)(?<!HAYA DE LA\s)\b(BLOCK\s+[A-Z0-9\-]+|TORRE\s+(?!N°|NRO|NUM|N\b)[A-Z0-9\-]+)\b", raw_text, re.IGNORECASE)
+        # Respaldo Heurístico para Blocks / Pabellones / Torres (Componente Catastral Estructural)
+        detected_block = None
+        match_block = re.search(r"(?<!DE LA\s)(?<!HAYA DE LA\s)\b(?:BLOCK|BLOQUE|BLQ|TORRE)\s+(?!N°|NRO|NUM|N\b)([A-Z0-9\-]+)\b", raw_text, re.IGNORECASE)
         if match_block:
-            block_val = match_block.group(1).strip()
-            if not nom_via or block_val.upper() not in nom_via.upper():
-                if not referencia:
-                    referencia = block_val
-                elif block_val not in referencia:
-                    referencia = f"{referencia} - {block_val}".strip()
-                heuristica_aplicada = True
+            detected_block = match_block.group(1).strip().upper()
+            heuristica_aplicada = True
 
-        # Si nom_via contiene dos vías separadas por guión, 'Y', 'CON', 'ESQ'
+        # Si nom_via contiene dos o tres vías separadas por guión, 'Y', 'CON', 'ESQ'
         if nom_via and not CatalogMatcher.match_physical_via(nom_via) and any(sep in nom_via for sep in (" - ", " Y ", " CON ", " ESQ ", " CRUCE ")):
             parts = re.split(r"\s+(?:-|Y|CON|ESQ\.?|CRUCE)\s+", nom_via, flags=re.IGNORECASE)
             if len(parts) >= 2:
-                p1 = parts[0].strip()
-                p2 = parts[1].strip()
-                m_v1 = CatalogMatcher.match_physical_via(p1)
-                m_z1 = CatalogMatcher.match_physical_zona(p1)
-                m_v2 = CatalogMatcher.match_physical_via(p2)
-                m_z2 = CatalogMatcher.match_physical_zona(p2)
+                matched_parts_v = [CatalogMatcher.match_physical_via(p.strip()) for p in parts]
+                if len(parts) == 2:
+                    p1 = parts[0].strip()
+                    p2 = parts[1].strip()
+                    m_v1 = matched_parts_v[0]
+                    m_z1 = CatalogMatcher.match_physical_zona(p1)
+                    m_v2 = matched_parts_v[1]
+                    m_z2 = CatalogMatcher.match_physical_zona(p2)
 
-                if m_z1 and m_v2 and not m_v1:
-                    nom_zona = p1
-                    nom_via = p2
-                    heuristica_aplicada = True
-                elif m_z2 and m_v1 and not m_v2:
-                    nom_zona = p2
-                    nom_via = p1
-                    heuristica_aplicada = True
-                elif m_v1 and m_v2:
-                    if m_v1.get("id") != m_v2.get("id"):
-                        two_vias_conflict = (p1, p2)
+                    if m_z1 and m_v2 and not m_v1:
+                        nom_zona = p1
+                        nom_via = p2
+                        heuristica_aplicada = True
+                    elif m_z2 and m_v1 and not m_v2:
+                        nom_zona = p2
                         nom_via = p1
-                    else:
-                        nom_via = m_v1.get("nom_via", p1)
+                        heuristica_aplicada = True
+                    elif m_v1 and m_v2:
+                        if m_v1.get("id") != m_v2.get("id"):
+                            two_vias_conflict = (p1, p2)
+                            nom_via = p1
+                        else:
+                            nom_via = m_v1.get("nom_via", p1)
+                elif len(parts) >= 3 and all(mv is not None for mv in matched_parts_v[:3]):
+                    two_vias_conflict = tuple(parts[i].strip() for i in range(min(3, len(parts))))
+                    nom_via = parts[0].strip()
 
         # Limpieza de prefijos de centros comerciales, galerías o edificios en nom_via
         if nom_via:
@@ -527,34 +584,60 @@ class AIAddressParser:
 
             can_swap = not (via_has_via_prefix and zona_has_zone_prefix)
 
-            # Caso 1: Inversión Semántica de Entidades de Doble Rol
-            # Si nom_via corresponde a una zona oficial (ej. DIEGO FERRE, JOSE OLAYA, REMIGIO SILVA, SANTA VICTORIA)
-            # y nom_zona corresponde EXCLUSIVAMENTE a una vía oficial (ej. BAQUIJANO, MANUEL ARTEAGA, CERVANTES)
-            # y nom_via no tiene prefijo explícito de vía (CALLE, AV), los roles fueron invertidos:
-            if can_swap and v_as_zona and z_as_via and not z_as_zona and not via_has_via_prefix:
+            # Caso 1: Inversión Semántica de Entidades
+            # Si nom_via corresponde a una zona oficial y nom_zona corresponde a una vía oficial,
+            # o si mantenerlos causaría conflicto (ej. not v_as_via o not z_as_zona):
+            if can_swap and v_as_zona and z_as_via and (not v_as_via or not z_as_zona) and not via_has_via_prefix:
                 nom_via, nom_zona = nom_zona, nom_via
                 heuristica_aplicada = True
                 if not num_via:
-                    m_num_swap = re.search(rf"\b{re.escape(nom_via)}\s*(?:N°?\s*)?(\d+)\b", raw_text, re.IGNORECASE)
+                    m_num_swap = re.search(r"(\d+)\s*$", raw_text)
+                    if m_num_swap:
+                        num_via = m_num_swap.group(1).lstrip("0") or "S/N"
+            elif can_swap and not v_as_via and v_as_zona and z_as_via:
+                nom_via, nom_zona = nom_zona, nom_via
+                heuristica_aplicada = True
+                if not num_via:
+                    m_num_swap = re.search(r"(\d+)\s*$", raw_text)
                     if m_num_swap:
                         num_via = m_num_swap.group(1).lstrip("0") or "S/N"
             # Caso 2: Cruzada de vías (Intersección en esquina asignada a zona, ej: CA. ARICA N 1028 - HEROES CIVILES N 178)
             # Solo aplica si NINGUNA de las dos entidades corresponde a una zona oficial
             elif v_as_via and z_as_via and not v_as_zona and not z_as_zona and not zona_has_zone_prefix:
-                # nom_zona es en realidad una segunda vía (calle transversal / esquina)
-                cross_ref = f"ESQ. {z_as_via.get('nom_via', nom_zona)}"
-                if not referencia:
-                    referencia = cross_ref
-                elif cross_ref not in referencia:
-                    referencia = f"{cross_ref} - {referencia}".strip(" -")
-                nom_zona = None
-                heuristica_aplicada = True
-            elif can_swap:
-                if not v_as_via and v_as_zona and z_as_via and not z_as_zona:
-                    nom_via, nom_zona = nom_zona, nom_via
+                z_via_name = z_as_via.get("nom_via", nom_zona)
+                v_via_name = v_as_via.get("nom_via", nom_via)
+
+                # Blindaje 1: No pueden ser la misma vía física ni variantes homónimas (ej. PEDRO RUIZ y PEDRO RUIZ GALLO)
+                is_same_artery = (
+                    v_as_via.get("id") == z_as_via.get("id")
+                    or z_via_name.upper() in v_via_name.upper()
+                    or v_via_name.upper() in z_via_name.upper()
+                )
+
+                # Blindaje 2: Los tokens distintivos de la segunda vía deben estar físicamente en raw_text
+                z_via_tokens = CatalogMatcher._extract_sig_tokens(z_via_name, is_via=True)
+                raw_has_z_tokens = bool(z_via_tokens and z_via_tokens.issubset(CatalogMatcher._extract_sig_tokens(raw_text, is_via=True)))
+
+                # Blindaje 3: Debe haber evidencia de intersección o multiplicidad en raw_text
+                has_corner_evidence = bool(
+                    re.search(r"\b(?:ESQ(?:UINA)?|CON|CRUCE|\bY\b|/)\b", raw_text, re.IGNORECASE)
+                    or (" - " in raw_text and any(z_via_name.upper() in p.strip().upper() or p.strip().upper() in z_via_name.upper() for p in raw_text.split(" - ")))
+                )
+
+                if not is_same_artery and raw_has_z_tokens and has_corner_evidence:
+                    cross_ref = f"ESQ. {z_via_name}"
+                    if not referencia:
+                        referencia = cross_ref
+                    elif cross_ref not in referencia:
+                        referencia = f"{cross_ref} - {referencia}".strip(" -")
+                    nom_zona = None
                     heuristica_aplicada = True
-                elif not v_as_via and v_as_zona and not z_as_zona and not via_has_via_prefix:
-                    # nom_via es definitivamente una zona oficial y nom_zona no lo es -> invertir roles
+                else:
+                    # No es una esquina real: nom_zona fue un candidato o duplicado espurio
+                    nom_zona = None
+                    heuristica_aplicada = True
+            elif can_swap:
+                if not v_as_via and v_as_zona and not z_as_zona and not via_has_via_prefix:
                     nom_via, nom_zona = nom_zona, nom_via
                     heuristica_aplicada = True
 
@@ -620,24 +703,33 @@ class AIAddressParser:
                 nom_zona = None
                 heuristica_aplicada = True
 
-        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.) o excede 20 chars, reubicar a referencia
+        # Sanitización de slote: Si contiene referencias urbanas (piso, esquina, etc.), reubicar a referencia. Descartar placeholders ("slt", etc.)
         if slote:
             slote_clean = str(slote).strip()
-            if len(slote_clean) > 20 or re.search(
-                r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|BLOCK|EDIFICIO)\b",
-                slote_clean,
-                re.IGNORECASE,
-            ):
-                if not referencia:
-                    referencia = slote_clean
-                elif slote_clean.upper() not in referencia.upper():
-                    referencia = f"{referencia} - {slote_clean}".strip(" -")
+            clean_sub_val = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", slote_clean, flags=re.IGNORECASE).strip(" -:,.")
+            sub_placeholder_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+            if not clean_sub_val or re.match(sub_placeholder_pat, slote_clean, re.I) or re.match(sub_placeholder_pat, clean_sub_val, re.I):
                 slote = None
-                heuristica_aplicada = True
-            elif len(slote_clean) > 20:
-                slote = slote_clean[:20].strip()
             else:
-                slote = slote_clean
+                slote_clean = clean_sub_val
+                # Identificar si es un módulo oficial (BLOCK, INT, DPTO, TIENDA, STAND, OFICINA)
+                # o si es una referencia urbana (PISO, ESQUINA, FRENTE, etc.)
+                is_module_like = bool(re.search(r"\b(?:BLOCK|BLQ|INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|TIENDA|TDA|STAND|OF(?:ICINA)?|PTA|PUERTA|PUESTO|LOCAL)\b", slote_clean, re.IGNORECASE))
+                is_ref_like = bool(re.search(r"\b(?:PISO|ESQ|ESQUINA|FRENTE|ALTURA|CUADRA|EDIFICIO)\b", slote_clean, re.IGNORECASE))
+                if is_module_like:
+                    # Módulos son relaciones dinámicas en licencia_modulo, NO pertenecen a slote
+                    slote = None
+                elif is_ref_like:
+                    if not referencia:
+                        referencia = slote_clean
+                    elif slote_clean.upper() not in referencia.upper():
+                        referencia = f"{referencia} - {slote_clean}".strip(" -")
+                    slote = None
+                    heuristica_aplicada = True
+                elif len(slote_clean) > 100:
+                    slote = slote_clean[:100].strip()
+                else:
+                    slote = slote_clean
 
         # Limpieza de referencia y prevención de redundancia (preserva intactos nom_via y nom_zona)
         if referencia:
@@ -645,20 +737,49 @@ class AIAddressParser:
             if nom_zona and nom_zona.upper() in referencia:
                 referencia = re.sub(re.escape(nom_zona), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
             if nom_via and nom_via.upper() in referencia:
-                referencia = re.sub(re.escape(nom_via), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+                if re.match(r"^(?:ESQ\.?|ESQUINA|CON|CRUCE)\s*", referencia, re.IGNORECASE):
+                    referencia = None
+                else:
+                    referencia = re.sub(re.escape(nom_via), "", referencia, flags=re.IGNORECASE).strip(" ,.-")
+            if referencia:
+                if re.match(r"^(?:ESQ\.?|ESQUINA\.?|CON|CRUCE|FRENTE|CERCA|A\s+LA\s+ALTURA)\s*$", referencia, re.IGNORECASE):
+                    referencia = None
+                elif len(referencia.strip()) <= 2 and not re.search(r"\d", referencia):
+                    referencia = None
             if not referencia:
                 referencia = None
 
         # Sanitización de num_via: Aislar subunidades residuales (BLOCK, DPTO, INT, STAND, letras de puerta, etc.)
+        # y filtrado anti-kilómetro (un kilometraje en carretera ej. KM. 790 NUNCA es numeración municipal de puerta)
+        m_raw_km = re.search(r"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*(\d+(?:\.\d+)?)\b", raw_text, re.IGNORECASE)
+        if m_raw_km:
+            km_num = m_raw_km.group(1).lstrip("0") or m_raw_km.group(1)
+            km_full = f"KM. {km_num}"
+            if not referencia or km_full not in referencia.upper():
+                referencia = f"{referencia} - {km_full}".strip(" -") if referencia else km_full
+            if num_via:
+                clean_nv = str(num_via).strip().lstrip("0")
+                if clean_nv == km_num or re.search(rf"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*{re.escape(str(num_via).strip())}\b", raw_text, re.IGNORECASE):
+                    logger.info("num_via '%s' descartado por corresponder a punto kilométrico (KM %s)", num_via, km_num)
+                    num_via = None
+
+        if num_via and re.search(r"\b(?:KM\.?|KILOMETRO)\b", str(num_via), re.IGNORECASE):
+            m_sub_k = re.search(r"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*(\d+(?:\.\d+)?)\b", str(num_via), re.IGNORECASE)
+            if m_sub_k:
+                k_val = f"KM. {m_sub_k.group(1)}"
+                if not referencia or k_val not in referencia.upper():
+                    referencia = f"{referencia} - {k_val}".strip(" -") if referencia else k_val
+            num_via = None
+
         if num_via:
             num_via_str = str(num_via).strip()
             m_sub = re.search(r"\b(BLOCK\s+[A-Z0-9\-]+|DPTO\.?\s*[A-Z0-9\-]+|INT\.?\s*[A-Z0-9\-]+|TIENDA\s*[A-Z0-9\-]+|TDA\.?\s*[A-Z0-9\-]+|STAND\s*[A-Z0-9\-]+|OF\.?\s*[A-Z0-9\-]+)\b", num_via_str, re.IGNORECASE)
             if m_sub:
                 sub_val = m_sub.group(1).strip()
-                if not slote:
-                    slote = sub_val
-                elif sub_val.upper() not in slote.upper():
-                    slote = f"{slote} - {sub_val}"
+                m_blk = re.search(r"\bBLOCK\s+([A-Z0-9\-]+)\b", sub_val, re.IGNORECASE)
+                if m_blk and not detected_block:
+                    detected_block = m_blk.group(1).strip().upper()
+                # NUNCA asignar módulos a slote; limpiar num_via_str para conservar solo la numeración
                 num_via_str = re.sub(re.escape(sub_val), "", num_via_str, flags=re.IGNORECASE).strip(" -/,.")
 
             # Detectar sufijo de letra de puerta (ej. '125-A', '125 A')
@@ -708,6 +829,12 @@ class AIAddressParser:
             else None
         )
 
+        if matched_zona and matched_zona.get("nom_zona") == "CERCADO DE CHICLAYO":
+            if "CERCADO" not in raw_text.upper():
+                logger.warning("Descartando matched_zona 'CERCADO DE CHICLAYO': palabra 'CERCADO' no figura en raw_text '%s'", raw_text)
+                matched_zona = None
+                nom_zona = None
+
         zona_sector = matched_zona.get("sector") if matched_zona else None
 
         # 8b. Homologar vía usando el sector de la zona para desambiguar vías homónimas
@@ -726,11 +853,397 @@ class AIAddressParser:
 
         observaciones = []
 
+        # Construcción relacional V2 de Vías
+        vias_result = []
+        is_explicit_corner = bool(
+            (extraction and getattr(extraction, "es_esquina", False))
+            or re.search(r"\b(?:ESQ(?:UINA)?|CON|\bY\b)\b", raw_text, re.IGNORECASE)
+        )
+        if extraction and extraction.vias and len(extraction.vias) > 1:
+            for ev in extraction.vias:
+                ev_num_clean = ev.numero
+                if ev.numero and m_raw_km:
+                    clean_ev_num = str(ev.numero).strip().lstrip("0")
+                    if clean_ev_num == km_num or re.search(rf"\b(?:KM\.?|KILOMETRO)\s*[:\-]?\s*{re.escape(str(ev.numero).strip())}\b", raw_text, re.IGNORECASE):
+                        ev_num_clean = None
+                ev_t_id = CatalogMatcher.match_tipo_via(ev.tipo_via) if ev.tipo_via else None
+                ev_matched = CatalogMatcher.match_physical_via(
+                    ev.nombre,
+                    tipo_via_hint=ev_t_id,
+                    sector_hint=zona_sector,
+                )
+                if ev_matched:
+                    vias_result.append({
+                        "via_id": ev_matched["id"],
+                        "divi_numero": ev_num_clean or num_via or "S/N",
+                        "divi_orden": ev.orden or (len(vias_result) + 1),
+                        "via_nombre": ev_matched["nom_via"],
+                        "tipo_via": ev_matched.get("id_tipo_via") or ev_t_id or id_tipo_via,
+                    })
+            if vias_result:
+                matched_via = {"id": vias_result[0]["via_id"], "nom_via": vias_result[0]["via_nombre"], "id_tipo_via": vias_result[0]["tipo_via"]}
+                two_vias_conflict = None
+
+        if not vias_result and two_vias_conflict and is_explicit_corner:
+            # Evaluar si corresponde a esquina / intersección oficial (2 o 3 vías)
+            for ord_idx, via_text in enumerate(two_vias_conflict, start=1):
+                m_vnum = re.search(r"(?:\b(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)?(\d+)\b", via_text, re.IGNORECASE)
+                via_num = m_vnum.group(1).lstrip("0") if m_vnum else ("S/N" if ord_idx > 1 else (num_via or "S/N"))
+                via_clean_name = via_text[:m_vnum.start()].strip(" ,.-") if m_vnum else via_text
+                mv = CatalogMatcher.match_physical_via(via_clean_name, sector_hint=zona_sector) or CatalogMatcher.match_physical_via(via_text, sector_hint=zona_sector)
+                if mv:
+                    vias_result.append({
+                        "via_id": mv["id"],
+                        "divi_numero": via_num if via_num != "S/N" else (num_via if ord_idx == 1 else "S/N"),
+                        "divi_orden": ord_idx,
+                        "via_nombre": mv["nom_via"],
+                        "tipo_via": mv.get("id_tipo_via") or id_tipo_via,
+                    })
+            if vias_result:
+                matched_via = {"id": vias_result[0]["via_id"], "nom_via": vias_result[0]["via_nombre"], "id_tipo_via": vias_result[0]["tipo_via"]}
+                two_vias_conflict = None
+
+        if not vias_result and matched_via:
+            vias_result.append({
+                "via_id": matched_via["id"],
+                "divi_numero": num_via or "S/N",
+                "divi_orden": 1,
+                "via_nombre": matched_via["nom_via"],
+                "tipo_via": matched_via.get("id_tipo_via") or id_tipo_via,
+            })
+
+        # Detección heurística de vías adicionales en esquinas / intersecciones (CON, ESQ, CRUCE)
+        if len(vias_result) >= 1 and len(vias_result) < 3:
+            via_prefixes_str = CatalogManager.get_via_prefix_regex_str()
+            corner_pattern = re.compile(
+                rf"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\s+(?:({via_prefixes_str})\s+)?([A-ZÁÉÍÓÚÑ0-9\s\.\-°ºª]+)",
+                re.IGNORECASE,
+            )
+            CORNER_CUTOFF_REGEX = re.compile(
+                r"\b(?:TDA|TIENDA|LOCAL|LOC|STAND|STD|INT(?:ERIOR(?:ES)?)?|DEP(?:TO|ARTAMENTO)?|OF(?:ICINA)?|PTA|PUERTA|PUESTO|PTO|BLOCK|BLQ|TORRE|PABELLON|(?:\d+(?:DO|ER|TO|VO|MO)?\.?\s*)?PISO|NIVEL|MZ|MZA|MANZANA|LT|LOTE|SLT|SUBLOTE|S_LOTE|REF|FRENTE|ALTURA|CDRA|CUADRA|METRO|TOTTUS|SODIMAC|PLAZA\s+VEA|SAGA|RIPLEY)\b",
+                re.IGNORECASE,
+            )
+            for m_corn in corner_pattern.finditer(raw_text):
+                if len(vias_result) >= 3:
+                    break
+                extra_tipo_prefix = m_corn.group(1)
+                extra_via_raw = m_corn.group(2).strip()
+
+                # Separar cualquier mención de módulo, componente, piso o referencia posterior
+                m_cut = CORNER_CUTOFF_REGEX.search(extra_via_raw)
+                via_portion = extra_via_raw[:m_cut.start()].strip(" ,.-") if m_cut else extra_via_raw
+
+                # Limpieza de sub-separadores y sufijos de ciudad si quedaron pegados
+                m_sub_sep = re.search(r"\b(?:CON|ESQ(?:UINA)?\.?|CRUCE)\b", via_portion, re.IGNORECASE)
+                if m_sub_sep:
+                    via_portion = via_portion[:m_sub_sep.start()].strip(" ,.-")
+                via_portion = re.sub(
+                    r"\s*-\s*(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\b.*$",
+                    "",
+                    via_portion,
+                    flags=re.IGNORECASE,
+                ).strip(" ,.-")
+
+                extra_num = "S/N"
+                m_num_extra = re.search(r"(?:\b(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)(\d+)\b", via_portion, re.IGNORECASE)
+                if not m_num_extra:
+                    m_num_extra = re.search(r"\b(\d+)\b", via_portion)
+
+                if m_num_extra:
+                    extra_num = m_num_extra.group(1).lstrip("0") or "S/N"
+                    extra_via_candidate = via_portion[:m_num_extra.start()].strip(" ,.-")
+                    extra_via_candidate = re.sub(r"\b(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*$", "", extra_via_candidate, flags=re.IGNORECASE).strip(" ,.-")
+                else:
+                    extra_via_candidate = via_portion
+
+                if extra_via_candidate:
+                    extra_t_id = CatalogMatcher.match_tipo_via(extra_tipo_prefix) if extra_tipo_prefix else None
+                    mv_extra = CatalogMatcher.match_physical_via(
+                        extra_via_candidate,
+                        tipo_via_hint=extra_t_id,
+                        sector_hint=zona_sector,
+                    )
+                    if mv_extra:
+                        existing_ids = {v["via_id"] for v in vias_result}
+                        if mv_extra["id"] not in existing_ids:
+                            vias_result.append({
+                                "via_id": mv_extra["id"],
+                                "divi_numero": extra_num,
+                                "divi_orden": len(vias_result) + 1,
+                                "via_nombre": mv_extra["nom_via"],
+                                "tipo_via": mv_extra.get("id_tipo_via") or extra_t_id or id_tipo_via,
+                            })
+                            two_vias_conflict = None
+
+        # Construcción relacional V2 de Componentes
+        componentes_result = []
+        if extraction and extraction.componentes:
+            for c in extraction.componentes:
+                mc = CatalogMatcher.match_componente(c.nombre)
+                if mc:
+                    c_val_str = str(c.valor).strip()
+                    # Aislamiento estricto: Si el componente es SUBLOTE pero contiene módulos o pisos o es un placeholder, NUNCA ingresarlo
+                    if mc[1] == "SUBLOTE":
+                        clean_sub = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val_str, flags=re.IGNORECASE).strip(" -:,.")
+                        sub_pat = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
+                        if not clean_sub or re.match(sub_pat, c_val_str, re.I) or re.match(sub_pat, clean_sub, re.I):
+                            continue
+                        has_mod = bool(re.search(
+                            r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
+                            c_val_str,
+                            re.IGNORECASE,
+                        ))
+                        if has_mod or "PISO" in c_val_str.upper():
+                            continue
+                        c_val_str = clean_sub
+                    componentes_result.append({
+                        "codi_id": mc[0],
+                        "codi_nombre": mc[1],
+                        "diti_nombre": c_val_str,
+                    })
+        if manzana and not any(cr["codi_nombre"] == "MANZANA" for cr in componentes_result):
+            componentes_result.append({"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": str(manzana).strip()})
+        if lote and not any(cr["codi_nombre"] == "LOTE" for cr in componentes_result):
+            componentes_result.append({"codi_id": 2, "codi_nombre": "LOTE", "diti_nombre": str(lote).strip()})
+
+        # Asegurar inclusión de PISO en componentes si fue detectado
+        eff_piso = detected_piso or (getattr(extraction, "piso", None) if extraction else None)
+        if eff_piso and not any(cr["codi_nombre"] == "PISO" for cr in componentes_result):
+            componentes_result.append({
+                "codi_id": 4,
+                "codi_nombre": "PISO",
+                "diti_nombre": str(eff_piso).strip(),
+            })
+
+        # Asegurar inclusión de BLOCK en componentes si fue detectado
+        eff_block = detected_block or (getattr(extraction, "block", None) if extraction else None)
+        if eff_block and not any(cr["codi_nombre"] == "BLOCK" for cr in componentes_result):
+            componentes_result.append({
+                "codi_id": 11,
+                "codi_nombre": "BLOCK",
+                "diti_nombre": str(eff_block).strip(),
+            })
+
+        # Construcción relacional V2 de Módulos (Interiores, Dpto, Puerta, Stand, Block, etc.)
+        modulos_result = []
+        modulo_ambiguo_detectado = None
+
+        INVALID_MODULE_TYPES = {
+            "LOCAL", "LOC", "TIENDA", "TDA", "STAND", "STD", "OFICINA", "OF",
+            "INTERIOR", "INT", "DPTO", "DEP", "DEPARTAMENTO", "PUESTO", "PTO",
+            "PUERTA", "PTA", "BLOCK", "BLQ", "TORRE", "PISO", "NIVEL",
+        }
+        COMMERCIAL_BRANDS = {
+            "METRO", "TOTTUS", "SODIMAC", "SAGA", "FALABELLA", "RIPLEY",
+            "PLAZA VEA", "PLAZAVEA", "VEA", "MAESTRO", "PROMART", "OECHSLE",
+            "WONG", "MAXI", "SUPERMERCADO", "HIPERMERCADO", "ESTILOS",
+            "CURACAO", "EFE", "ELEKTRA", "TAMBO", "MASS", "OXXO", "INRETAIL",
+        }
+        COMMERCIAL_BRANDS_REGEX = re.compile(
+            r"\b(METRO|TOTTUS|SODIMAC|SAGA|FALABELLA|RIPLEY|PLAZA\s+VEA|PLAZAVEA|MAESTRO|PROMART|OECHSLE|WONG|MAXI|SUPERMERCADO|HIPERMERCADO|ESTILOS|CURACAO|EFE|ELEKTRA|TAMBO|MASS|OXXO|INRETAIL)\b",
+            re.IGNORECASE,
+        )
+
+        if extraction and extraction.modulos:
+            for m in extraction.modulos:
+                mm = CatalogMatcher.match_tipo_modulo(m.tipo_modulo)
+                if mm:
+                    val_str = str(m.valor).strip()
+                    # 1. Limpieza de formato de lista o residuos de corchetes / comillas
+                    val_str = re.sub(r"^[\[\(]+|[\]\)]+$", "", val_str).strip()
+                    val_str = val_str.replace("'", "").replace('"', '').strip()
+                    # 2. Descartar prefijos de número municipal pegados al módulo (ej. "N 2", "N° 2", "NRO. 5")
+                    val_str = re.sub(r"^(?:N°\.?|NUM°?\.?|NRO\.?|N\s+)", "", val_str, flags=re.IGNORECASE).strip()
+
+                    val_str_upper = val_str.upper()
+                    if val_str_upper in INVALID_MODULE_TYPES or val_str_upper in COMMERCIAL_BRANDS or COMMERCIAL_BRANDS_REGEX.search(val_str):
+                        modulo_ambiguo_detectado = f"{m.tipo_modulo} {val_str}"
+                        continue
+
+                    # 3. Si quedó únicamente como "N" o "NRO" (falso positivo por abreviatura de número), recuperar de raw_text
+                    if val_str.upper() in ("N", "N.", "NRO", "NRO.", "NUM", "NUM."):
+                        m_real = re.search(
+                            rf"\b(?:{re.escape(str(m.tipo_modulo))}|TDA|STAND|INT|DEP|DPTO|TIENDA|PTA|PUERTA)\b\.?\s*(?:N°?\.?|NUM°?\.?|NRO\.?|N\.?)\s*([A-Z0-9\-]+)",
+                            raw_text,
+                            re.IGNORECASE,
+                        )
+                        if m_real:
+                            val_str = m_real.group(1).strip()
+                            if val_str.upper() in INVALID_MODULE_TYPES or val_str.upper() in COMMERCIAL_BRANDS or COMMERCIAL_BRANDS_REGEX.search(val_str):
+                                modulo_ambiguo_detectado = f"{m.tipo_modulo} {val_str}"
+                                continue
+                        else:
+                            continue
+
+                    # 4. Desglosar si el valor agrupa múltiples interiores (ej. "1, 2 Y 3" o "B - C" o "I, II, III")
+                    split_parts = [
+                        re.sub(r"[\[\]'\" ]", "", p).strip(" ,.-")
+                        for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", val_str, flags=re.IGNORECASE)
+                        if p.strip()
+                    ]
+                    noise_tokens = {
+                        "N", "NRO", "NUM", "PISO", "PISOS", "NIVEL", "CHICLAYO", "LAMBAYEQUE",
+                        "FERRENAFE", "PIMENTEL", "LA VICTORIA", "VICTORIA", "JLO", "REQUE",
+                        "MONSEFU", "LIMA", "PERU", "PERÚ"
+                    } | INVALID_MODULE_TYPES | COMMERCIAL_BRANDS
+                    split_parts = [p for p in split_parts if p and p.upper() not in noise_tokens]
+
+                    if len(split_parts) > 1 and all(p.isdigit() or (len(p) <= 3 and p.isalnum()) for p in split_parts):
+                        for sp in split_parts:
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == sp for mr in modulos_result):
+                                modulos_result.append({
+                                    "timo_id": mm[0],
+                                    "timo_nombre": mm[1],
+                                    "ditm_nombre": sp,
+                                })
+                    else:
+                        clean_single = re.sub(r"[\[\]'\" ]", "", val_str).strip(" ,.-")
+                        if clean_single and clean_single.upper() not in noise_tokens:
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_single for mr in modulos_result):
+                                modulos_result.append({
+                                    "timo_id": mm[0],
+                                    "timo_nombre": mm[1],
+                                    "ditm_nombre": clean_single,
+                                })
+
+        if not modulos_result:
+            source_mod = f"{slote or ''} {referencia or ''} {raw_text or ''}"
+            mod_pattern = re.compile(
+                r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|LOCAL)\b\.?\s*[:\-]?(?:\s*(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)?\s*([A-Z0-9]+(?:\s*(?:,|Y|-)\s*[A-Z0-9]+)*)",
+                re.IGNORECASE,
+            )
+            for m_match in mod_pattern.finditer(source_mod):
+                tname = m_match.group(1).upper()
+                raw_vals = m_match.group(2).strip()
+                if tname in ("BLOCK", "BLQ") and "HAYA DE LA TORRE" in source_mod:
+                    continue
+                # Limpiar prefijo de número N° / N
+                raw_vals = re.sub(r"^(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N\s+)", "", raw_vals, flags=re.IGNORECASE).strip()
+                raw_vals_upper = raw_vals.upper()
+
+                # Detectar si consigna una marca comercial o denominación no clara
+                if (
+                    raw_vals_upper in INVALID_MODULE_TYPES
+                    or raw_vals_upper in COMMERCIAL_BRANDS
+                    or COMMERCIAL_BRANDS_REGEX.search(raw_vals)
+                    or (any(sep in raw_vals for sep in ("-", "–")) and any(b in raw_vals_upper for b in COMMERCIAL_BRANDS | INVALID_MODULE_TYPES))
+                ):
+                    modulo_ambiguo_detectado = f"{m_match.group(1)} {raw_vals}"
+                    continue
+
+                mm = CatalogMatcher.match_tipo_modulo(tname)
+                if mm:
+                    parts = [
+                        re.sub(r"[\[\]'\" ]", "", p).strip(" ,.-")
+                        for p in re.split(r",\s*|\s+Y\s+|\s*-\s*", raw_vals, flags=re.IGNORECASE)
+                        if p.strip()
+                    ]
+                    noise_tokens = {
+                        "N", "NRO", "NUM", "PISO", "PISOS", "NIVEL", "CHICLAYO", "LAMBAYEQUE",
+                        "FERRENAFE", "PIMENTEL", "LA VICTORIA", "VICTORIA", "JLO", "REQUE",
+                        "MONSEFU", "LIMA", "PERU", "PERÚ"
+                    } | INVALID_MODULE_TYPES | COMMERCIAL_BRANDS
+                    parts = [
+                        p for p in parts
+                        if p and p.upper() not in noise_tokens and not (len(p) > 5 and not p.isdigit())
+                    ]
+                    if any(p.upper() in COMMERCIAL_BRANDS or p.upper() in INVALID_MODULE_TYPES for p in parts):
+                        modulo_ambiguo_detectado = f"{m_match.group(1)} {raw_vals}"
+                        continue
+
+                    if len(parts) > 1 and all(p.isdigit() or (len(p) <= 3 and p.isalnum()) for p in parts):
+                        for p in parts:
+                            p_clean = p.lstrip("0") if p.isdigit() else p
+                            p_clean = p_clean or "0"
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p_clean for mr in modulos_result):
+                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": p_clean})
+                                heuristica_aplicada = True
+                    elif parts:
+                        clean_v = parts[0].lstrip("0") if parts[0].isdigit() else parts[0]
+                        clean_v = clean_v or "0"
+                        if clean_v.upper() not in noise_tokens:
+                            if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
+                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
+                                heuristica_aplicada = True
+
+        # Verificación directa sobre raw_text para capturar módulos ambiguos con marcas comerciales
+        if not modulo_ambiguo_detectado:
+            m_amb_raw = re.search(
+                r"\b(TDA|TIENDA|STAND|STD|LOCAL|LOC|INT(?:ERIOR)?|DPTO|OF(?:ICINA)?)\b\.?\s*[:\-]?(?:\s*(?:N[°ºª]?\.?|NUM[°ºª]?\.?|NRO[°ºª]?\.?|N)\s*)?\s*([A-Z0-9\s\-]+?\b(?:METRO|TOTTUS|SODIMAC|SAGA|RIPLEY|PLAZA\s+VEA|MAESTRO|PROMART|OECHSLE|WONG)\b[A-Z0-9\s\-]*)",
+                raw_text,
+                re.IGNORECASE,
+            )
+            if m_amb_raw:
+                modulo_ambiguo_detectado = m_amb_raw.group(0).strip()
+
+        if modulo_ambiguo_detectado:
+            observaciones.append(
+                f"Módulo o dependencia interior no redactado claramente: Consigna denominación ambigua o comercial ('{modulo_ambiguo_detectado.strip()}') sin identificador unívoco de unidad catastral (ej. Tienda 1, Tienda A, Stand)."
+            )
+
+
+        # Sanitización de Referencia: estrictamente hitos espaciales y comerciales
+        clean_referencia = None
+        if referencia:
+            clean_referencia = str(referencia).strip()
+            # Eliminar pisos y niveles
+            clean_referencia = re.sub(
+                r"\b(?:PISO\s*\d+|\d+\s*PISO)\b",
+                "",
+                clean_referencia,
+                flags=re.IGNORECASE,
+            )
+            # Eliminar menciones de módulos o interiores (STAND, TIENDA, INT, DPTO, OFICINA, PUERTA, etc.)
+            clean_referencia = re.sub(
+                r"\b(?:STAND|TIENDA|TDA|LOCAL|INT(?:ERIOR)?|DEP(?:TO|ARTAMENTO)?|OF(?:ICINA)?|PTA|PUERTA|BLOCK|BLQ|PUESTO)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)?",
+                "",
+                clean_referencia,
+                flags=re.IGNORECASE,
+            )
+            # Eliminar menciones de componentes catastrales (MZ, LT, LOTE, etc.)
+            clean_referencia = re.sub(
+                r"\b(?:MZ|MZA|MANZANA|LT|LOTE|SUBLOTE|S_LOTE)\b\.?\s*[:\-]?\s*([A-Z0-9\-]+)?",
+                "",
+                clean_referencia,
+                flags=re.IGNORECASE,
+            )
+            # Remover residuos de puntuación y espacios
+            clean_referencia = re.sub(r"\s+", " ", clean_referencia).strip(" -/,.:;")
+
+            # Descartar prefijos huérfanos o residuos de 1-2 letras
+            if clean_referencia:
+                if re.match(r"^(?:ESQ\.?|ESQUINA\.?|CON|CRUCE|FRENTE|CERCA|A\s+LA\s+ALTURA)\s*$", clean_referencia, re.IGNORECASE):
+                    clean_referencia = None
+                elif len(clean_referencia.strip()) <= 2 and not re.search(r"\d", clean_referencia):
+                    clean_referencia = None
+
+            # Guardrail Anti-Alucinación Final para Referencia:
+            # Comprobar que los tokens informativos de clean_referencia aparezcan en raw_text
+            if clean_referencia:
+                ref_words = [
+                    w for w in re.findall(r"[A-ZÁÉÍÓÚÑ0-9]+", clean_referencia.upper())
+                    if len(w) > 2 and w not in (
+                        "DEL", "LOS", "LAS", "POR", "CON", "PARA", "SIN", "FRENTE", "CERCA",
+                        "COSTADO", "ENTRE", "CRUCE", "ESQ", "ESQUINA", "SECTOR", "KM", "PISO", "BLOCK"
+                    )
+                ]
+                r_upper = raw_text.upper()
+                if ref_words and not any(w in r_upper for w in ref_words):
+                    logger.warning("Descartando clean_referencia alucinada: '%s' no figura en '%s'", clean_referencia, raw_text)
+                    clean_referencia = None
+
+            if not clean_referencia:
+                clean_referencia = None
+
+        is_arterial_highway = bool(
+            matched_via and re.search(r"\b(?:PANAMERICANA|CARRETERA|AUTOPISTA)\b", matched_via.get("nom_via", ""), re.IGNORECASE)
+        )
+
         if two_vias_conflict:
             observaciones.append(
                 f"Conflicto de vías: Se detectaron dos vías oficiales juntas ('{two_vias_conflict[0]}' y '{two_vias_conflict[1]}'). "
-                "Verifique si corresponde a una intersección o confirme cuál es la vía principal."
-            )
+                    "Verifique si corresponde a una intersección o confirme cuál es la vía principal."
+                )
 
         if via_detectada_en_texto and not matched_via:
             det_via = f"Vía '{nom_via}' no figura en el catálogo maestro de vías de Chiclayo."
@@ -739,25 +1252,136 @@ class AIAddressParser:
             observaciones.append(det_via)
 
         if zona_detectada_en_texto and not matched_zona:
-            det_zona = f"Zona/Habilitación '{nom_zona}' no figura en el catálogo maestro de zonas de Chiclayo."
-            if matched_via:
-                det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})."
-            observaciones.append(det_zona)
+            # Depurar zonas falsas generadas por números, módulos o centros comerciales
+            is_digit_noise = bool(nom_zona and str(nom_zona).strip().isdigit())
+            is_module_noise = bool(re.search(r"\b(TIENDA|TDA|STAND|STD|INT(?:ERIOR)?|DPTO|DEP|EDIF|EDIFICIO|XXV|XXVI|PLANTA|PISO|PLAZA)\b", str(nom_zona), re.IGNORECASE))
+            is_mall_noise = bool(re.search(r"\b(GRAN\s+PLAZA|REAL\s+PLAZA|AEROPUERTO|MERCADO|MDO|OPEN\s+PLAZA|MALL|GALERIA)\b", str(nom_zona), re.IGNORECASE))
+            if is_digit_noise or is_module_noise or is_mall_noise:
+                if is_mall_noise:
+                    mall_ref = f"C.C. {nom_zona}"
+                    clean_referencia = f"{clean_referencia} - {mall_ref}".strip(" -") if clean_referencia else mall_ref
+                nom_zona = None
+                zona_detectada_en_texto = False
+            elif (
+                matched_via
+                and (num_via or vias_result or is_explicit_corner)
+                and not (manzana or lote)
+                and not is_arterial_highway
+                and not re.search(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?|ASENTAMIENTO\s+HUMANO|UPIS|CONJ\.?\s*HAB\.?)\b", str(nom_zona), re.IGNORECASE)
+                and not re.search(r"\b(?:URB\.?|URBANIZACION|PJ\.?|PP\.?JJ\.?|PUEBLO\s+JOVEN|A\.?H\.?|ASENTAMIENTO\s+HUMANO|UPIS|CONJ\.?\s*HAB\.?)\b", raw_text, re.IGNORECASE)
+            ):
+                # Vía urbana oficial 100% confirmada con numeración municipal o esquina (SIN manzana/lote, NO carretera, y sin urbanización formal no catalogada):
+                # Un sector informal o vecinal secundario se conserva como referencia y NO invalida la dirección
+                sec_ref = f"Sector: {nom_zona}"
+                clean_referencia = f"{clean_referencia} - {sec_ref}".strip(" -") if clean_referencia else sec_ref
+                nom_zona = None
+                zona_detectada_en_texto = False
+            else:
+                det_zona = f"Zona/Habilitación '{nom_zona}' no figura en el catálogo maestro de zonas de Chiclayo."
+                if matched_via:
+                    det_zona += f" (Vía oficial confirmada: '{matched_via['nom_via']}' - ID {matched_via['id']})."
+                observaciones.append(det_zona)
+
+        # Regla de Integridad Predial Catastral: Manzana y Lote exigen estrictamente Habilitación Urbana catalogada en Chiclayo
+        if (manzana or lote) and not matched_zona:
+            det_mz = "Predio catastral con Manzana/Lote no ubicable: Requiere una Habilitación Urbana o Zona oficial validada en el catálogo maestro de Chiclayo."
+            if nom_zona and nom_zona not in " ".join(observaciones):
+                det_mz += f" (Zona declarada '{nom_zona}' no figura en el catálogo)."
+            if not any(det_mz in obs for obs in observaciones):
+                observaciones.append(det_mz)
+
+        # Regla de Carreteras / Vías Arteriales: No pueden normalizarse sin numeración de puerta ni habilitación urbana
+        if is_arterial_highway and not matched_zona and (not num_via or num_via == "S/N"):
+            obs_hwy = f"Vía arterial o carretera ('{matched_via['nom_via']}') sin numeración municipal de puerta ni habilitación urbana catalogada en Chiclayo."
+            if not any(obs_hwy in obs for obs in observaciones):
+                observaciones.append(obs_hwy)
 
         if not via_detectada_en_texto and not zona_detectada_en_texto:
             observaciones.append("DIRECCIÓN NO RECONOCIDA: No se logró identificar vía ni habilitación urbana válida en el texto.")
 
+        # Detección de distritos y jurisdicciones distritales externas (Pimentel, JLO, La Victoria, etc.)
+        EXTERNAL_DISTRICTS = {
+            "PIMENTEL": "Pimentel",
+            "JOSE LEONARDO ORTIZ": "José Leonardo Ortiz",
+            "JOSÉ LEONARDO ORTIZ": "José Leonardo Ortiz",
+            "JLO": "José Leonardo Ortiz",
+            "J.L.O.": "José Leonardo Ortiz",
+            "LA VICTORIA": "La Victoria",
+            "LAMBAYEQUE": "Lambayeque",
+            "FERRENAFE": "Ferreñafe",
+            "FERREÑAFE": "Ferreñafe",
+            "MONSEFU": "Monsefú",
+            "MONSEFÚ": "Monsefú",
+            "REQUE": "Reque",
+            "ETEN": "Eten",
+            "PUERTO ETEN": "Puerto Eten",
+            "CIUDAD ETEN": "Ciudad Eten",
+            "DISTRITO SANTA ROSA": "Santa Rosa",
+            "DISTRITO DE SANTA ROSA": "Santa Rosa",
+            "CALETA SANTA ROSA": "Santa Rosa",
+            "PICSI": "Picsi",
+            "POMALCA": "Pomalca",
+        }
+        has_chiclayo_dist = bool(re.search(r"(?:^|[\-\–—,/]|\bDISTRITO\s+(?:DE\s+)?)\s*CHICLAYO\b", raw_text, re.IGNORECASE))
+        via_prefixes = CatalogManager.get_via_prefix_regex_str()
+        zona_prefixes = CatalogManager.get_zona_prefix_regex_str()
+
+        detected_external_dist = None
+        for ext_key, ext_name in EXTERNAL_DISTRICTS.items():
+            pat = rf"(?:^|[\-\–—,/\s]|\bDISTRITO\s+(?:DE\s+)?)\b{re.escape(ext_key)}\b"
+            m_ext = re.search(pat, raw_text, re.IGNORECASE)
+            if m_ext:
+                # 1. Si está precedido inmediatamente por un prefijo de vía (ej. "CALLE PIMENTEL", "AV. LA VICTORIA")
+                before_match = raw_text[:m_ext.start()].strip()
+                if re.search(rf"\b(?:{via_prefixes})\s*$", before_match, re.IGNORECASE):
+                    continue
+                # 2. Si está precedido inmediatamente por un prefijo de zona (ej. "PP.JJ. SANTA ROSA", "URB. LA VICTORIA")
+                if re.search(rf"\b(?:{zona_prefixes})\s*$", before_match, re.IGNORECASE):
+                    continue
+                # 3. Si coincide con el nombre de la vía matched oficial (ej. CALLE PIMENTEL)
+                if matched_via and ext_key in matched_via.get("nom_via", "").upper():
+                    continue
+                # 4. Si coincide con el nombre de la zona matched oficial (ej. SANTA ROSA DE LIMA)
+                if matched_zona and ext_key in matched_zona.get("nom_zona", "").upper():
+                    continue
+                # 5. Si la vía ya fue homologada oficialmente en Chiclayo y la dirección indica explícitamente CHICLAYO
+                if matched_via and has_chiclayo_dist:
+                    continue
+                # 6. Si la zona ya fue homologada oficialmente en Chiclayo
+                if matched_zona:
+                    continue
+
+                detected_external_dist = ext_name
+                break
+
+        if detected_external_dist and not matched_zona:
+            observaciones.append(
+                f"Jurisdicción distrital externa: La dirección corresponde al distrito de {detected_external_dist}, fuera de la jurisdicción municipal del distrito de Chiclayo."
+            )
+
         # Guardrail de Integridad Estricta:
-        # Una dirección solo puede carecer de vía (id_via = None) si es un predio catastral sin calle
-        # (es decir, cuenta con zona oficial confirmada Y manzana o lote, y NO tiene numeración de calle).
-        # Si la dirección tiene numeración municipal o texto residual no identificado, se prohíbe normalizarla sin vía.
+        # Una dirección legítimamente puede carecer de vía si tiene una zona/complejo oficial confirmado (ej. condominios, residenciales, asentamientos)
+        # y cuenta con predio (Mz/Lt), o componentes estructurales (Block/Torre), o dependencias (Dpto/Interior/Piso)
         if not matched_via:
-            tiene_predio_mz_lt = bool(matched_zona and (manzana or lote))
-            if not tiene_predio_mz_lt or num_via:
+            has_structural_comp = any(c.get("codi_nombre") in ("BLOCK", "PISO") for c in componentes_result)
+            tiene_predio_valido = bool(
+                matched_zona and (manzana or lote or slote or eff_block or eff_piso or has_structural_comp or modulos_result)
+            )
+            if not tiene_predio_valido or num_via:
                 if not via_detectada_en_texto:
                     observaciones.append(
                         "Vía pública no identificada en el catálogo maestro de Chiclayo para la numeración municipal o predio registrado."
                     )
+        else:
+            # Si tiene matched_via, verificar que no carezca simultáneamente de número y de predio catastral
+            has_predio_identificable = bool(
+                manzana or lote or slote or eff_block or eff_piso or modulos_result or (len(vias_result) > 1) or is_explicit_corner or ("/" in raw_text)
+            )
+            has_explicit_sn = bool(re.search(r"\bS/?N\b", raw_text, re.IGNORECASE))
+            if not num_via and not has_predio_identificable and not has_explicit_sn:
+                observaciones.append(
+                    "Dirección incompleta: Carece de numeración municipal y de combinación de Manzana/Lote."
+                )
 
         # Integrar notas de la IA o advertencias específicas en el texto
         ai_notes = extraction.observaciones if extraction and extraction.observaciones else None
@@ -769,35 +1393,63 @@ class AIAddressParser:
             observaciones.append("Advertencia registrada: Restricción de uso de vía pública en la licencia.")
 
         if observaciones:
-            # Caso observado: Se nullifican todas las columnas derivadas para evitar datos sin sentido
+            # Caso no procesable / rechazado: Regla de oro 100% segura.
+            # No se invoca un segundo modelo ni se genera texto de observación por IA.
+            # Se devuelven relaciones vacías, es_procesado=False y observacion=None.
             return DireccionDestino(
                 id_licencia=record.id_licencia,
-                id_via=None,
-                num_via=None,
-                id_zona=None,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
+                zona_id=None,
+                dire_referencia=None,
+                vias=[],
+                componentes=[],
+                modulos=[],
                 manzana=None,
                 lote=None,
                 slote=None,
+                piso=None,
+                block=None,
                 referencia=None,
                 es_procesado=False,
-                observacion="; ".join(observaciones),
-                metodo_normalizacion=metodo,
+                observacion=None,
+                metodo_normalizacion="No normalizado (Incoherente / Incompleto)",
             )
         else:
             # Caso exitoso: Asociado formalmente a las tablas maestras oficiales
+            if ia_exitosa and heuristica_aplicada:
+                metodo = "Híbrido (IA + Heurística)"
+            elif ia_exitosa and not heuristica_aplicada:
+                metodo = f"IA ({self.ollama.model_name})"
+            else:
+                metodo = "Heurístico (Fallback - IA inactiva)"
+
             return DireccionDestino(
                 id_licencia=record.id_licencia,
-                id_via=matched_via["id"] if matched_via else None,
-                num_via=num_via,
-                id_zona=matched_zona["id"] if matched_zona else None,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
+                zona_id=matched_zona["id"] if matched_zona else None,
+                dire_referencia=clean_referencia,
+                vias=vias_result,
+                componentes=componentes_result,
+                modulos=modulos_result,
                 manzana=manzana,
                 lote=lote,
                 slote=slote,
-                referencia=referencia,
+                piso=eff_piso,
+                block=eff_block,
+                referencia=clean_referencia,
                 es_procesado=True,
                 observacion=None,
                 tipo_via=matched_via.get("id_tipo_via") or id_tipo_via if matched_via else None,
                 nom_via=matched_via["nom_via"] if matched_via else None,
+                num_via=num_via,
                 tipo_zona=matched_zona.get("id_tipo_zona") or id_tipo_zona if matched_zona else None,
                 nom_zona=matched_zona["nom_zona"] if matched_zona else None,
                 metodo_normalizacion=metodo,

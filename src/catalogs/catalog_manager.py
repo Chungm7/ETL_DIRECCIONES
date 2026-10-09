@@ -11,7 +11,7 @@ import os
 import re
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 logger = logging.getLogger("etl_mpch.catalog_manager")
 
@@ -20,6 +20,8 @@ VIAS_FILE = DEFAULT_CATALOGS_DIR / "tipos_via.json"
 ZONAS_FILE = DEFAULT_CATALOGS_DIR / "tipos_zona.json"
 VIAS_CHICLAYO_FILE = DEFAULT_CATALOGS_DIR / "vias_chiclayo.json"
 ZONAS_CHICLAYO_FILE = DEFAULT_CATALOGS_DIR / "zonas_chiclayo.json"
+VIAS_ID_MAP_FILE = DEFAULT_CATALOGS_DIR / "vias_id_map.json"
+ZONAS_ID_MAP_FILE = DEFAULT_CATALOGS_DIR / "zonas_id_map.json"
 
 
 def _remove_accents(text: str) -> str:
@@ -47,6 +49,10 @@ class CatalogManager:
     _physical_vias_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
     _physical_vias_multi_lookup_cache: Optional[Dict[str, List[Dict[str, Any]]]] = None
     _physical_zonas_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
+    _physical_vias_by_id_cache: Optional[Dict[int, str]] = None
+    _physical_zonas_by_id_cache: Optional[Dict[int, str]] = None
+    _vias_id_map_cache: Optional[Dict[int, int]] = None
+    _zonas_id_map_cache: Optional[Dict[int, int]] = None
 
     @classmethod
     def reload(cls) -> None:
@@ -58,6 +64,10 @@ class CatalogManager:
         cls._physical_vias_lookup_cache = None
         cls._physical_vias_multi_lookup_cache = None
         cls._physical_zonas_lookup_cache = None
+        cls._physical_vias_by_id_cache = None
+        cls._physical_zonas_by_id_cache = None
+        cls._vias_id_map_cache = None
+        cls._zonas_id_map_cache = None
         # Notificar a CatalogMatcher para refrescar sus mapeos
         try:
             from src.transformers.catalog_matcher import CatalogMatcher
@@ -119,6 +129,96 @@ class CatalogManager:
             for item in catalog
         ]
 
+    @classmethod
+    def get_vias_id_migration_map(cls) -> Dict[int, int]:
+        """Retorna el mapeo {old_id_via: new_canonical_id_via} para migración y consolidación."""
+        if cls._vias_id_map_cache is None:
+            raw_map = cls._load_json(VIAS_ID_MAP_FILE, default={})
+            cls._vias_id_map_cache = {int(k): int(v) for k, v in raw_map.items()}
+        return cls._vias_id_map_cache
+
+    @classmethod
+    def get_zonas_id_migration_map(cls) -> Dict[int, int]:
+        """Retorna el mapeo {old_id_zona: new_canonical_id_zona} para migración y consolidación."""
+        if cls._zonas_id_map_cache is None:
+            raw_map = cls._load_json(ZONAS_ID_MAP_FILE, default={})
+            cls._zonas_id_map_cache = {int(k): int(v) for k, v in raw_map.items()}
+        return cls._zonas_id_map_cache
+
+    @classmethod
+    def map_legacy_via_id(cls, old_id: Optional[int]) -> Optional[int]:
+        """Mapea un ID previo de vía al nuevo ID consecutivo oficial consolidado."""
+        if old_id is None:
+            return None
+        return cls.get_vias_id_migration_map().get(old_id, old_id)
+
+    @classmethod
+    def map_legacy_zona_id(cls, old_id: Optional[int]) -> Optional[int]:
+        """Mapea un ID previo de zona al nuevo ID consecutivo oficial consolidado."""
+        if old_id is None:
+            return None
+        return cls.get_zonas_id_migration_map().get(old_id, old_id)
+
+    @classmethod
+    def get_default_componentes_tuples(cls) -> List[Tuple[int, str, str, str]]:
+        """Retorna [(codi_id, codi_nombre, codi_abreviatura, codi_estado), ...] para tb_componente_direccion."""
+        return [
+            (1, "MANZANA", "MZ", "ACT"),
+            (2, "LOTE", "LT", "ACT"),
+            (3, "SUBLOTE", "SLT", "ACT"),
+            (4, "PISO", "PIS", "ACT"),
+            (5, "BLOCK", "BLK", "ACT"),
+            (6, "SECTOR", "SEC", "ACT"),
+            (7, "ETAPA", "ETP", "ACT"),
+            (8, "PREDIO", "PRD", "ACT"),
+            (9, "VALLE", "VAL", "ACT"),
+            (10, "UNIDAD CATASTRAL", "U.C.", "ACT"),
+            (11, "COORDENADA NORTE", "CN", "ACT"),
+            (12, "COORDENADA ESTE", "CE", "ACT"),
+        ]
+
+    @classmethod
+    def get_default_tipo_modulo_tuples(cls) -> List[Tuple[int, str, str, str]]:
+        """Retorna [(timo_id, timo_nombre, timo_abreviatura, timo_estado), ...] para tb_tipo_modulo."""
+        return [
+            (1, "INTERIOR", "INT", "ACT"),
+            (2, "TIENDA", "TDA", "ACT"),
+            (3, "DEPARTAMENTO", "DPTO", "ACT"),
+            (4, "STAND", "STD", "ACT"),
+            (5, "OFICINA", "OF", "ACT"),
+            (6, "PUESTO", "PTO", "ACT"),
+            (7, "KIOSKO", "KSK", "ACT"),
+            (8, "DEPOSITO", "DEP", "ACT"),
+            (9, "ALMACEN", "ALM", "ACT"),
+            (10, "PUERTA", "PTA", "ACT"),
+            (11, "BLOCK", "BLK", "ACT"),
+            (12, "LOCAL", "LOC", "ACT"),
+            (13, "COCHERA", "CCH", "ACT"),
+        ]
+
+    CITY_DISTRICT_STOPWORDS: Set[str] = {
+        "CHICLAYO",
+        "LAMBAYEQUE",
+        "FERRENAFE",
+        "FERREÑAFE",
+        "PIMENTEL",
+        "LA VICTORIA",
+        "JOSE LEONARDO ORTIZ",
+        "JOSÉ LEONARDO ORTIZ",
+        "JLO",
+        "J.L.O.",
+        "MONSEFU",
+        "MONSEFÚ",
+        "REQUE",
+        "ETEN",
+        "PUERTO ETEN",
+        "CIUDAD ETEN",
+        "PICSI",
+        "POMALCA",
+        "PERU",
+        "PERÚ",
+    }
+
     EXTRA_VIAS_SYNONYMS: Dict[str, str] = {
         "NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
         "GALERIAS NICOLAS CUGLIEVAN": "JUAN CUGLIEVAN",
@@ -139,7 +239,6 @@ class CatalogManager:
         "TOMAS GUTIERREZ": "THOMAS GUTIERREZ",
         "THOMAS GUTIERREZ": "THOMAS GUTIERREZ",
         "CARLOS STEIN": "CARLOS STEIN CHAVEZ",
-        "PEDRO RUIZ": "PEDRO RUIZ GALLO",
         "MANUEL GERVACIO ARIZOLA": "ARIZOLA",
         "MANUEL GERVASIO ARIZOLA": "ARIZOLA",
         "GERVACIO ARIZOLA": "ARIZOLA",
@@ -199,6 +298,8 @@ class CatalogManager:
         "MAGISTERIAL": "RESIDENCIAL DERRAMA MAGISTERIAL",
         "DERRAMA MAGISTERIAL": "RESIDENCIAL DERRAMA MAGISTERIAL",
         "CONDOMINIO LA PRIMAVERA": "LA PRIMAVERA",
+        "CONDOMINIO LOS PINOS DE LA PLATA": "MULTIFAMILIAR LOS PINOS DE LA PLATA",
+        "LOS PINOS DE LA PLATA": "MULTIFAMILIAR LOS PINOS DE LA PLATA",
         "LA PRIMAVERA III ETAPA": "LA PRIMAVERA III",
         "LA PRIMAVERA III-ETAPA": "LA PRIMAVERA III",
         "LA PRIMAVERA 3 ETAPA": "LA PRIMAVERA III",
@@ -209,6 +310,11 @@ class CatalogManager:
         "NUEVE DE OCTUBRE": "9 DE OCTUBRE",
         "PJ 9 DE OCTUBRE": "9 DE OCTUBRE",
         "PJ NUEVE DE OCTUBRE": "9 DE OCTUBRE",
+        "URB 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "URB. 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "URBANIZACION 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "URBANIZACIÓN 9 DE OCTUBRE": "9 DE OCTUBRE",
+        "UPIS 9 DE OCTUBRE": "9 DE OCTUBRE",
         "AH 9 DE OCTUBRE": "9 DE OCTUBRE",
         "AH NUEVE DE OCTUBRE": "9 DE OCTUBRE",
         "PUEBLO JOVEN 9 DE OCTUBRE": "9 DE OCTUBRE",
@@ -223,6 +329,17 @@ class CatalogManager:
         "CESAR VALLEJO": "CÉSAR VALLEJO",
         "CÉSAR VALLEJO": "CÉSAR VALLEJO",
         "LAS TORRES DE CHICLAYO": "CERCADO DE CHICLAYO",
+        "SANTA ROSA": "SANTA ROSA DE LIMA",
+        "STA. ROSA": "SANTA ROSA DE LIMA",
+        "STA ROSA": "SANTA ROSA DE LIMA",
+        "PP.JJ. SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PP.JJ SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PPJJ SANTA ROSA": "SANTA ROSA DE LIMA",
+        "P.J. SANTA ROSA": "SANTA ROSA DE LIMA",
+        "P.J SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PJ SANTA ROSA": "SANTA ROSA DE LIMA",
+        "PUEBLO JOVEN SANTA ROSA": "SANTA ROSA DE LIMA",
+        "UPIS SANTA ROSA": "SANTA ROSA DE LIMA",
     }
 
     @classmethod
@@ -233,17 +350,23 @@ class CatalogManager:
             for item in cls.get_vias_chiclayo_catalog():
                 nom = item["nom_via"].strip().upper()
                 clean_nom = _remove_accents(nom)
-                lookup[nom] = item
-                lookup[clean_nom] = item
+                if nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[nom] = item
+                if clean_nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[clean_nom] = item
 
                 for syn in item.get("sinonimos", []):
                     s_clean = str(syn).strip().upper()
                     s_noacc = _remove_accents(s_clean)
-                    lookup[s_clean] = item
-                    lookup[s_noacc] = item
+                    if s_clean not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_clean] = item
+                    if s_noacc not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_noacc] = item
 
             # Enriquecer con sinónimos canónicos frecuentes de Chiclayo
             for alias, target in cls.EXTRA_VIAS_SYNONYMS.items():
+                if alias in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(alias) in cls.CITY_DISTRICT_STOPWORDS:
+                    continue
                 target_clean = target.strip().upper()
                 target_obj = lookup.get(target_clean) or lookup.get(_remove_accents(target_clean))
                 if target_obj:
@@ -262,7 +385,7 @@ class CatalogManager:
             multi: Dict[str, List[Dict[str, Any]]] = {}
 
             def _add(key: str, item: Dict[str, Any]):
-                if not key:
+                if not key or key in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(key) in cls.CITY_DISTRICT_STOPWORDS:
                     return
                 if key not in multi:
                     multi[key] = []
@@ -282,6 +405,8 @@ class CatalogManager:
                     _add(s_noacc, item)
 
             for alias, target in cls.EXTRA_VIAS_SYNONYMS.items():
+                if alias in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(alias) in cls.CITY_DISTRICT_STOPWORDS:
+                    continue
                 target_clean = target.strip().upper()
                 targets = multi.get(target_clean) or multi.get(_remove_accents(target_clean)) or []
                 for target_obj in targets:
@@ -299,17 +424,23 @@ class CatalogManager:
             for item in cls.get_zonas_chiclayo_catalog():
                 nom = item["nom_zona"].strip().upper()
                 clean_nom = _remove_accents(nom)
-                lookup[nom] = item
-                lookup[clean_nom] = item
+                if nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[nom] = item
+                if clean_nom not in cls.CITY_DISTRICT_STOPWORDS:
+                    lookup[clean_nom] = item
 
                 for syn in item.get("sinonimos", []):
                     s_clean = str(syn).strip().upper()
                     s_noacc = _remove_accents(s_clean)
-                    lookup[s_clean] = item
-                    lookup[s_noacc] = item
+                    if s_clean not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_clean] = item
+                    if s_noacc not in cls.CITY_DISTRICT_STOPWORDS:
+                        lookup[s_noacc] = item
 
             # Enriquecer con sinónimos canónicos frecuentes de zonas
             for alias, target in cls.EXTRA_ZONAS_SYNONYMS.items():
+                if alias in cls.CITY_DISTRICT_STOPWORDS or _remove_accents(alias) in cls.CITY_DISTRICT_STOPWORDS:
+                    continue
                 target_clean = target.strip().upper()
                 target_obj = lookup.get(target_clean) or lookup.get(_remove_accents(target_clean))
                 if target_obj:
@@ -318,6 +449,60 @@ class CatalogManager:
 
             cls._physical_zonas_lookup_cache = lookup
         return cls._physical_zonas_lookup_cache
+
+    @classmethod
+    def register_custom_physical_via(cls, via_id: int, nom_via: str, tivi_id: Optional[int] = None) -> None:
+        """Registra dinámicamente una vía desde la base de datos en los lookups en memoria."""
+        nom = nom_via.strip().upper()
+        clean = _remove_accents(nom)
+        item = {"id": via_id, "nom_via": nom, "id_tipo_via": tivi_id, "sinonimos": [nom, clean]}
+        multi = cls.get_physical_vias_multi_lookup()
+        for k in (nom, clean):
+            if k not in multi:
+                multi[k] = []
+            if not any(x.get("id") == via_id for x in multi[k]):
+                multi[k].append(item)
+        single = cls.get_physical_vias_lookup()
+        single[nom] = item
+        single[clean] = item
+        if cls._physical_vias_by_id_cache is None:
+            cls._physical_vias_by_id_cache = {
+                itm["id"]: itm["nom_via"] for itm in cls.get_vias_chiclayo_catalog()
+            }
+        cls._physical_vias_by_id_cache[via_id] = nom
+
+    @classmethod
+    def register_custom_physical_zona(cls, zona_id: int, nom_zona: str, tizo_id: Optional[int] = None) -> None:
+        """Registra dinámicamente una zona desde la base de datos en los lookups en memoria."""
+        nom = nom_zona.strip().upper()
+        clean = _remove_accents(nom)
+        item = {"id": zona_id, "nom_zona": nom, "id_tipo_zona": tizo_id, "sinonimos": [nom, clean]}
+        lookup = cls.get_physical_zonas_lookup()
+        lookup[nom] = item
+        lookup[clean] = item
+        if cls._physical_zonas_by_id_cache is None:
+            cls._physical_zonas_by_id_cache = {
+                itm["id"]: itm["nom_zona"] for itm in cls.get_zonas_chiclayo_catalog()
+            }
+        cls._physical_zonas_by_id_cache[zona_id] = nom
+
+    @classmethod
+    def get_physical_via_name_by_id(cls, via_id: int) -> Optional[str]:
+        """Obtiene el nombre de una vía física a partir de su ID."""
+        if cls._physical_vias_by_id_cache is None:
+            cls._physical_vias_by_id_cache = {
+                item["id"]: item["nom_via"] for item in cls.get_vias_chiclayo_catalog()
+            }
+        return cls._physical_vias_by_id_cache.get(via_id)
+
+    @classmethod
+    def get_physical_zona_name_by_id(cls, zona_id: int) -> Optional[str]:
+        """Obtiene el nombre de una zona física a partir de su ID."""
+        if cls._physical_zonas_by_id_cache is None:
+            cls._physical_zonas_by_id_cache = {
+                item["id"]: item["nom_zona"] for item in cls.get_zonas_chiclayo_catalog()
+            }
+        return cls._physical_zonas_by_id_cache.get(zona_id)
 
     @classmethod
     def _load_json(cls, file_path: Path, default: Any) -> Any:
@@ -462,38 +647,38 @@ class CatalogManager:
             items.append(f"{z['nombre']}{abrev}")
         return ", ".join(items)
     @classmethod
-    def format_physical_vias_for_prompt(cls, limit: int = 150) -> str:
-        """Formatea las vías metropolitanas y céntricas más representativas de Chiclayo para el LLM."""
+    def format_physical_vias_for_prompt(cls, limit: Optional[int] = None) -> str:
+        """Formatea el catálogo completo de vías oficiales de Chiclayo para el LLM.
+        Si limit es None, incluye la totalidad de vías habilitadas de Chiclayo.
+        """
         catalog = cls.get_vias_chiclayo_catalog()
-        # 1. Vías con jerarquía vial relevante (arterial, colectora, expresa, etc.)
-        prominent = set(
-            v["nom_via"]
-            for v in catalog
-            if v.get("clasificacion") and v.get("clasificacion") != "LOCAL" and v.get("nom_via")
-        )
-        # 2. Vías céntricas y de alto tránsito de Chiclayo
-        central_keys = (
-            "BALTA", "LAPOINT", "GONZALES", "TORRES PAZ", "7 DE ENERO", "PEDRO RUIZ",
-            "SAN JOSE", "ELIAS AGUIRRE", "IZAGA", "COLON", "TACNA", "ARICA",
-            "LEONCIO PRADO", "MANCO CAPAC", "VICENTE DE LA VEGA", "ORIENTE",
-            "AMERICAS", "SANTA VICTORIA", "BOLOGNESI", "GRAU", "SALAVERRY",
-            "LEGUIA", "FITZCARRAL", "JORGE CHAVEZ", "LOS INCAS", "UNION",
-            "LORA Y LORA", "FRANCISCO CABRERA", "QUIÑONES", "CHICLAYO", "PIMENTEL"
-        )
+        vias_set = set()
         for v in catalog:
-            nom = v.get("nom_via", "")
-            if any(k in nom for k in central_keys):
-                prominent.add(nom)
+            nom = v.get("nom_via")
+            if nom and not nom.startswith("SIN DENOMINACION") and not nom.startswith("S/N"):
+                vias_set.add(nom.strip().upper())
 
-        unique_vias = sorted(list(prominent))[:limit]
+        unique_vias = sorted(list(vias_set))
+        if limit is not None and limit > 0:
+            unique_vias = unique_vias[:limit]
         return ", ".join(unique_vias)
 
     @classmethod
-    def format_physical_zonas_sample_for_prompt(cls, limit: int = 80) -> str:
-        """Formatea las zonas y habilitaciones urbanas más representativas de Chiclayo para el LLM."""
+    def format_physical_zonas_for_prompt(cls, limit: Optional[int] = None) -> str:
+        """Formatea el catálogo completo de zonas y habilitaciones urbanas de Chiclayo para el LLM.
+        Si limit es None, incluye la totalidad de habilitaciones urbanas oficiales.
+        """
         catalog = cls.get_zonas_chiclayo_catalog()
-        unique_zonas = sorted(list(set(z["nom_zona"] for z in catalog if z.get("nom_zona") and not z["nom_zona"].startswith("SIN DENOMINACION"))))
-        return ", ".join(unique_zonas[:limit])
+        unique_zonas = sorted(list(set(
+            z["nom_zona"].strip().upper() for z in catalog
+            if z.get("nom_zona") and not z["nom_zona"].startswith("SIN DENOMINACION")
+        )))
+        if limit is not None and limit > 0:
+            unique_zonas = unique_zonas[:limit]
+        return ", ".join(unique_zonas)
+
+    # Alias retrocompatible
+    format_physical_zonas_sample_for_prompt = format_physical_zonas_for_prompt
 
     @classmethod
     def get_via_prefix_regex_str(cls) -> str:

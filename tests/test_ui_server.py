@@ -367,6 +367,26 @@ def test_api_clear_session_endpoint(client):
     assert len(state.log_history) == 0
 
 
+def test_api_seed_catalogs_endpoint(client):
+    """Verifica que /api/seed-catalogs ejecute la siembra completa y retorne estadísticas."""
+    with patch("src.ui.server.DatabaseService") as mock_db_cls:
+        mock_inst = mock_db_cls.return_value
+        mock_inst.seed_v2_catalogs.return_value = {
+            "schema": "public",
+            "tb_via_count": 2935,
+            "tb_zona_count": 460,
+            "tb_tipo_via_count": 12,
+            "tb_tipo_zona_count": 28,
+        }
+        with patch("src.transformers.catalog_matcher.CatalogMatcher.sync_with_db"):
+            response = client.post("/api/seed-catalogs", json={"schema_name": "public", "force": True})
+            assert response.status_code == 200
+            data = response.json()
+            assert data["success"] is True
+            assert data["data"]["tb_via_count"] == 2935
+            assert data["data"]["tb_zona_count"] == 460
+
+
 def test_ui_state_cumulative_and_in_place_update():
     """Verifica que reset_for_run conserve recent_records y que add_record actualice registros por ID."""
     state.clear_session()
@@ -451,7 +471,7 @@ def test_api_export_csv_endpoint(client):
     assert "text/csv" in response.headers["content-type"]
     assert "reporte_catastral_mpch_" in response.headers.get("content-disposition", "")
     content = response.content.decode("utf-8-sig")
-    assert "ID,Direccion_Original,Tipo_Via" in content
+    assert "ID,ID_Direccion,Estado,Direccion_Original,Via_Principal_Tipo" in content
     assert "502" in content
     assert "AVENIDA" in content
 
@@ -534,7 +554,8 @@ def test_api_export_db_csv_observed_endpoint(client):
         content = response.content.decode("utf-8-sig")
         assert "102" in content
         assert "OBSERVADO" in content
-        assert "Vía no encontrada en catálogo oficial" in content
+        assert "Diagnostico_Observacion" not in content
+        assert "Vía no encontrada en catálogo oficial" not in content
         mock_fetch.assert_called_once()
 
 
@@ -552,8 +573,8 @@ def test_fetch_db_records_for_export_standard_table_resolution():
     from src.ui.server import fetch_db_records_for_export
 
     db = DatabaseService()
-    if not db.check_connection().get("connected"):
-        pytest.skip("Base de datos PostgreSQL local no disponible")
+    if not db.check_connection().get("connected") or not (db.table_exists("direcciones_actual", schema="public") or db.table_exists("direcciones", schema="public")):
+        pytest.skip("Tabla de direcciones legacy no disponible en PostgreSQL local")
 
     # Prueba con nombre alternativo 'direcciones' que debe auto-resolver a 'direcciones_actual'
     records_proc = fetch_db_records_for_export(db, schema="public", table="direcciones", scope="all")
@@ -571,8 +592,8 @@ def test_api_export_db_end_to_end_real_db(client):
     """Verifica el endpoint /api/export-db end-to-end con la base de datos real."""
     from src.services.db_service import DatabaseService
     db = DatabaseService()
-    if not db.check_connection().get("connected"):
-        pytest.skip("Base de datos PostgreSQL local no disponible")
+    if not db.check_connection().get("connected") or not db.table_exists("direcciones_actual", schema="public"):
+        pytest.skip("Tabla direcciones_actual no disponible en PostgreSQL local")
 
     # Descarga en CSV con scope all
     res_csv = client.get("/api/export-db?schema=public&table=direcciones_actual&scope=all&format=csv")
@@ -702,8 +723,41 @@ def test_api_stream_init_event_snapshot():
         state.num_workers = 4
 
 
+def test_execution_state_eta_and_time_metrics(client):
+    """Verifica que ExecutionState calcule eta_seconds, speed_rps y que index.html contenga los badges de tiempo."""
+    from src.ui.server import ExecutionState
 
+    exec_state = ExecutionState()
+    exec_state.reset_for_run(total=100, schema="public", table="test_table")
+    assert exec_state.stats["eta_seconds"] == 0
+    assert exec_state.stats["speed_rps"] == 0.0
 
+    # Simular inicio con tiempo anterior
+    exec_state.stats["start_time"] = exec_state.stats["start_time"] - 10.0  # 10 segundos transcurridos
+    exec_state.add_record({
+        "index": 20,
+        "total": 100,
+        "processed_count": 20,
+        "valid_count": 18,
+        "observed_count": 2,
+        "failed_count": 0,
+        "id_licencia": 1,
+        "raw_text": "CALLE SAN JOSE 123",
+        "metodo": "IA",
+    })
 
+    assert exec_state.stats["processed"] == 20
+    assert exec_state.stats["speed_rps"] > 0
+    assert exec_state.stats["eta_seconds"] > 0
+    assert "eta_seconds" in exec_state.stats
 
+    # Al finalizar la ejecución, eta_seconds debe ser 0
+    exec_state.finish_run()
+    assert exec_state.stats["eta_seconds"] == 0
 
+    # Verificar que index.html exponga los IDs requeridos
+    res = client.get("/")
+    assert res.status_code == 200
+    assert 'id="elapsedLabel"' in res.text
+    assert 'id="etaLabel"' in res.text
+    assert "Restante:" in res.text

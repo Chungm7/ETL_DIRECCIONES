@@ -5,12 +5,88 @@
  * 1. Conexión IA (Ollama) -> 2. Conexión BD -> 3. Esquema -> 4. Tabla y Mapeo -> 5. Inspector Catastral
  */
 
+// ── Sistema de Alertas y Notificaciones Institucionales MPCH (Reemplazo de alert/localhost) ──
+function showModalAlert(title, message, type = 'info') {
+  const overlay = document.getElementById('modalAlertOverlay');
+  if (!overlay) {
+    console.warn('[ALERTA MPCH]', title, message);
+    return;
+  }
+  const titleEl = document.getElementById('modalAlertTitle');
+  const msgEl = document.getElementById('modalAlertMessage');
+  const badgeEl = document.getElementById('modalAlertIconBadge');
+  const iconInfo = document.getElementById('modalAlertIconInfo');
+  const iconWarn = document.getElementById('modalAlertIconWarning');
+  const iconErr = document.getElementById('modalAlertIconError');
+  const iconSuccess = document.getElementById('modalAlertIconSuccess');
+  const btnOk = document.getElementById('modalAlertBtnOk');
+
+  if (titleEl) titleEl.textContent = title || 'Aviso del Sistema';
+  if (msgEl) msgEl.textContent = message || '';
+
+  [iconInfo, iconWarn, iconErr, iconSuccess].forEach(ic => ic?.classList.add('hidden'));
+
+  if (type === 'error') {
+    iconErr?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#fef2f2';
+      badgeEl.style.borderColor = '#fecaca';
+      badgeEl.style.color = '#dc2626';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-red';
+    }
+  } else if (type === 'warning') {
+    iconWarn?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#fffbeb';
+      badgeEl.style.borderColor = '#fef3c7';
+      badgeEl.style.color = '#d97706';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-primary';
+    }
+  } else if (type === 'success') {
+    iconSuccess?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#f0fdf4';
+      badgeEl.style.borderColor = '#bbf7d0';
+      badgeEl.style.color = '#16a34a';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-green';
+    }
+  } else {
+    iconInfo?.classList.remove('hidden');
+    if (badgeEl) {
+      badgeEl.style.background = '#eff6ff';
+      badgeEl.style.borderColor = '#bfdbfe';
+      badgeEl.style.color = '#2563eb';
+    }
+    if (btnOk) {
+      btnOk.className = 'btn btn-primary';
+    }
+  }
+
+  overlay.classList.remove('hidden');
+}
+
+function closeAlertModal() {
+  const overlay = document.getElementById('modalAlertOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
+// Interceptar window.alert nativo para que nunca muestre popup "localhost:8080 dice:"
+window.alert = function(msg) {
+  showModalAlert('Aviso del Sistema', String(msg || ''), 'info');
+};
+
 // ── Estado Global del Asistente ──────────────────────────────────────────────
 const wiz = {
   step: 1,
   maxStepUnlocked: 1,
 
-  // Paso 1: IA
+  // Paso 1: IA (Modelo 1 - Extractor)
   ai_host: 'localhost',
   ai_port: 11434,
   ai_model: '',
@@ -23,7 +99,7 @@ const wiz = {
     }
   })(),
 
-  // Paso 2: BD
+  // Paso 2: Base de Datos PostgreSQL
   db_host: '',
   db_port: 5432,
   db_name: '',
@@ -40,8 +116,9 @@ const wiz = {
   addr_col: null,
   columns: [],
 
-  // Paso 5: Inspector en Tiempo Real
+  // Paso 5: Inspector Catastral en Tiempo Real
   allRecords: [],
+  viewMode: 'cards', // 'cards' | 'table'
 
   // Filtro y Ejecución
   filter_mode: 'pending',
@@ -74,6 +151,24 @@ function syncNumWorkers(val) {
 
 // ── Navegación e Interactividad del Stepper ──────────────────────────────────
 function tryGoStep(n) {
+  if (n === 5) {
+    if (!wiz.schema || !wiz.table || wiz.source_mode !== 'central_tb_direccion' || n > wiz.maxStepUnlocked) {
+      if (wiz.centralStats && (wiz.centralStats.has_records || wiz.centralStats.total > 0)) {
+        resumeAllCentral();
+        return;
+      }
+      showModalAlert(
+        'Normalización con IA Bloqueada',
+        'Para ingresar a la Normalización con IA (Paso 5), primero debe:\n1. Migrar e ingestar una tabla a public.tb_direccion, o\n2. Seleccionar una fuente en la lista de Reanudación del Paso 4.',
+        'warning'
+      );
+      return;
+    }
+  }
+  if (n === 4 && (!wiz.table || !wiz.schema) && wiz.centralStats && (wiz.centralStats.has_records || wiz.centralStats.total > 0)) {
+    goToResumeMode();
+    return;
+  }
   if (n <= wiz.maxStepUnlocked) {
     goStep(n);
   }
@@ -118,6 +213,15 @@ function goStep(n) {
 
   wiz.step = n;
   window.scrollTo({ top: 0, behavior: 'smooth' });
+
+  if (n === 3) {
+    setTimeout(() => document.getElementById('searchSchema')?.focus(), 150);
+  } else if (n === 4) {
+    setTimeout(() => {
+      document.getElementById('searchTable')?.focus();
+      loadIngestedSources();
+    }, 150);
+  }
 }
 
 // ── Helpers Visuales y Diagnóstico ──────────────────────────────────────────
@@ -182,6 +286,35 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function formatDateTime(val) {
+  if (!val) return '—';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) {
+      return String(val).replace('T', ' ').slice(0, 19);
+    }
+    return d.toLocaleString('es-PE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  } catch {
+    return String(val).replace('T', ' ').slice(0, 19);
+  }
+}
+
+function isCleanSublote(sl) {
+  if (!sl) return false;
+  const s = String(sl).trim().toUpperCase();
+  if (['SLT', 'SLOTE', 'SUBLOTE', 'S/L', 'S/LT', 'NO', 'N/A', 'NA', 'NONE', 'NULL', '-', '.'].includes(s)) return false;
+  if (/^(?:INT(?:ERIOR)?|DPTO|DEP|TIENDA|TDA|STAND|OF(?:ICINA)?|PUERTA|PTA|LOCAL|BLOCK|TORRE|PISO)\b/i.test(s)) return false;
+  return true;
 }
 
 // ── PASO 1: Motor IA (Ollama) ────────────────────────────────────────────────
@@ -360,14 +493,22 @@ async function verifyDBConnection() {
     wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 3);
     wiz.availableSchemas = data.schemas || [];
 
+    const searchInput = document.getElementById('searchSchema');
+    if (searchInput) searchInput.value = '';
+
     renderSchemaCards(wiz.availableSchemas);
+    updateSchemaCountBadge(wiz.availableSchemas.length, wiz.availableSchemas.length);
 
     const btnNext = document.getElementById('btnGoStep3');
     if (btnNext) btnNext.disabled = false;
 
-    // Desbloquear tab 3
+    // Desbloquear tab 3 (Esquema)
     const tab3 = document.getElementById('tab3');
     if (tab3) tab3.classList.remove('locked');
+
+    if (data.central_stats) {
+      updateCentralResumeUI(data.central_stats, data.ingested_sources);
+    }
 
     showDiag(
       'diagDB',
@@ -386,20 +527,60 @@ async function verifyDBConnection() {
   }
 }
 
-// ── PASO 3: Selección de Esquema ────────────────────────────────────────────
+// ── PASO 4: Selección de Esquema ────────────────────────────────────────────
+function filterSchemaCards() {
+  const query = (document.getElementById('searchSchema')?.value || '').toLowerCase().trim();
+  const allSchemas = wiz.availableSchemas || [];
+  const filtered = allSchemas.filter(s => s.toLowerCase().includes(query));
+  renderSchemaCards(filtered);
+  updateSchemaCountBadge(filtered.length, allSchemas.length);
+}
+
+function handleSchemaSearchKey(e) {
+  if (e.key === 'Enter') {
+    const query = (document.getElementById('searchSchema')?.value || '').toLowerCase().trim();
+    const allSchemas = wiz.availableSchemas || [];
+    const filtered = allSchemas.filter(s => s.toLowerCase().includes(query));
+    if (filtered.length === 1) {
+      wiz.schema = filtered[0];
+      const card = document.querySelector(`#schemaCards .card-item[data-schema="${CSS.escape(filtered[0])}"]`);
+      if (card) {
+        document.querySelectorAll('#schemaCards .card-item').forEach(c => c.classList.remove('selected'));
+        card.classList.add('selected');
+        document.getElementById('btnSchema').disabled = false;
+      }
+    }
+  }
+}
+
+function updateSchemaCountBadge(filteredCount, totalCount) {
+  const badge = document.getElementById('schemaCountBadge');
+  if (!badge) return;
+  if (!totalCount) {
+    badge.textContent = '';
+    return;
+  }
+  if (filteredCount === totalCount) {
+    badge.textContent = `${totalCount} esquema${totalCount === 1 ? '' : 's'}`;
+  } else {
+    badge.textContent = `${filteredCount} de ${totalCount}`;
+  }
+}
+
 function renderSchemaCards(schemas) {
   const grid = document.getElementById('schemaCards');
   if (!grid) return;
   grid.innerHTML = '';
 
   if (!schemas || !schemas.length) {
-    grid.innerHTML = '<p style="color:var(--slate-500); font-size:13px;">No se encontraron esquemas disponibles en la base de datos.</p>';
+    grid.innerHTML = '<p style="color:var(--slate-500); font-size:13px; padding:10px;">No se encontraron esquemas que coincidan con la búsqueda.</p>';
     return;
   }
 
   schemas.forEach(s => {
     const card = document.createElement('div');
     card.className = 'card-item';
+    if (wiz.schema === s) card.classList.add('selected');
     card.innerHTML = `
       <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -431,12 +612,15 @@ async function inspectSchema() {
     const data = await res.json();
 
     if (!res.ok) {
-      alert('Error al inspeccionar el esquema: ' + (data.detail || 'Error desconocido'));
+      showModalAlert('Error al Inspeccionar Esquema', data.detail || 'Error desconocido', 'error');
       return;
     }
 
     wiz.availableTables = data.tables || [];
+    const searchTbl = document.getElementById('searchTable');
+    if (searchTbl) searchTbl.value = '';
     renderTableCards(wiz.availableTables);
+    updateTableCountBadge(wiz.availableTables.length, wiz.availableTables.length);
     document.getElementById('labelSchema').textContent = wiz.schema;
 
     wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
@@ -446,17 +630,33 @@ async function inspectSchema() {
     goStep(4);
 
   } catch (e) {
-    alert('Error de red al consultar tablas: ' + e.message);
+    showModalAlert('Error de Red', 'Error al consultar tablas: ' + e.message, 'error');
   } finally {
     setLoading('btnSchema', 'spinSchema', false);
   }
 }
 
-// ── PASO 4: Tablas y Mapeo de Columnas ───────────────────────────────────────
+// ── PASO 5: Tablas y Mapeo de Columnas ───────────────────────────────────────
 function filterTableCards() {
   const query = (document.getElementById('searchTable')?.value || '').toLowerCase().trim();
-  const filtered = wiz.availableTables.filter(t => t.name.toLowerCase().includes(query));
+  const allTables = wiz.availableTables || [];
+  const filtered = allTables.filter(t => t.name.toLowerCase().includes(query));
   renderTableCards(filtered);
+  updateTableCountBadge(filtered.length, allTables.length);
+}
+
+function updateTableCountBadge(filteredCount, totalCount) {
+  const badge = document.getElementById('tableCountBadge');
+  if (!badge) return;
+  if (!totalCount) {
+    badge.textContent = '';
+    return;
+  }
+  if (filteredCount === totalCount) {
+    badge.textContent = `${totalCount} tabla${totalCount === 1 ? '' : 's'}`;
+  } else {
+    badge.textContent = `${filteredCount} de ${totalCount}`;
+  }
 }
 
 function renderTableCards(tables) {
@@ -517,16 +717,47 @@ function showColumnConfig(tableInfo) {
 
   const bestId = tableInfo.columns.find(c =>
     idHints.some(h => c.name.toLowerCase().includes(h))
-  );
-  const bestAddr = tableInfo.columns.find(c =>
+  ) || tableInfo.columns[0];
+
+  let bestAddr = tableInfo.columns.find(c =>
     addrHints.some(h => c.name.toLowerCase().includes(h))
   );
+
+  // Si la columna de dirección original ya fue eliminada tras migración exitosa:
+  if (!bestAddr) {
+    bestAddr = tableInfo.columns.find(c => c.name.toLowerCase() === 'dire_id')
+      || tableInfo.columns.find(c => c.name !== (bestId ? bestId.name : ''))
+      || tableInfo.columns[0];
+  }
 
   if (bestId)   selId.value   = bestId.name;
   if (bestAddr) selAddr.value = bestAddr.name;
 
-  document.getElementById('previewSection').classList.add('hidden');
-  document.getElementById('btnConfirmTable').disabled = true;
+  wiz.id_col = selId.value || null;
+  wiz.addr_col = selAddr.value || null;
+
+  selId.onchange = () => {
+    wiz.id_col = selId.value;
+    if (wiz.id_col && wiz.addr_col) {
+      document.getElementById('btnConfirmTable').disabled = false;
+      previewTable();
+    }
+  };
+  selAddr.onchange = () => {
+    wiz.addr_col = selAddr.value;
+    if (wiz.id_col && wiz.addr_col) {
+      document.getElementById('btnConfirmTable').disabled = false;
+      previewTable();
+    }
+  };
+
+  if (wiz.id_col && wiz.addr_col) {
+    document.getElementById('btnConfirmTable').disabled = false;
+    previewTable();
+  } else {
+    document.getElementById('previewSection').classList.add('hidden');
+    document.getElementById('btnConfirmTable').disabled = true;
+  }
 }
 
 async function previewTable() {
@@ -534,7 +765,7 @@ async function previewTable() {
   const addr_col = document.getElementById('sel_addr_col').value;
 
   if (!id_col || !addr_col) {
-    alert('Debe seleccionar la columna identificador único (ID) y la columna de dirección.');
+    showModalAlert('Columnas Requeridas', 'Debe seleccionar la columna identificador único (ID) y la columna de dirección.', 'warning');
     return;
   }
 
@@ -554,26 +785,37 @@ async function previewTable() {
     const data = await res.json();
 
     if (!res.ok) {
-      alert('Error al obtener vista previa: ' + (data.detail || 'Error desconocido'));
+      showModalAlert('Error de Vista Previa', data.detail || 'Error desconocido', 'error');
       return;
     }
 
     wiz.id_col   = data.id_col;
     wiz.addr_col = data.address_col;
     wiz.tableCounts = data.counts || {};
+    wiz.is_ingested = Boolean(data.is_ingested);
+    wiz.centralCounts = data.central_counts || {};
 
     const countDiv = document.getElementById('tableCountInfo');
     const c = data.counts || {};
-    countDiv.innerHTML = `
-      <span class="badge" style="background:var(--slate-100); color:var(--slate-800); border:1px solid var(--slate-300);"><strong>${(c.total||0).toLocaleString()}</strong> Total</span>
-      <span class="badge" style="background:var(--blue-accent-bg); color:var(--blue-accent); border:1px solid var(--blue-accent-border);"><strong>${(c.pendientes||0).toLocaleString()}</strong> Pendientes</span>
+    const c_cent = data.central_counts || {};
+    let badgeHtml = `
+      <span class="badge" style="background:var(--slate-100); color:var(--slate-800); border:1px solid var(--slate-300);"><strong>${(c.total||0).toLocaleString()}</strong> Total Fuente</span>
+      <span class="badge" style="background:var(--blue-accent-bg); color:var(--blue-accent); border:1px solid var(--blue-accent-border);"><strong>${(c.pendientes||0).toLocaleString()}</strong> Pendientes Fuente</span>
       <span class="badge badge-valid"><strong>${(c.validos||0).toLocaleString()}</strong> Normalizados</span>
       <span class="badge badge-observed"><strong>${(c.observados||0).toLocaleString()}</strong> Observados</span>
     `;
+    if (data.is_ingested) {
+      badgeHtml += `
+        <span class="badge" style="background:#f0fdf4; color:#15803d; border:1px solid #bbf7d0; font-weight:700;">
+          ✓ Ya migrado a tb_direccion (${(c_cent.pendientes||0).toLocaleString()} pendientes en catastro central)
+        </span>
+      `;
+    }
+    countDiv.innerHTML = badgeHtml;
 
     const btnStep4 = document.getElementById('btnStep4ExportDirect');
     if (btnStep4) {
-      if ((c.validos || 0) > 0 || (c.observados || 0) > 0) {
+      if ((c.validos || 0) > 0 || (c.observados || 0) > 0 || (c_cent.normalizados || 0) > 0) {
         btnStep4.classList.remove('hidden');
       } else {
         btnStep4.classList.add('hidden');
@@ -592,36 +834,328 @@ async function previewTable() {
     });
 
     document.getElementById('previewSection').classList.remove('hidden');
-    document.getElementById('btnConfirmTable').disabled = false;
+
+    const statusBanner = document.getElementById('migrationStatusBanner');
+    const statusText   = document.getElementById('migrationStatusText');
+    if (data.is_ingested && (c_cent.total || 0) > 0) {
+      if (statusBanner && statusText) {
+        statusText.innerHTML = `Esta tabla ya cuenta con <strong>${(c_cent.total||0).toLocaleString()}</strong> registros en <code>public.tb_direccion</code> (${(c_cent.pendientes||0).toLocaleString()} pendientes). Puede pasar a normalizar con IA directamente o volver a sincronizar.`;
+        statusBanner.classList.remove('hidden');
+      }
+    } else {
+      if (statusBanner) statusBanner.classList.add('hidden');
+    }
 
   } catch (e) {
-    alert('Error de red al previsualizar tabla: ' + e.message);
+    showModalAlert('Error de Red', 'Error al previsualizar tabla: ' + e.message, 'error');
   } finally {
     setLoading('btnPreview', 'spinPreview', false);
   }
 }
 
-function confirmTable() {
-  if (!wiz.table || !wiz.id_col || !wiz.addr_col) return;
+// ── Modos de Flujo (Bifurcación: Ingesta vs Normalización) ──
+function switchWorkflowMode(mode) {
+  const cardMigrate = document.getElementById('cardModeMigrate');
+  const cardResume  = document.getElementById('cardModeResume');
+  const viewMigrate = document.getElementById('viewModeMigrate');
+  const viewResume  = document.getElementById('viewModeResume');
 
-  document.getElementById('summSchema').textContent  = wiz.schema;
-  document.getElementById('summTable').textContent   = wiz.table;
-  document.getElementById('summId').textContent      = wiz.id_col;
-  document.getElementById('summAddr').textContent    = wiz.addr_col;
+  if (mode === 'resume') {
+    cardResume?.classList.add('selected');
+    cardMigrate?.classList.remove('selected');
+    viewMigrate?.classList.add('hidden');
+    viewResume?.classList.remove('hidden');
+    loadIngestedSources();
+  } else {
+    cardMigrate?.classList.add('selected');
+    cardResume?.classList.remove('selected');
+    viewMigrate?.classList.remove('hidden');
+    viewResume?.classList.add('hidden');
+  }
+}
+
+let pendingMigrationConfig = null;
+
+function openMigrationConfirmModal() {
+  const id_col   = document.getElementById('sel_id_col')?.value || wiz.id_col;
+  const addr_col = document.getElementById('sel_addr_col')?.value || wiz.addr_col;
+  const dropCol  = document.getElementById('chkDropSourceCol')?.checked || false;
+
+  if (!wiz.schema || !wiz.table || !id_col || !addr_col) {
+    showModalAlert('Campos Incompletos', 'Debe seleccionar la tabla y las columnas de ID y Dirección antes de migrar.', 'warning');
+    return;
+  }
+
+  pendingMigrationConfig = {
+    schema_name: wiz.schema,
+    table_name: wiz.table,
+    id_col: id_col,
+    address_col: addr_col,
+    drop_source_column: dropCol,
+  };
+
+  document.getElementById('modalMigrateSchemaText').textContent = wiz.schema;
+  document.getElementById('modalMigrateTableText').textContent = wiz.table;
+  document.getElementById('modalMigrateIdColText').textContent = id_col;
+  document.getElementById('modalMigrateAddrColText').textContent = addr_col;
+
+  const dropBadge = document.getElementById('modalMigrateDropColBadge');
+  if (dropBadge) {
+    if (dropCol) {
+      dropBadge.innerHTML = `<span class="badge" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; font-weight:700;">Sí, eliminar columna en origen</span>`;
+    } else {
+      dropBadge.innerHTML = `<span class="badge" style="background:#f0fdf4; color:#16a34a; border:1px solid #bbf7d0; font-weight:700;">No, conservar columna</span>`;
+    }
+  }
+
+  document.getElementById('modalConfirmMigrationOverlay').classList.remove('hidden');
+}
+
+function closeMigrationConfirmModal() {
+  document.getElementById('modalConfirmMigrationOverlay').classList.add('hidden');
+}
+
+async function executeConfirmedMigration() {
+  closeMigrationConfirmModal();
+  if (!pendingMigrationConfig) return;
+
+  const progressOverlay = document.getElementById('modalMigrationProgressOverlay');
+  progressOverlay.classList.remove('hidden');
+
+  try {
+    const res = await fetch('/api/migrate-source-table', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pendingMigrationConfig),
+    });
+    const data = await res.json();
+
+    progressOverlay.classList.add('hidden');
+
+    if (!res.ok) {
+      showModalAlert('Error en la Migración', data.detail || data.error || 'Error desconocido', 'error');
+      return;
+    }
+
+    // Cargar datos en el modal de resultado
+    document.getElementById('resMigrateTotalSource').textContent = (data.total_source || 0).toLocaleString();
+    const totalInDir = data.total_in_tb_direccion || ((data.already_migrated || data.already_linked || 0) + (data.migrated || 0));
+    document.getElementById('resMigrateLinked').textContent = totalInDir.toLocaleString();
+    document.getElementById('resMigrateUnlinked').textContent = (data.remaining_unlinked || 0).toLocaleString();
+    document.getElementById('resMigrateColDropped').textContent = data.column_dropped ? 'Eliminada (Desacoplada)' : 'Conservada';
+
+    // Desbloquear Paso 5 para esta tabla migrada
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+    const tab5 = document.getElementById('tab5');
+    if (tab5) tab5.classList.remove('locked');
+
+    // Abrir modal de resultado
+    document.getElementById('modalMigrationResultOverlay').classList.remove('hidden');
+
+    // Refrescar tablas y fuentes en background sin bloquear la UI
+    previewTable().catch(err => console.debug("previewTable bg err:", err));
+    loadIngestedSources().catch(err => console.debug("loadIngestedSources bg err:", err));
+
+  } catch (e) {
+    progressOverlay.classList.add('hidden');
+    showModalAlert('Error de Red', 'Error al ejecutar migración: ' + e.message, 'error');
+  }
+}
+
+function migrateAnotherTable() {
+  document.getElementById('modalMigrationResultOverlay')?.classList.add('hidden');
+  document.querySelectorAll('#tableCards .card-item').forEach(c => c.classList.remove('selected'));
+  document.getElementById('colConfig')?.classList.add('hidden');
+  document.getElementById('previewSection')?.classList.add('hidden');
+  document.getElementById('migrationStatusBanner')?.classList.add('hidden');
+  wiz.table = null;
+  wiz.columns = [];
+  switchWorkflowMode('migrate');
+}
+
+function goToResumeWorkflow() {
+  document.getElementById('modalMigrationResultOverlay')?.classList.add('hidden');
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
+  goStep(4);
+  switchWorkflowMode('resume');
+  loadIngestedSources();
+}
+
+function resumeFromJustMigrated() {
+  goToResumeWorkflow();
+}
+
+async function migrateSourceTable() {
+  openMigrationConfirmModal();
+}
+
+async function loadIngestedSources() {
+  const tbody = document.getElementById('bodyIngestedSources');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch('/api/ingested-sources');
+    const data = await res.json();
+    if (data.stats) {
+      updateCentralResumeUI(data.stats, data.sources);
+    }
+    if (!data.success || !data.sources || data.sources.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--slate-400); padding:16px;">No hay tablas ingestadas en tb_direccion todavía. Seleccione una tabla arriba para migrarla.</td></tr>`;
+      return;
+    }
+
+    tbody.innerHTML = '';
+    data.sources.forEach(s => {
+      const tr = document.createElement('tr');
+      const isPending = (s.pendientes || 0) > 0;
+      tr.innerHTML = `
+        <td style="font-weight:700; color:var(--mpch-navy);">${escapeHtml(s.dire_esquema)}</td>
+        <td style="font-weight:600;">${escapeHtml(s.dire_tabla)}</td>
+        <td><strong>${(s.total || 0).toLocaleString()}</strong></td>
+        <td><span class="badge" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe;">${(s.pendientes || 0).toLocaleString()}</span></td>
+        <td><span class="badge badge-valid">${(s.normalizados || 0).toLocaleString()}</span></td>
+        <td><span class="badge badge-observed">${(s.rechazados || 0).toLocaleString()}</span></td>
+        <td style="text-align:right;">
+          <button class="btn ${isPending ? 'btn-green' : 'btn-ghost'}" style="padding:4px 10px; font-size:11.5px;" onclick="resumeFromCentralSource('${escapeHtml(s.dire_esquema)}', '${escapeHtml(s.dire_tabla)}')">
+            <span>${isPending ? 'Reanudar' : 'Ver / Reprocesar'}</span>
+          </button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626; padding:12px;">Error al cargar fuentes ingestadas: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function updateCentralResumeUI(stats, sources) {
+  if (!stats) return;
+  wiz.centralStats = stats;
+  if (sources) wiz.ingestedSources = sources;
+
+  const total = stats.total || 0;
+  const pendientes = stats.pendientes || 0;
+  const hasData = Boolean(stats.has_records || total > 0);
+
+  const lblTotal = document.getElementById('lblCentralTotal');
+  const lblPending = document.getElementById('lblCentralPending');
+  const btnPending = document.getElementById('btnLblCentralPending');
+  const lblStep3Pending = document.getElementById('lblStep3CentralPending');
+  const btnResumeAll = document.getElementById('btnLblResumeAll');
+
+  if (lblTotal) lblTotal.textContent = total.toLocaleString();
+  if (lblPending) lblPending.textContent = pendientes.toLocaleString();
+  if (btnPending) btnPending.textContent = pendientes.toLocaleString();
+  if (lblStep3Pending) lblStep3Pending.textContent = pendientes.toLocaleString();
+  if (btnResumeAll) btnResumeAll.textContent = pendientes.toLocaleString();
+
+  const cardStep2 = document.getElementById('cardCentralDirectResume');
+  if (cardStep2) cardStep2.classList.toggle('hidden', !hasData);
+
+  const bannerStep3 = document.getElementById('bannerStep3CentralResume');
+  if (bannerStep3) bannerStep3.classList.toggle('hidden', !hasData || pendientes === 0);
+
+  if (hasData) {
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+    document.getElementById('tab4')?.classList.remove('locked');
+    document.getElementById('tab5')?.classList.remove('locked');
+  }
+}
+
+function resumeFromCentralSource(schema, table) {
+  wiz.schema = schema;
+  wiz.table = table;
+  wiz.id_col = 'dire_id';
+  wiz.addr_col = 'dire_valor_origen';
+  wiz.source_mode = 'central_tb_direccion';
+
+  document.getElementById('summSchema').textContent  = schema;
+  document.getElementById('summTable').textContent   = table;
+  document.getElementById('summId').textContent      = 'dire_id';
+  document.getElementById('summAddr').textContent    = 'dire_valor_origen (tb_direccion)';
 
   const elAiModel = document.getElementById('summAiModel');
-  if (elAiModel) elAiModel.textContent = wiz.ai_model || 'Ollama';
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model || 'Ollama'}`;
   const elAiHost = document.getElementById('summAiHost');
   if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
 
   syncNumWorkers(wiz.num_workers || 4);
 
   wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
   const tab5 = document.getElementById('tab5');
   if (tab5) tab5.classList.remove('locked');
 
   goStep(5);
   initStep5();
+}
+
+function resumeAllCentral() {
+  wiz.schema = 'public';
+  wiz.table  = 'tb_direccion';
+  wiz.id_col = 'dire_id';
+  wiz.addr_col = 'dire_valor_origen';
+  wiz.source_mode = 'central_tb_direccion';
+
+  const elSchema = document.getElementById('summSchema');
+  const elTable  = document.getElementById('summTable');
+  const elId     = document.getElementById('summId');
+  const elAddr   = document.getElementById('summAddr');
+
+  if (elSchema) elSchema.textContent = 'public';
+  if (elTable)  elTable.textContent  = 'tb_direccion (Todo el Catastro Central)';
+  if (elId)     elId.textContent     = 'dire_id';
+  if (elAddr)   elAddr.textContent   = 'dire_valor_origen (tb_direccion)';
+
+  const elAiModel = document.getElementById('summAiModel');
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model || 'Ollama'}`;
+  const elAiHost = document.getElementById('summAiHost');
+  if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
+
+  syncNumWorkers(wiz.num_workers || 4);
+
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
+  const tab5 = document.getElementById('tab5');
+  if (tab5) tab5.classList.remove('locked');
+
+  goStep(5);
+  initStep5();
+}
+
+function goToResumeMode() {
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
+  goStep(4);
+  switchWorkflowMode('resume');
+}
+
+function confirmTable() {
+  const selId   = document.getElementById('sel_id_col')?.value;
+  const selAddr = document.getElementById('sel_addr_col')?.value;
+  if (selId) wiz.id_col = selId;
+  if (selAddr) wiz.addr_col = selAddr;
+
+  if (!wiz.table || !wiz.id_col || !wiz.addr_col) {
+    showModalAlert('Selección Requerida', 'Por favor seleccione la tabla y las columnas de ID y Dirección antes de continuar.', 'warning');
+    return;
+  }
+
+  if (!wiz.is_ingested || (wiz.centralCounts?.total || 0) === 0) {
+    showModalAlert(
+      'Migración Requerida',
+      'Esta tabla aún no ha sido migrada a public.tb_direccion. Por favor haga clic en "Migrar e Ingestar a tb_direccion" antes de normalizar con IA.',
+      'warning'
+    );
+    return;
+  }
+
+  resumeFromCentralSource(wiz.schema, wiz.table);
 }
 
 // ── PASO 5: Ejecución y Monitoreo del Inspector Catastral ────────────────────
@@ -636,9 +1170,12 @@ async function initStep5() {
     const isAiActive   = (ai.connected && isModelReady) || Boolean(wiz.ai_model && (ai.connected || wiz.ai_host));
     const activeModel  = wiz.ai_model || ai.model || 'Ollama';
 
+    const elAiModel = document.getElementById('summAiModel');
+    if (elAiModel) elAiModel.textContent = `Extractor: ${activeModel}`;
+
     if (badge) {
       if (isAiActive && activeModel) {
-        badge.innerHTML = `<span class="badge badge-valid"><span class="dot-live"></span>IA Conectada — ${escapeHtml(activeModel)}</span>`;
+        badge.innerHTML = `<span class="badge badge-valid"><span class="dot-live"></span>Extractor: ${escapeHtml(activeModel)}</span>`;
       } else {
         badge.innerHTML = `<span class="badge badge-error">IA No Disponible</span>`;
       }
@@ -653,12 +1190,30 @@ async function initStep5() {
     if (data.active_schema && !wiz.schema) wiz.schema = data.active_schema;
     if (data.table_counts && !wiz.tableCounts) wiz.tableCounts = data.table_counts;
 
+    try {
+      const mode = wiz.source_mode || 'central_tb_direccion';
+      const cRes = await fetch(`/api/counts?schema=${encodeURIComponent(wiz.schema || 'public')}&table=${encodeURIComponent(wiz.table || 'tb_direccion')}&source_mode=${encodeURIComponent(mode)}`);
+      if (cRes.ok) {
+        const counts = await cRes.json();
+        wiz.tableCounts = counts;
+        const progressLabel = document.getElementById('progressLabel');
+        if (progressLabel && !data.is_running) {
+          const pend = counts.pendientes || 0;
+          const tot = counts.total || 0;
+          progressLabel.textContent = `${pend.toLocaleString()} pendientes de ${tot.toLocaleString()} en Catastro Central`;
+        }
+      }
+    } catch (_) {}
+
     if (data.recent_records && data.recent_records.length > 0 && wiz.allRecords.length === 0) {
       data.recent_records.forEach(r => addRecord(r, false));
       filterInspectorRecords();
     }
     if (data.stats) updateStats(data.stats);
   } catch (_) {}
+
+  // Cargar configuración de programación horaria diaria (Scheduler)
+  loadSchedulerConfig();
 
   if (!wiz.evtSource) connectSSE();
 }
@@ -706,6 +1261,7 @@ function handleEvent(ev) {
 }
 
 function onStopping(payload) {
+  stopLiveTicker();
   const btnStop = document.getElementById('btnStop');
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStop) btnStop.disabled = true;
@@ -746,7 +1302,103 @@ function onInitSnapshot(payload) {
   }
 }
 
+function formatTimeHMS(totalSeconds) {
+  if (totalSeconds === null || totalSeconds === undefined || isNaN(totalSeconds) || totalSeconds < 0) {
+    return '00h 00m 00s';
+  }
+  const sec = Math.floor(totalSeconds);
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+}
+
+function updateTimeBadges(s) {
+  if (!s) return;
+  const total  = s.total_to_process || 0;
+  const proc   = s.processed || 0;
+  const secs   = s.elapsed_seconds || 0;
+  const status = s.status || 'IDLE';
+
+  // 1. Tiempo transcurrido en horas, minutos y segundos
+  const elapsedEl = document.getElementById('elapsedLabel');
+  if (elapsedEl) {
+    const span = elapsedEl.querySelector('span') || elapsedEl;
+    span.textContent = `Tiempo: ${formatTimeHMS(secs)}`;
+  }
+
+  // 2. Velocidad de procesamiento
+  let rps = 0.0;
+  if (s.speed_rps !== undefined && s.speed_rps !== null && Number(s.speed_rps) > 0) {
+    rps = Number(s.speed_rps);
+  } else if (secs > 0 && proc > 0) {
+    rps = proc / secs;
+  }
+  const speedEl = document.getElementById('speedLabel');
+  if (speedEl) {
+    speedEl.textContent = `${rps.toFixed(1)} reg/s`;
+  }
+
+  // 3. Tiempo restante estimado (Horas, minutos y segundos)
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    if (status === 'FINISHED') {
+      span.textContent = 'Completado';
+    } else if (status === 'ERROR') {
+      span.textContent = 'Interrumpido';
+    } else if (proc === 0 || total === 0) {
+      span.textContent = 'Restante: —';
+    } else if (proc >= total) {
+      span.textContent = 'Restante: 00h 00m 00s';
+    } else {
+      let etaSec = s.eta_seconds;
+      if (etaSec === undefined || etaSec === null) {
+        const remaining = Math.max(0, total - proc);
+        etaSec = rps > 0 ? (remaining / rps) : 0;
+      }
+      if (etaSec > 0) {
+        span.textContent = `Restante: ~${formatTimeHMS(etaSec)}`;
+      } else {
+        span.textContent = 'Restante: Calculando...';
+      }
+    }
+  }
+}
+
+function startLiveTicker() {
+  if (wiz.liveTickerInterval) return;
+  wiz.liveTickerInterval = setInterval(() => {
+    if (wiz.lastStats && wiz.lastStats.status === 'RUNNING' && wiz.lastStats.start_time) {
+      const nowSec = Date.now() / 1000;
+      const currentElapsed = Math.max(0, nowSec - wiz.lastStats.start_time);
+      wiz.lastStats.elapsed_seconds = currentElapsed;
+
+      const proc = wiz.lastStats.processed || 0;
+      const total = wiz.lastStats.total_to_process || 0;
+      if (currentElapsed > 0 && proc > 0) {
+        const currentSpeed = proc / currentElapsed;
+        wiz.lastStats.speed_rps = currentSpeed;
+        const remaining = Math.max(0, total - proc);
+        wiz.lastStats.eta_seconds = currentSpeed > 0 ? (remaining / currentSpeed) : 0;
+      }
+      updateTimeBadges(wiz.lastStats);
+    }
+  }, 1000);
+}
+
+function stopLiveTicker() {
+  if (wiz.liveTickerInterval) {
+    clearInterval(wiz.liveTickerInterval);
+    wiz.liveTickerInterval = null;
+  }
+}
+
 function updateStats(s) {
+  if (!s) return;
+  wiz.lastStats = s;
+
   kpi('kpiProcessed', s.processed);
   kpi('kpiValid',     s.valid);
   kpi('kpiObserved',  s.observed);
@@ -755,69 +1407,90 @@ function updateStats(s) {
   const pct   = s.progress_pct || 0;
   const total = s.total_to_process || 0;
   const proc  = s.processed || 0;
-  const secs  = s.elapsed_seconds || 0;
-
-  document.getElementById('progressFill').style.width = pct + '%';
-  document.getElementById('progressLabel').textContent =
-    `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
-
-  if (secs > 0) {
-    const m = Math.floor(secs / 60);
-    const s2 = Math.floor(secs % 60);
-    document.getElementById('elapsedLabel').textContent =
-      `Tiempo: ${m > 0 ? m + 'm ' : ''}${s2}s`;
-  }
-
-  const speedEl = document.getElementById('speedLabel');
-  if (speedEl) {
-    let rps = '0.0';
-    if (s.speed_rps !== undefined && s.speed_rps !== null && s.speed_rps > 0) {
-      rps = Number(s.speed_rps).toFixed(1);
-    } else if (secs > 0 && proc > 0) {
-      rps = (proc / secs).toFixed(1);
-    }
-    speedEl.textContent = `${rps} reg/s`;
-  }
-
   const status = s.status || 'IDLE';
+
+  const progressFill = document.getElementById('progressFill');
+  if (progressFill) progressFill.style.width = pct + '%';
+
+  const progressLabel = document.getElementById('progressLabel');
+  if (progressLabel) {
+    progressLabel.textContent = `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
+  }
+
+  updateTimeBadges(s);
+
   const labels = {
     RUNNING: 'Ejecutando proceso de normalización...',
     IDLE: 'Listo para iniciar',
     FINISHED: 'Proceso completado',
     ERROR: 'Error en procesamiento'
   };
-  document.getElementById('statusLabel').textContent = labels[status] || status;
+  const statusLabel = document.getElementById('statusLabel');
+  if (statusLabel) statusLabel.textContent = labels[status] || status;
 
   const dot = document.getElementById('termLiveDot');
   if (dot) {
     dot.className = status === 'RUNNING' ? 'dot-live' : '';
     dot.style.background = status === 'RUNNING' ? 'var(--green)' : 'var(--slate-400)';
   }
+
+  if (status === 'RUNNING') {
+    startLiveTicker();
+  } else {
+    stopLiveTicker();
+  }
 }
 
 function addRecord(r, shouldScroll = true) {
+  // Extraer componentes estructurados con fallback dinámico
+  const rawComponents = Array.isArray(r.componentes) ? r.componentes : [];
+  let mzVal = r.manzana || '';
+  let ltVal = r.lote || '';
+  let sltVal = r.slote || '';
+  let blockVal = r.block || '';
+  let pisoVal = r.piso || '';
+
+  for (const c of rawComponents) {
+    const nom = (c.codi_nombre || '').toUpperCase().trim();
+    if (!mzVal && (nom === 'MANZANA' || nom === 'MZ' || c.codi_id === 1)) mzVal = c.diti_nombre || '';
+    if (!ltVal && (nom === 'LOTE' || nom === 'LT' || c.codi_id === 2)) ltVal = c.diti_nombre || '';
+    if (!sltVal && (nom === 'SUBLOTE' || nom === 'SLT' || c.codi_id === 3)) sltVal = c.diti_nombre || '';
+    if (!blockVal && (nom === 'BLOCK' || nom === 'BLOQUE' || nom === 'TORRE' || c.codi_id === 11)) blockVal = c.diti_nombre || '';
+    if (!pisoVal && (nom === 'PISO' || c.codi_id === 12)) pisoVal = c.diti_nombre || '';
+  }
+
+  const rawVias = Array.isArray(r.vias) ? r.vias : [];
+  const rawModulos = Array.isArray(r.modulos) ? r.modulos : [];
+
   const normRec = {
-    index:        r.index || (wiz.allRecords.length + 1),
-    total:        r.total || 0,
-    id_licencia:  r.id_licencia ?? r.id ?? '—',
-    raw_text:     r.raw_text || r.original_address || r.emp_direccion || '',
-    metodo:       r.metodo || r.method || 'IA',
-    es_procesado: Boolean(r.es_procesado),
-    observacion:  r.observacion || '',
-    success:      r.success !== false,
-    nom_via:      r.nom_via || '',
-    num_via:      r.num_via || '',
-    id_via:       r.id_via || null,
-    tipo_via_name:r.tipo_via_name || r.tipo_via || '',
-    nom_zona:     r.nom_zona || '',
-    id_zona:      r.id_zona || null,
-    tipo_zona_name:r.tipo_zona_name || r.tipo_zona || '',
-    manzana:      r.manzana || '',
-    lote:         r.lote || '',
-    slote:        r.slote || '',
-    referencia:   r.referencia || '',
-    time:         new Date().toLocaleTimeString('es-PE', { hour12: false }),
-    reprocesado:  false,
+    index:          r.index || (wiz.allRecords.length + 1),
+    total:          r.total || 0,
+    id_licencia:    r.id_licencia ?? r.id ?? '—',
+    raw_text:       r.raw_text || r.original_address || r.emp_direccion || '',
+    metodo:         r.metodo || r.method || 'IA',
+    es_procesado:   Boolean(r.es_procesado),
+    observacion:    r.observacion || '',
+    success:        r.success !== false,
+    nom_via:        r.nom_via || '',
+    num_via:        r.num_via || '',
+    id_via:         r.id_via || null,
+    tipo_via_name:  r.tipo_via_name || r.tipo_via || '',
+    nom_zona:       r.nom_zona || '',
+    id_zona:        r.id_zona || null,
+    tipo_zona_name: r.tipo_zona_name || r.tipo_zona || '',
+    manzana:        mzVal,
+    lote:           ltVal,
+    slote:          sltVal,
+    block:          blockVal,
+    piso:           pisoVal,
+    vias:           rawVias,
+    componentes:    rawComponents,
+    modulos:        rawModulos,
+    dire_id:        r.dire_id ?? null,
+    worker_id:      r.worker_id || '',
+    referencia:     r.referencia || r.dire_referencia || '',
+    time:           new Date().toLocaleTimeString('es-PE', { hour12: false }),
+    reprocesado:    false,
   };
 
   const isErr = !normRec.success || normRec.metodo === 'ERROR';
@@ -893,7 +1566,8 @@ function filterInspectorRecords(autoScroll = false) {
   wiz.inspectorMotor  = document.getElementById('filterInspectorMotor')?.value || 'all';
 
   const list = document.getElementById('inspectorCardsList');
-  if (!list) return;
+  const tbody = document.getElementById('inspectorTableBody');
+  if (!list && !tbody) return;
 
   const q  = wiz.searchInspector;
   const st = wiz.inspectorStatus;
@@ -904,9 +1578,19 @@ function filterInspectorRecords(autoScroll = false) {
       const matchId   = String(r.id_licencia).includes(q);
       const matchRaw  = (r.raw_text || '').toLowerCase().includes(q);
       const matchVia  = (r.nom_via || '').toLowerCase().includes(q);
+      const matchNum  = (r.num_via || '').toLowerCase().includes(q);
       const matchZona = (r.nom_zona || '').toLowerCase().includes(q);
+      const matchMz   = (r.manzana || '').toLowerCase().includes(q);
+      const matchLt   = (r.lote || '').toLowerCase().includes(q);
+      const matchBlk  = (r.block || '').toLowerCase().includes(q);
+      const matchPiso = (r.piso || '').toLowerCase().includes(q);
       const matchObs  = (r.observacion || '').toLowerCase().includes(q);
-      if (!matchId && !matchRaw && !matchVia && !matchZona && !matchObs) return false;
+      const matchViasArr = (r.vias || []).some(v => (v.via_nombre || '').toLowerCase().includes(q) || (v.divi_numero || '').toLowerCase().includes(q));
+      const matchModArr  = (r.modulos || []).some(m => (m.timo_nombre || '').toLowerCase().includes(q) || (m.ditm_nombre || '').toLowerCase().includes(q));
+
+      if (!matchId && !matchRaw && !matchVia && !matchNum && !matchZona && !matchMz && !matchLt && !matchBlk && !matchPiso && !matchObs && !matchViasArr && !matchModArr) {
+        return false;
+      }
     }
 
     if (st === 'valid' && !r.es_procesado) return false;
@@ -925,16 +1609,122 @@ function filterInspectorRecords(autoScroll = false) {
     countLabel.textContent = `Mostrando ${filtered.length.toLocaleString()} de ${wiz.allRecords.length.toLocaleString()} registros procesados`;
   }
 
-  if (!filtered.length) {
-    list.innerHTML = `<p style="text-align:center; color:var(--slate-400); padding:40px; font-size:13px;">No hay registros que coincidan con los filtros seleccionados.</p>`;
+  // Renderizar según el modo de vista seleccionado
+  if (wiz.viewMode === 'table') {
+    renderInspectorTable(filtered);
+  } else {
+    if (!filtered.length) {
+      if (list) list.innerHTML = `<p style="text-align:center; color:var(--slate-400); padding:40px; font-size:13px;">No hay registros que coincidan con los filtros seleccionados.</p>`;
+    } else {
+      if (list) list.innerHTML = filtered.map(r => createConciseRecordCard(r)).join('');
+    }
+  }
+
+  if (autoScroll && wiz.autoScroll) {
+    if (wiz.viewMode === 'table') {
+      const tableWrap = document.getElementById('inspectorTableWrap');
+      if (tableWrap) tableWrap.scrollTop = 0;
+    } else {
+      if (list) list.scrollTop = 0;
+    }
+  }
+}
+
+function setInspectorViewMode(mode) {
+  wiz.viewMode = mode;
+  const btnCards = document.getElementById('btnViewCards');
+  const btnTable = document.getElementById('btnViewTable');
+  const cardsList = document.getElementById('inspectorCardsList');
+  const tableWrap = document.getElementById('inspectorTableWrap');
+
+  if (mode === 'table') {
+    btnCards?.classList.remove('active');
+    btnTable?.classList.add('active');
+    cardsList?.classList.add('hidden');
+    tableWrap?.classList.remove('hidden');
+  } else {
+    btnCards?.classList.add('active');
+    btnTable?.classList.remove('active');
+    cardsList?.classList.remove('hidden');
+    tableWrap?.classList.add('hidden');
+  }
+
+  filterInspectorRecords(false);
+}
+
+function renderInspectorTable(records) {
+  const tbody = document.getElementById('inspectorTableBody');
+  if (!tbody) return;
+
+  if (!records.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:var(--slate-400); padding:40px;">No hay registros que coincidan con los filtros seleccionados.</td></tr>`;
     return;
   }
 
-  list.innerHTML = filtered.map(r => createConciseRecordCard(r)).join('');
+  tbody.innerHTML = records.map(r => {
+    const isErr = !r.success || r.metodo === 'ERROR';
+    const isObs = !r.es_procesado && !isErr;
+    const statusBadge = isErr
+      ? `<span class="badge badge-error">ERROR</span>`
+      : (isObs ? `<span class="badge badge-observed">OBSERVADO</span>` : `<span class="badge badge-valid">NORMALIZADO</span>`);
 
-  if (autoScroll && wiz.autoScroll) {
-    list.scrollTop = 0;
-  }
+    let motorBadge = `<span class="badge badge-motor-ai" style="font-size:10px;">IA</span>`;
+    if (r.metodo && (r.metodo.includes('Híbrido') || r.metodo.includes('Hibrido'))) {
+      motorBadge = `<span class="badge badge-motor-hy" style="font-size:10px;">HÍBRIDO</span>`;
+    } else if (r.metodo && !r.metodo.includes('IA')) {
+      motorBadge = `<span class="badge badge-motor-he" style="font-size:10px;">HEURÍSTICO</span>`;
+    }
+
+    // Vías
+    let viasText = '';
+    if (r.vias && r.vias.length > 1) {
+      viasText = r.vias.map(v => `${escapeHtml(v.tipo_via_name || '')} ${escapeHtml(v.via_nombre || '')} ${v.divi_numero ? 'N° ' + escapeHtml(v.divi_numero) : 'S/N'}`.trim()).join(' <span style="color:var(--slate-400); font-weight:700;">con</span> ');
+    } else {
+      const tipo = r.tipo_via_name ? escapeHtml(r.tipo_via_name) + ' ' : '';
+      const nom = escapeHtml(r.nom_via || 'Sin vía');
+      const num = r.num_via ? `N° ${escapeHtml(r.num_via)}` : 'S/N';
+      viasText = `${tipo}${nom} ${num}`;
+    }
+
+    // Zona
+    const zonaText = `${escapeHtml(r.tipo_zona_name ? r.tipo_zona_name + ' ' : '')}${escapeHtml(r.nom_zona || 'Sin zona')}`;
+
+    // Predio
+    const predChips = [];
+    if (r.manzana) predChips.push(`<span class="chip-predio chip-mz">Mz:${escapeHtml(r.manzana)}</span>`);
+    if (r.lote)    predChips.push(`<span class="chip-predio chip-lt">Lt:${escapeHtml(r.lote)}</span>`);
+    if (r.slote && isCleanSublote(r.slote)) predChips.push(`<span class="chip-predio chip-slt">Slt:${escapeHtml(r.slote)}</span>`);
+    if (r.block)   predChips.push(`<span class="chip-predio chip-block">Blk:${escapeHtml(r.block)}</span>`);
+    if (r.piso)    predChips.push(`<span class="chip-predio chip-piso">Piso:${escapeHtml(r.piso)}</span>`);
+    const predioText = predChips.length > 0 ? predChips.join('') : '—';
+
+    // Módulos
+    let modText = '—';
+    if (r.modulos && r.modulos.length > 0) {
+      modText = r.modulos.map(m => `${escapeHtml(m.timo_nombre || '')} ${escapeHtml(m.ditm_nombre || '')}`.trim()).join(', ');
+    }
+
+    // Diagnóstico
+    let diagText = '—';
+    if (r.observacion) {
+      const color = isErr ? '#dc2626' : (isObs ? '#d97706' : '#64748b');
+      diagText = `<span style="color:${color}; font-weight:600;">${escapeHtml(r.observacion)}</span>`;
+    }
+
+    return `
+      <tr>
+        <td style="font-family:monospace; font-weight:700;">${r.id_licencia}</td>
+        <td>${statusBadge}</td>
+        <td>${motorBadge}</td>
+        <td style="font-family:monospace; font-size:11.5px; max-width:240px; word-break:break-word;">${escapeHtml(r.raw_text)}</td>
+        <td style="font-weight:600;">${viasText}</td>
+        <td>${zonaText}</td>
+        <td>${predioText}</td>
+        <td style="color:#5b21b6; font-weight:600;">${modText}</td>
+        <td style="font-size:11.5px;">${diagText}</td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function createConciseRecordCard(r) {
@@ -942,7 +1732,7 @@ function createConciseRecordCard(r) {
   const isObs = !r.es_procesado && !isErr;
   const cardClass = isErr ? 'card-error' : (isObs ? 'card-observed' : 'card-valid');
 
-  // Badge de Estado Institucional (Sin Emojis)
+  // Badges de Estado Institucional (Sin Emojis)
   const statusBadge = isErr
     ? `<span class="badge badge-error">ERROR</span>`
     : (isObs ? `<span class="badge badge-observed">OBSERVADO</span>` : `<span class="badge badge-valid">NORMALIZADO</span>`);
@@ -955,41 +1745,96 @@ function createConciseRecordCard(r) {
     motorBadge = `<span class="badge badge-motor-he">HEURÍSTICO</span>`;
   }
 
-  // Diagnóstico Catastral Sobrio
+  // Diagnóstico Catastral Sobrio y Amplio
   let diagHtml = '';
   if (r.observacion) {
     const diagClass = isErr ? 'diag-err' : 'diag-obs';
     diagHtml = `
       <div class="record-diagnosis ${diagClass}">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0; margin-top:2px;">
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
-        <strong>Diagnóstico Catastral:</strong> <span>${escapeHtml(r.observacion)}</span>
+        <div><strong>Diagnóstico Catastral:</strong> <span>${escapeHtml(r.observacion)}</span></div>
       </div>`;
   }
 
-  // Formato conciso de componentes
-  const viaName = r.nom_via || 'Sin vía';
-  const numVia = r.num_via ? `N° ${r.num_via}` : 'S/N';
-  const viaChip = r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '';
+  // Columna 1: Vías (Principal y Esquinas)
+  let viasHtml = '';
+  const viasArr = (r.vias && r.vias.length > 0) ? r.vias : [];
+  if (viasArr.length > 1) {
+    viasHtml = viasArr.map((v, i) => {
+      const label = i === 0 ? 'Vía 1' : 'Vía 2';
+      const tipo = v.tipo_via_name ? escapeHtml(v.tipo_via_name) + ' ' : '';
+      const nom = escapeHtml(v.via_nombre || 'Sin nombre');
+      const num = v.divi_numero
+        ? `<span class="via-badge-num">N° ${escapeHtml(v.divi_numero)}</span>`
+        : `<span class="via-badge-num" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">S/N</span>`;
+      const idChip = v.via_id ? `<span class="chip-id chip-via">ID: ${v.via_id}</span>` : '';
+      return `<div class="via-entry"><span style="font-size:10px; font-weight:700; color:var(--slate-400);">${label}:</span> <strong>${tipo}${nom}</strong> ${num} ${idChip}</div>`;
+    }).join('<div class="via-corner-divider"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg> Intersección (Esquina)</div>');
+  } else if (viasArr.length === 1) {
+    const v = viasArr[0];
+    const tipo = v.tipo_via_name ? escapeHtml(v.tipo_via_name) + ' ' : '';
+    const nom = escapeHtml(v.via_nombre || r.nom_via || 'Sin vía');
+    const num = v.divi_numero
+      ? `<span class="via-badge-num">N° ${escapeHtml(v.divi_numero)}</span>`
+      : (r.num_via ? `<span class="via-badge-num">N° ${escapeHtml(r.num_via)}</span>` : `<span class="via-badge-num" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">S/N</span>`);
+    const idChip = v.via_id ? `<span class="chip-id chip-via">ID: ${v.via_id}</span>` : (r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '');
+    viasHtml = `<div class="via-entry"><strong>${tipo}${nom}</strong> ${num} ${idChip}</div>`;
+  } else {
+    const tipo = r.tipo_via_name ? escapeHtml(r.tipo_via_name) + ' ' : '';
+    const nom = escapeHtml(r.nom_via || 'Sin vía');
+    const num = r.num_via
+      ? `<span class="via-badge-num">N° ${escapeHtml(r.num_via)}</span>`
+      : `<span class="via-badge-num" style="background:#f1f5f9; color:#64748b; border-color:#cbd5e1;">S/N</span>`;
+    const idChip = r.id_via ? `<span class="chip-id chip-via">ID: ${r.id_via}</span>` : '';
+    viasHtml = `<div class="via-entry"><strong>${tipo}${nom}</strong> ${num} ${idChip}</div>`;
+  }
 
-  const zonaName = r.nom_zona || 'Sin zona';
+  // Columna 2: Zona Catastral
+  const zonaTipo = r.tipo_zona_name ? escapeHtml(r.tipo_zona_name) + ' ' : '';
+  const zonaNom = escapeHtml(r.nom_zona || 'Sin zona');
   const zonaChip = r.id_zona ? `<span class="chip-id chip-zona">ID: ${r.id_zona}</span>` : '';
+  const zonaHtml = `<div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;"><strong>${zonaTipo}${zonaNom}</strong> ${zonaChip}</div>`;
 
-  const catastroText = (r.manzana || r.lote)
-    ? `Mz: ${r.manzana || '-'} | Lt: ${r.lote || '-'}${r.slote ? ' | Slt: ' + r.slote : ''}`
-    : 'N/D';
+  // Columna 3: Predio Catastral (Componentes Núcleo)
+  const predioChips = [];
+  if (r.manzana) predioChips.push(`<span class="chip-predio chip-mz">Mz: ${escapeHtml(r.manzana)}</span>`);
+  if (r.lote)    predioChips.push(`<span class="chip-predio chip-lt">Lt: ${escapeHtml(r.lote)}</span>`);
+  if (r.slote && isCleanSublote(r.slote)) predioChips.push(`<span class="chip-predio chip-slt">Slt: ${escapeHtml(r.slote)}</span>`);
+  if (r.block)   predioChips.push(`<span class="chip-predio chip-block">Block: ${escapeHtml(r.block)}</span>`);
+  if (r.piso)    predioChips.push(`<span class="chip-predio chip-piso">Piso: ${escapeHtml(r.piso)}</span>`);
 
-  const refItem = r.referencia
-    ? `<div class="breakdown-item"><span class="breakdown-lbl">Referencia</span> <span class="breakdown-val" style="color:var(--mpch-navy);">${escapeHtml(r.referencia)}</span></div>`
+  if (Array.isArray(r.componentes)) {
+    for (const c of r.componentes) {
+      const cnom = (c.codi_nombre || '').toUpperCase().trim();
+      if (!['MANZANA','MZ','LOTE','LT','SUBLOTE','SLT','BLOCK','BLOQUE','TORRE','PISO'].includes(cnom) && ![1,2,3,11,12].includes(c.codi_id)) {
+        predioChips.push(`<span class="chip-predio" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">${escapeHtml(c.codi_nombre || 'COMP')}: ${escapeHtml(c.diti_nombre || '')}</span>`);
+      }
+    }
+  }
+  const predioHtml = predioChips.length > 0
+    ? `<div style="display:flex; flex-wrap:wrap; gap:2px;">${predioChips.join('')}</div>`
+    : `<span style="color:var(--slate-400); font-size:12px;">Sin componentes prediales</span>`;
+
+  // Columna 4: Módulos Inmobiliarios
+  const modArr = Array.isArray(r.modulos) ? r.modulos : [];
+  const modHtml = modArr.length > 0
+    ? `<div style="display:flex; flex-wrap:wrap; gap:2px;">${modArr.map(m => `<span class="chip-mod">${escapeHtml(m.timo_nombre || 'MOD')}: ${escapeHtml(m.ditm_nombre || '')}</span>`).join('')}</div>`
+    : `<span style="color:var(--slate-400); font-size:12px;">Sin módulos</span>`;
+
+  // Columna 5: Referencia
+  const refHtml = r.referencia
+    ? `<span class="chip-ref-text">${escapeHtml(r.referencia)}</span>`
+    : `<span style="color:var(--slate-400); font-size:12px;">—</span>`;
+
+  // Metadatos
+  const direIdChip = r.dire_id
+    ? `<span class="chip-id" style="background:#e0f2fe; color:#0369a1; border-color:#bae6fd;">DIRE_ID: ${r.dire_id}</span>`
     : '';
-
-  // Badge de Reintento / Actualización si aplica
   const reproBadge = r.reprocesado
     ? `<span class="badge" style="background:var(--slate-100); color:var(--mpch-navy); border:1px solid var(--slate-300); font-size:10px;">REPROCESADO</span>`
     : '';
-
-  // Badge de Instancia IA / Concurrencia
   const workerBadge = r.worker_id
     ? `<span class="badge" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; font-weight:700; font-size:10px;">${escapeHtml(r.worker_id)}</span>`
     : '';
@@ -999,6 +1844,7 @@ function createConciseRecordCard(r) {
       <div class="record-header">
         <div class="record-meta">
           <span class="record-id-chip">ID: ${r.id_licencia}</span>
+          ${direIdChip}
           <span class="record-index">#${r.index} de ${r.total || '?'}</span>
           ${statusBadge}
           ${motorBadge}
@@ -1019,22 +1865,27 @@ function createConciseRecordCard(r) {
         <span class="val-entrada">"${escapeHtml(r.raw_text)}"</span>
       </div>
 
-      <div class="record-breakdown">
-        <div class="breakdown-item">
-          <span class="breakdown-lbl">Vía</span>
-          <span class="breakdown-val">${escapeHtml(r.tipo_via_name ? r.tipo_via_name + ' ' : '')}${escapeHtml(viaName)} ${escapeHtml(numVia)}</span>
-          ${viaChip}
+      <div class="catastro-matrix">
+        <div class="matrix-col">
+          <span class="matrix-lbl">Vía(s) Normalizada(s)</span>
+          <div class="matrix-val">${viasHtml}</div>
         </div>
-        <div class="breakdown-item">
-          <span class="breakdown-lbl">Zona</span>
-          <span class="breakdown-val">${escapeHtml(r.tipo_zona_name ? r.tipo_zona_name + ' ' : '')}${escapeHtml(zonaName)}</span>
-          ${zonaChip}
+        <div class="matrix-col">
+          <span class="matrix-lbl">Zona / Hab. Urbana</span>
+          <div class="matrix-val">${zonaHtml}</div>
         </div>
-        <div class="breakdown-item">
-          <span class="breakdown-lbl">Catastro</span>
-          <span class="breakdown-val">${escapeHtml(catastroText)}</span>
+        <div class="matrix-col">
+          <span class="matrix-lbl">Predio Catastral</span>
+          <div class="matrix-val">${predioHtml}</div>
         </div>
-        ${refItem}
+        <div class="matrix-col">
+          <span class="matrix-lbl">Módulo(s)</span>
+          <div class="matrix-val">${modHtml}</div>
+        </div>
+        <div class="matrix-col">
+          <span class="matrix-lbl">Referencia</span>
+          <div class="matrix-val">${refHtml}</div>
+        </div>
       </div>
 
       ${diagHtml}
@@ -1046,13 +1897,28 @@ function copySingleRecord(idLicencia) {
   const rec = wiz.allRecords.find(r => r.id_licencia == idLicencia);
   if (!rec) return;
 
-  const viaDesc = `${rec.tipo_via_name ? rec.tipo_via_name + ' ' : ''}${rec.nom_via || ''} ${rec.num_via ? 'N° ' + rec.num_via : 'S/N'}`.trim();
+  let viaDesc = `${rec.tipo_via_name ? rec.tipo_via_name + ' ' : ''}${rec.nom_via || ''} ${rec.num_via ? 'N° ' + rec.num_via : 'S/N'}`.trim();
+  if (rec.vias && rec.vias.length > 1) {
+    viaDesc = rec.vias.map(v => `${v.tipo_via_name || ''} ${v.via_nombre || ''} ${v.divi_numero ? 'N° ' + v.divi_numero : 'S/N'}`.trim()).join(' con ');
+  }
   const zonaDesc = `${rec.tipo_zona_name ? rec.tipo_zona_name + ' ' : ''}${rec.nom_zona || ''}`.trim();
-  const catText = (rec.manzana || rec.lote) ? `Mz: ${rec.manzana || '-'} | Lt: ${rec.lote || '-'}${rec.slote ? ' | Slt: ' + rec.slote : ''}` : '';
+  const predParts = [];
+  if (rec.manzana) predParts.push(`Mz: ${rec.manzana}`);
+  if (rec.lote) predParts.push(`Lt: ${rec.lote}`);
+  if (rec.slote && isCleanSublote(rec.slote)) predParts.push(`Slt: ${rec.slote}`);
+  if (rec.block) predParts.push(`Block: ${rec.block}`);
+  if (rec.piso) predParts.push(`Piso: ${rec.piso}`);
+  const catText = predParts.join(' | ');
+
+  let modText = '';
+  if (rec.modulos && rec.modulos.length > 0) {
+    modText = rec.modulos.map(m => `${m.timo_nombre || ''} ${m.ditm_nombre || ''}`.trim()).join(', ');
+  }
+
   const estado = (!rec.success || rec.metodo === 'ERROR') ? 'ERROR' : (rec.es_procesado ? 'NORMALIZADO' : 'OBSERVADO');
 
-  const text = `ID: ${rec.id_licencia} | Entrada: "${rec.raw_text}" | Vía: ${viaDesc || 'N/D'} | Zona: ${zonaDesc || 'N/D'}${catText ? ' | ' + catText : ''} | Estado: ${estado}${rec.observacion ? ' | Diagnóstico: ' + rec.observacion : ''}`;
-  navigator.clipboard.writeText(text);
+  const text = `ID: ${rec.id_licencia} | Entrada: "${rec.raw_text}" | Vía: ${viaDesc || 'N/D'} | Zona: ${zonaDesc || 'N/D'}${catText ? ' | ' + catText : ''}${modText ? ' | Módulos: ' + modText : ''} | Estado: ${estado}${rec.observacion ? ' | Diagnóstico: ' + rec.observacion : ''}`;
+  navigator.clipboard.writeText(text).catch(() => {});
 }
 
 let currentExportDataSource = 'db'; // 'db' o 'view'
@@ -1062,9 +1928,13 @@ async function openExportModal() {
   const overlay = document.getElementById('modalExportOverlay');
   if (!overlay) return;
 
+  const isCentral = (wiz.source_mode === 'central_tb_direccion' || wiz.table === 'tb_direccion');
+  const schema = (isCentral && wiz.table === 'tb_direccion') ? 'public' : (wiz.schema || 'public');
+  const table = (isCentral && wiz.table === 'tb_direccion') ? 'tb_direccion' : (wiz.table || 'tb_direccion');
+  const idCol = isCentral ? 'dire_id' : (wiz.id_col || null);
+  const addrCol = isCentral ? 'dire_valor_origen' : (wiz.addr_col || null);
+
   const tableLabel = document.getElementById('exportModalTable');
-  const schema = wiz.schema || 'public';
-  const table = wiz.table || 'direcciones_actual';
   if (tableLabel) tableLabel.textContent = `${schema}.${table}`;
 
   // Actualizar contador en vivo de registros en pantalla
@@ -1087,8 +1957,8 @@ async function openExportModal() {
       body: JSON.stringify({
         schema_name: schema,
         table_name: table,
-        id_col: wiz.id_col || null,
-        address_col: wiz.addr_col || null,
+        id_col: idCol,
+        address_col: addrCol,
       }),
     });
     if (res.ok) {
@@ -1108,6 +1978,13 @@ function closeExportModal() {
   const overlay = document.getElementById('modalExportOverlay');
   if (overlay) overlay.classList.add('hidden');
 }
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeExportModal();
+    if (typeof closeShutdownModal === 'function') closeShutdownModal();
+  }
+});
 
 function setExportDataSource(source) {
   currentExportDataSource = source;
@@ -1162,18 +2039,24 @@ function renderExportModalCounts() {
 }
 
 async function executeExport(scope, format) {
-  const isDb = (currentExportDataSource === 'db');
-  const schema = wiz.schema || 'public';
-  const table = wiz.table || 'direcciones_actual';
+  const isCentral = (wiz.source_mode === 'central_tb_direccion' || wiz.table === 'tb_direccion');
+  const schema = (isCentral && wiz.table === 'tb_direccion') ? 'public' : (wiz.schema || 'public');
+  const table = (isCentral && wiz.table === 'tb_direccion') ? 'tb_direccion' : (wiz.table || 'tb_direccion');
+  const idCol = isCentral ? 'dire_id' : (wiz.id_col || null);
+  const addrCol = isCentral ? 'dire_valor_origen' : (wiz.addr_col || null);
+  const isDb = (currentExportDataSource === 'db') && Boolean(schema && table);
 
   // Identificar botón clickeado para feedback visual (spinner)
   let btnId = '';
   if (scope === 'processed' && format === 'excel') btnId = 'btnDlExcelProcessed';
   else if (scope === 'processed' && format === 'csv') btnId = 'btnDlCsvProcessed';
+  else if (scope === 'processed' && format === 'json') btnId = 'btnDlJsonProcessed';
   else if (scope === 'observed' && format === 'excel') btnId = 'btnDlExcelObserved';
   else if (scope === 'observed' && format === 'csv') btnId = 'btnDlCsvObserved';
+  else if (scope === 'observed' && format === 'json') btnId = 'btnDlJsonObserved';
   else if (scope === 'valid' && format === 'excel') btnId = 'btnDlExcelValid';
   else if (scope === 'valid' && format === 'csv') btnId = 'btnDlCsvValid';
+  else if (scope === 'valid' && format === 'json') btnId = 'btnDlJsonValid';
 
   const btn = document.getElementById(btnId);
   const origHtml = btn ? btn.innerHTML : '';
@@ -1193,14 +2076,14 @@ async function executeExport(scope, format) {
           table_name: table,
           scope: scope,
           format: format,
-          id_col: wiz.id_col || null,
-          dir_col: wiz.addr_col || null,
+          id_col: idCol,
+          dir_col: addrCol,
         }),
       });
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert('Error en exportación desde BD: ' + (err.detail || 'No se pudo generar el archivo.'));
+        showModalAlert('Error de Exportación', err.detail || 'No se pudo generar el archivo.', 'error');
         return;
       }
 
@@ -1214,7 +2097,7 @@ async function executeExport(scope, format) {
         const now = new Date();
         const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
         const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-        const ext = format === 'csv' ? 'csv' : 'xlsx';
+        const ext = format === 'csv' ? 'csv' : (format === 'json' ? 'json' : 'xlsx');
         filename = `reporte_${table}_${scope}_${dateStr}_${timeStr}.${ext}`;
       }
 
@@ -1236,11 +2119,14 @@ async function executeExport(scope, format) {
       }
 
       if (!filtered.length) {
-        alert('No hay registros en la vista activa que coincidan con el filtro seleccionado.');
+        showModalAlert('Sin Registros', 'No hay registros en la vista activa que coincidan con el filtro seleccionado.', 'info');
         return;
       }
 
-      const endpoint = format === 'csv' ? '/api/export-csv' : '/api/export-excel';
+      let endpoint = '/api/export-excel';
+      if (format === 'csv') endpoint = '/api/export-csv';
+      else if (format === 'json') endpoint = '/api/export-json';
+
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1249,7 +2135,7 @@ async function executeExport(scope, format) {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert('Error al generar archivo: ' + (err.detail || 'Error desconocido'));
+        showModalAlert('Error al Generar Archivo', err.detail || 'Error desconocido', 'error');
         return;
       }
 
@@ -1257,13 +2143,13 @@ async function executeExport(scope, format) {
       const now = new Date();
       const dateStr = now.toISOString().slice(0, 10).replace(/-/g, '');
       const timeStr = now.toTimeString().slice(0, 8).replace(/:/g, '');
-      const ext = format === 'csv' ? 'csv' : 'xlsx';
+      const ext = format === 'csv' ? 'csv' : (format === 'json' ? 'json' : 'xlsx');
       const filename = `reporte_vista_${scope}_${dateStr}_${timeStr}.${ext}`;
 
       triggerBrowserDownload(blob, filename);
     }
   } catch (e) {
-    alert('Error al descargar archivo: ' + e.message);
+    showModalAlert('Error de Descarga', e.message, 'error');
   } finally {
     if (btn) {
       btn.disabled = false;
@@ -1290,6 +2176,10 @@ function exportRecordsExcel() {
 
 function exportRecordsCSV() {
   executeExport('processed', 'csv');
+}
+
+function exportRecordsJSON() {
+  executeExport('processed', 'json');
 }
 
 async function clearRecords() {
@@ -1325,6 +2215,17 @@ async function startETL() {
   document.getElementById('progressFill').style.width = '0%';
   document.getElementById('progressLabel').textContent = 'Preparando ejecución...';
 
+  const elapsedEl = document.getElementById('elapsedLabel');
+  if (elapsedEl) {
+    const span = elapsedEl.querySelector('span') || elapsedEl;
+    span.textContent = 'Tiempo: 00h 00m 00s';
+  }
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    span.textContent = 'Restante: Calculando...';
+  }
+
   document.getElementById('btnStart').disabled = true;
   document.getElementById('btnStop').disabled  = false;
   const btnStopSync = document.getElementById('btnStopSync');
@@ -1340,6 +2241,7 @@ async function startETL() {
     filter_mode:  filter,
     require_ai:   require_ai,
     limit,
+    source_mode:  wiz.source_mode || "central_tb_direccion",
   };
 
   try {
@@ -1351,17 +2253,17 @@ async function startETL() {
     const data = await res.json();
 
     if (!res.ok) {
-      alert('Error al iniciar el proceso: ' + (data.detail || 'Error desconocido'));
+      showModalAlert('Error al Iniciar Proceso', data.detail || 'Error desconocido', 'error');
       document.getElementById('btnStart').disabled = false;
       document.getElementById('btnStop').disabled  = true;
       if (btnStopSync) btnStopSync.disabled = true;
     } else {
       const banner = document.getElementById('bannerActiveSession');
       if (banner) banner.classList.remove('hidden');
-      [1, 2, 3, 4].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
+      [1, 2, 3, 4, 5].forEach(i => document.getElementById(`tab${i}`)?.classList.add('locked'));
     }
   } catch (e) {
-    alert('Error de comunicación: ' + e.message);
+    showModalAlert('Error de Comunicación', e.message, 'error');
     document.getElementById('btnStart').disabled = false;
     document.getElementById('btnStop').disabled  = true;
     if (btnStopSync) btnStopSync.disabled = true;
@@ -1369,6 +2271,7 @@ async function startETL() {
 }
 
 async function stopETL() {
+  stopLiveTicker();
   document.getElementById('btnStop').disabled = true;
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStopSync) btnStopSync.disabled = true;
@@ -1378,6 +2281,12 @@ async function stopETL() {
 }
 
 function onDone(data) {
+  stopLiveTicker();
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    span.textContent = 'Completado';
+  }
   document.getElementById('btnStart').disabled = false;
   document.getElementById('btnStop').disabled  = true;
   const btnStopSync = document.getElementById('btnStopSync');
@@ -1387,12 +2296,18 @@ function onDone(data) {
   if (dot) dot.style.background = 'var(--slate-400)';
   const banner = document.getElementById('bannerActiveSession');
   if (banner) banner.classList.add('hidden');
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     if (i <= wiz.maxStepUnlocked) document.getElementById(`tab${i}`)?.classList.remove('locked');
   });
 }
 
 function onError(data) {
+  stopLiveTicker();
+  const etaEl = document.getElementById('etaLabel');
+  if (etaEl) {
+    const span = etaEl.querySelector('span') || etaEl;
+    span.textContent = 'Interrumpido';
+  }
   document.getElementById('btnStart').disabled = false;
   document.getElementById('btnStop').disabled  = true;
   const btnStopSync = document.getElementById('btnStopSync');
@@ -1402,7 +2317,7 @@ function onError(data) {
   if (dot) dot.style.background = 'var(--red)';
   const banner = document.getElementById('bannerActiveSession');
   if (banner) banner.classList.add('hidden');
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3, 4, 5].forEach(i => {
     if (i <= wiz.maxStepUnlocked) document.getElementById(`tab${i}`)?.classList.remove('locked');
   });
 }
@@ -1492,6 +2407,77 @@ async function checkInitialServerState() {
       return;
     }
     const data = await res.json();
+
+    // 1. Pre-cargar defaults de configuración si están disponibles
+    if (data.defaults) {
+      const dbHostInput = document.getElementById('db_host');
+      const dbPortInput = document.getElementById('db_port');
+      const dbNameInput = document.getElementById('db_name');
+      const dbUserInput = document.getElementById('db_user');
+      const aiHostInput = document.getElementById('ai_host');
+      const aiPortInput = document.getElementById('ai_port');
+
+      if (dbHostInput && !dbHostInput.value) dbHostInput.value = data.defaults.db_host || 'localhost';
+      if (dbPortInput && !dbPortInput.value) dbPortInput.value = data.defaults.db_port || 5432;
+      if (dbNameInput && !dbNameInput.value) dbNameInput.value = data.defaults.db_name || 'bd_mpch';
+      if (dbUserInput && !dbUserInput.value) dbUserInput.value = data.defaults.db_user || 'postgres';
+      if (aiHostInput && !aiHostInput.value) aiHostInput.value = data.defaults.ai_host || 'localhost';
+      if (aiPortInput && !aiPortInput.value) aiPortInput.value = data.defaults.ai_port || 11434;
+
+      wiz.db_host = dbHostInput?.value || 'localhost';
+      wiz.db_port = parseInt(dbPortInput?.value) || 5432;
+      wiz.db_name = dbNameInput?.value || 'bd_mpch';
+      wiz.db_user = dbUserInput?.value || 'postgres';
+      wiz.ai_host = aiHostInput?.value || 'localhost';
+      wiz.ai_port = parseInt(aiPortInput?.value) || 11434;
+    }
+
+    // 2. Pre-cargar estado verificado de IA si el servidor reporta conexión positiva
+    if (data.ai && data.ai.connected) {
+      const activeMdl = data.active_model || data.defaults?.ai_model;
+      if (activeMdl) {
+        wiz.aiVerified = true;
+        wiz.ai_model = activeMdl;
+        wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 2);
+
+        const sel = document.getElementById('ai_model_select');
+        if (sel) {
+          let found = false;
+          for (let opt of sel.options) {
+            if (opt.value === activeMdl) { opt.selected = true; found = true; break; }
+          }
+          if (!found) {
+            const opt = new Option(`${activeMdl} (Activo en servidor)`, activeMdl, true, true);
+            sel.add(opt, sel.options[0]);
+          }
+        }
+
+        const btnGo2 = document.getElementById('btnGoStep2');
+        if (btnGo2) btnGo2.disabled = false;
+        document.getElementById('tab2')?.classList.remove('locked');
+        showDiag('diagAI', 'ok', 'Motor IA Verificado y Activo', `Conectado exitosamente con Ollama usando el modelo <strong>${escapeHtml(activeMdl)}</strong>.`);
+      }
+    }
+
+    // 3. Pre-cargar estado verificado de BD si el servidor reporta conexión positiva
+    if (data.db && data.db.connected) {
+      wiz.dbVerified = true;
+      wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 3);
+      wiz.availableSchemas = data.available_schemas || ['public'];
+      renderSchemaCards(wiz.availableSchemas);
+      updateSchemaCountBadge(wiz.availableSchemas.length, wiz.availableSchemas.length);
+
+      const btnGo3 = document.getElementById('btnGoStep3');
+      if (btnGo3) btnGo3.disabled = false;
+      document.getElementById('tab3')?.classList.remove('locked');
+      showDiag('diagDB', 'ok', 'Conexión a Base de Datos Detectada', `Servidor PostgreSQL activo. ${wiz.availableSchemas.length} esquema(s) disponible(s).`);
+
+      if (data.central_catalog) {
+        updateCentralResumeUI(data.central_catalog);
+      }
+    }
+
+    // 4. Si hay sesión activa o completada, sincronizar con paso 5
     if (data.is_running || data.running) {
       syncWithActiveSession(data);
       return;
@@ -1527,7 +2513,7 @@ function syncWithActiveSession(data) {
   if (elTable) elTable.textContent = wiz.table;
   if (elId) elId.textContent = wiz.id_col;
   if (elAddr) elAddr.textContent = wiz.addr_col;
-  if (elAiModel) elAiModel.textContent = wiz.ai_model;
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
   if (elAiHost && data.ai && data.ai.base_url) elAiHost.textContent = data.ai.base_url;
 
   goStep(5);
@@ -1583,7 +2569,7 @@ function syncWithCompletedSession(data) {
   if (elTable) elTable.textContent = wiz.table;
   if (elId) elId.textContent = wiz.id_col;
   if (elAddr) elAddr.textContent = wiz.addr_col;
-  if (elAiModel) elAiModel.textContent = wiz.ai_model;
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
 
   goStep(5);
 
@@ -1603,7 +2589,7 @@ function syncWithCompletedSession(data) {
 
 function resetToNewSession() {
   if (!document.getElementById('btnStop')?.disabled) {
-    alert('No puede iniciar una nueva configuración mientras haya un proceso en ejecución. Deténgalo primero.');
+    showModalAlert('Proceso Activo', 'No puede iniciar una nueva configuración mientras haya un proceso en ejecución. Deténgalo primero.', 'warning');
     return;
   }
   wiz.maxStepUnlocked = 1;
@@ -1616,6 +2602,149 @@ function resetToNewSession() {
     }
   });
   goStep(1);
+}
+
+// ── Funciones de Programación Horaria Diaria (Scheduler) ───────────────────
+async function loadSchedulerConfig() {
+  try {
+    const res = await fetch('/api/scheduler/config');
+    if (!res.ok) return;
+    const cfg = await res.json();
+    updateSchedulerUI(cfg);
+  } catch (err) {
+    console.error('Error al cargar configuración de scheduler:', err);
+  }
+}
+
+function updateSchedulerUI(cfg) {
+  if (!cfg) return;
+  const data = cfg.config || cfg;
+  const chk = document.getElementById('chkSchedulerEnabled');
+  const inpTime = document.getElementById('inpSchedulerTime');
+  const inpEndTime = document.getElementById('inpSchedulerEndTime');
+  const inpWorkers = document.getElementById('inpSchedulerWorkers');
+  const badge = document.getElementById('schedulerBadgeStatus');
+  const countdown = document.getElementById('schedulerCountdownText');
+
+  const isEnabled = Boolean(data.enabled);
+  const timeVal = data.scheduled_time || data.time_str || '23:00';
+  const endTimeVal = data.end_time || data.end_time_str || '';
+  const nextRun = data.next_run || data.next_run_at;
+
+  if (chk) chk.checked = isEnabled;
+  if (inpTime) inpTime.value = timeVal;
+  if (inpEndTime) inpEndTime.value = endTimeVal;
+  if (inpWorkers && data.num_workers) inpWorkers.value = data.num_workers;
+
+  toggleSchedulerUI(isEnabled);
+
+  if (badge) {
+    if (isEnabled) {
+      badge.textContent = 'Programado Activo';
+      badge.style.background = '#dcfce7';
+      badge.style.color = '#166534';
+      badge.style.borderColor = '#86efac';
+    } else {
+      badge.textContent = 'Inactivo';
+      badge.style.background = '#f1f5f9';
+      badge.style.color = '#475569';
+      badge.style.borderColor = '#cbd5e1';
+    }
+  }
+
+  if (countdown) {
+    if (isEnabled && nextRun) {
+      const nextDate = new Date(nextRun);
+      const remaining = data.countdown_human ? ` (${data.countdown_human})` : '';
+      const endLabel = endTimeVal ? ` – ${endTimeVal} hrs` : '';
+      countdown.textContent = `Próxima ejecución: ${nextDate.toLocaleDateString()} a las ${timeVal}${endLabel}${remaining}`;
+    } else {
+      countdown.textContent = '';
+    }
+  }
+}
+
+function toggleSchedulerUI(enabled) {
+  const inpTime = document.getElementById('inpSchedulerTime');
+  const inpEndTime = document.getElementById('inpSchedulerEndTime');
+  const inpWorkers = document.getElementById('inpSchedulerWorkers');
+  const badge = document.getElementById('schedulerBadgeStatus');
+  if (inpTime) inpTime.disabled = !enabled;
+  if (inpEndTime) inpEndTime.disabled = !enabled;
+  if (inpWorkers) inpWorkers.disabled = !enabled;
+  if (badge && !enabled) {
+    badge.textContent = 'Inactivo';
+    badge.style.background = '#f1f5f9';
+    badge.style.color = '#475569';
+    badge.style.borderColor = '#cbd5e1';
+  }
+}
+
+async function saveSchedulerSettings() {
+  const chk = document.getElementById('chkSchedulerEnabled');
+  const inpTime = document.getElementById('inpSchedulerTime');
+  const inpWorkers = document.getElementById('inpSchedulerWorkers');
+  const btn = document.getElementById('btnSaveScheduler');
+
+  const enabled = chk ? chk.checked : false;
+  const scheduledTime = inpTime ? inpTime.value : '23:00';
+  const inpEndTime = document.getElementById('inpSchedulerEndTime');
+  const endTimeStr = inpEndTime && inpEndTime.value ? inpEndTime.value : null;
+  const numWorkers = inpWorkers ? parseInt(inpWorkers.value, 10) || 2 : 2;
+
+  const payload = {
+    enabled: enabled,
+    scheduled_time: scheduledTime,
+    end_time_str: endTimeStr,
+    num_workers: numWorkers,
+    target_schema: wiz.schema || 'public',
+    target_table: wiz.table || 'tb_direccion',
+    source_mode: wiz.source_mode || 'central_tb_direccion',
+    id_col: wiz.id_col || 'dire_id',
+    addr_col: wiz.addr_col || 'dire_nom_via'
+  };
+
+  try {
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/scheduler/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      showModalAlert('Error en Programación', err.detail || 'No se pudo guardar la configuración', 'error');
+      return;
+    }
+    const updated = await res.json();
+    updateSchedulerUI(updated);
+    const rangeLabel = enabled ? 'Activada: ' + scheduledTime + ' hrs' + (endTimeStr ? ' – ' + endTimeStr + ' hrs' : '') : 'Desactivada';
+    showModalAlert('Horario Guardado', `Programación guardada exitosamente: ${rangeLabel}.`, 'success');
+  } catch (err) {
+    showModalAlert('Error de Conexión', 'No se pudo comunicar con el servidor para guardar la programación.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function triggerSchedulerNow() {
+  const btn = document.getElementById('btnTestTriggerScheduler');
+  try {
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/scheduler/trigger-now', {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showModalAlert('Aviso', data.detail || 'No se pudo disparar la ejecución', 'warning');
+      return;
+    }
+    showModalAlert('Ejecución Disparada', data.message || 'Se ha iniciado el proceso desatendido en segundo plano.', 'success');
+  } catch (err) {
+    showModalAlert('Error', 'No se pudo contactar al servidor para disparar la prueba.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Inicialización al Cargar ────────────────────────────────────────────────

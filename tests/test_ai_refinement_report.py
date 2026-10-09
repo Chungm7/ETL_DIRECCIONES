@@ -54,8 +54,7 @@ class TestAIRefinementReport(unittest.TestCase):
 
         # Debe observarse con claridad al ser un puesto de mercado sin calle pública
         self.assertFalse(res.es_procesado)
-        self.assertIsNotNone(res.observacion)
-        self.assertNotIn("MCDONALD", res.observacion.upper())
+        self.assertIsNone(res.observacion)
 
     def test_id_240_elvira_garcia_y_garcia_no_two_vias_conflict(self):
         """Caso ID 240: 'AV. ELVIRA GARCIA Y GARCIA N 418'
@@ -81,7 +80,7 @@ class TestAIRefinementReport(unittest.TestCase):
         res = self.parser.parse(record)
 
         self.assertTrue(res.es_procesado, f"Error: observacion={res.observacion}")
-        self.assertEqual(res.id_via, 2901)
+        self.assertEqual(res.id_via, CatalogManager.map_legacy_via_id(2901))
         self.assertEqual(res.num_via, "418")
         self.assertIsNone(res.observacion)
 
@@ -134,7 +133,7 @@ class TestAIRefinementReport(unittest.TestCase):
         res = self.parser.parse(record)
 
         self.assertTrue(res.es_procesado, f"Error de normalización: {res.observacion}")
-        self.assertEqual(res.id_via, 2926)  # Sesquicentenario
+        self.assertEqual(res.id_via, CatalogManager.map_legacy_via_id(2926))  # Sesquicentenario
         self.assertEqual(res.nom_zona, "BUENOS AIRES")
 
     def test_id_283_cross_streets_not_misidentified_as_urban_zone(self):
@@ -161,7 +160,7 @@ class TestAIRefinementReport(unittest.TestCase):
         res = self.parser.parse(record)
 
         self.assertTrue(res.es_procesado, f"Observación inesperada: {res.observacion}")
-        self.assertEqual(res.id_via, 233)  # Calle Arica
+        self.assertEqual(res.id_via, CatalogManager.map_legacy_via_id(233))  # Calle Arica
         self.assertEqual(res.num_via, "1028")
         self.assertIsNotNone(res.referencia)
         self.assertIn("HEROES CIVILES", res.referencia)

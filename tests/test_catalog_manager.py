@@ -200,28 +200,43 @@ class TestCatalogManager(unittest.TestCase):
                 self.assertEqual(status["tipos_zona"]["total_records"], 29)
 
     def test_physical_vias_and_zonas_catalogs_loading(self):
-        """Valida que los catálogos maestros físicos de Chiclayo carguen correctamente."""
+        """Valida que los catálogos maestros físicos de Chiclayo carguen correctamente consolidados y renumerados."""
         vias = CatalogManager.get_vias_chiclayo_catalog()
         zonas = CatalogManager.get_zonas_chiclayo_catalog()
 
-        self.assertEqual(len(vias), 2935)
-        self.assertEqual(len(zonas), 460)
+        self.assertEqual(len(vias), 2211)
+        self.assertEqual(len(zonas), 452)
 
         v_tuples = CatalogManager.get_official_physical_vias_tuples()
         z_tuples = CatalogManager.get_official_physical_zonas_tuples()
-        self.assertEqual(len(v_tuples), 2935)
-        self.assertEqual(len(z_tuples), 460)
+        self.assertEqual(len(v_tuples), 2211)
+        self.assertEqual(len(z_tuples), 452)
+
+        # Verificar caso SAN LUCAS: exactamente 1 calle y 1 pasaje
+        san_lucas = [v for v in vias if v.get("nom_via") == "SAN LUCAS"]
+        self.assertEqual(len(san_lucas), 2)
+        tipos_sl = {v.get("id_tipo_via") for v in san_lucas}
+        self.assertEqual(tipos_sl, {2, 4})
+
+        # Validar mapas de migración de IDs legados
+        v_map = CatalogManager.get_vias_id_migration_map()
+        z_map = CatalogManager.get_zonas_id_migration_map()
+        self.assertGreaterEqual(len(v_map), 2211)
+        self.assertGreaterEqual(len(z_map), 452)
+        self.assertIsNotNone(CatalogManager.map_legacy_via_id(1095))
+        self.assertIsNotNone(CatalogManager.map_legacy_via_id(1269))
+        self.assertEqual(CatalogManager.map_legacy_via_id(1095), CatalogManager.map_legacy_via_id(1269))
 
     def test_physical_vias_and_zonas_matching(self):
         """Valida que CatalogMatcher homologue vías y zonas físicas de Chiclayo."""
         v1 = CatalogMatcher.match_physical_via("AUGUSTO BERNARDINO LEGUIA")
         self.assertIsNotNone(v1)
-        self.assertEqual(v1["id"], 2853)
+        self.assertEqual(v1["id"], 2138)
         self.assertEqual(v1["nom_via"], "AV. AUGUSTO BERNARDINO LEGUIA")
 
         v2 = CatalogMatcher.match_physical_via("AV. SALAVERRY")
         self.assertIsNotNone(v2)
-        self.assertEqual(v2["id"], 2862)
+        self.assertEqual(v2["id"], 2147)
         self.assertEqual(v2["nom_via"], "FELIPE SANTIAGO SALAVERRY")
 
         v3 = CatalogMatcher.match_physical_via("TORRES PAZ")

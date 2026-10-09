@@ -42,7 +42,7 @@ def launch_desktop_window(url: str) -> None:
         if browser_path:
             try:
                 subprocess.Popen(
-                    [browser_path, f"--app={url}", "--new-window"],
+                    [browser_path, f"--app={url}", "--new-window", "--window-size=1540,920", "--start-maximized"],
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     start_new_session=True,

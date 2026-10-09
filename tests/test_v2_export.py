@@ -1,0 +1,518 @@
+"""Pruebas unitarias y de integración para el subsistema de exportación relacional V2 (28 columnas y JSON anidado)."""
+
+import csv
+import io
+import json
+import openpyxl
+import pytest
+from unittest.mock import MagicMock, patch
+from fastapi.testclient import TestClient
+
+from src.ui.server import (
+    app,
+    V2_EXPORT_HEADERS,
+    build_dynamic_export_headers,
+    extract_v2_export_row,
+    generate_excel_report,
+    generate_csv_report,
+    generate_json_report,
+    fetch_db_records_for_export,
+)
+
+
+@pytest.fixture
+def client():
+    return TestClient(app)
+
+
+@pytest.fixture
+def sample_v2_records():
+    return [
+        {
+            "id_licencia": 1001,
+            "raw_text": "CA. SAN JOSE 102 CON AV. LUIS GONZALES 801 MZ B LT 14 DPTO 301 PISO 3 FRENTE AL PARQUE",
+            "dire_id": 501,
+            "estado": "NORMALIZADO",
+            "es_procesado": True,
+            "metodo": "IA (patroclo-artesano-7b)",
+            "observacion": "Validado exitosamente con catastro oficial",
+            "time": "2026-09-25 11:50:00",
+            "tipo_zona_name": "URBANIZACION",
+            "nom_zona": "SANTA VICTORIA",
+            "id_zona": 1,
+            "vias": [
+                {
+                    "via_id": 2860,
+                    "via_nombre": "SAN JOSE",
+                    "divi_numero": "102",
+                    "divi_orden": 1,
+                    "tipo_via": 2,
+                    "tipo_via_name": "CALLE",
+                },
+                {
+                    "via_id": 2855,
+                    "via_nombre": "LUIS GONZALES",
+                    "divi_numero": "801",
+                    "divi_orden": 2,
+                    "tipo_via": 1,
+                    "tipo_via_name": "AVENIDA",
+                },
+            ],
+            "componentes": [
+                {"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": "B"},
+                {"codi_id": 2, "codi_nombre": "LOTE", "diti_nombre": "14"},
+                {"codi_id": 3, "codi_nombre": "SUBLOTE", "diti_nombre": "A"},
+                {"codi_id": 4, "codi_nombre": "PISO", "diti_nombre": "3"},
+                {"codi_id": 6, "codi_nombre": "VALLE", "diti_nombre": "CHICLAYO"},
+            ],
+            "modulos": [
+                {"timo_id": 2, "timo_nombre": "DEPARTAMENTO", "ditm_nombre": "301"},
+                {"timo_id": 4, "timo_nombre": "STAND", "ditm_nombre": "15"},
+            ],
+            "dire_referencia": "FRENTE AL PARQUE PRINCIPAL",
+        },
+        {
+            "id_licencia": 1002,
+            "raw_text": "CALLE INEXISTENTE 9999",
+            "dire_id": None,
+            "estado": "OBSERVADO",
+            "es_procesado": False,
+            "metodo": "Evaluado (Observado)",
+            "observacion": "Vía 'INEXISTENTE' no figura en el catálogo maestro de Chiclayo.",
+            "time": "2026-09-25 11:51:00",
+            "vias": [],
+            "componentes": [],
+            "modulos": [],
+        },
+        {
+            "id_licencia": 1003,
+            "raw_text": "AV BALTA 250",
+            "dire_id": 502,
+            "es_procesado": True,
+            "nom_via": "BALTA",
+            "tipo_via_name": "AVENIDA",
+            "num_via": "250",
+            "id_via": 10,
+            "nom_zona": "CENTRO CIVICO",
+            "tipo_zona_name": "URBANIZACION",
+            "id_zona": 5,
+            "manzana": "C",
+            "lote": "8",
+            "slote": "INT 4",
+            "referencia": "AL COSTADO DEL BANCO",
+        },
+    ]
+
+
+def test_v2_export_headers_length_and_order():
+    """Verifica que las cabeceras contengan exactamente las 25 columnas limpias (sin IDs técnicos ni observaciones de IA) relacionales V2."""
+    assert len(V2_EXPORT_HEADERS) == 25
+    expected_order = [
+        "ID",
+        "ID_Direccion",
+        "Estado",
+        "Direccion_Original",
+        "Via_Principal_Tipo",
+        "Via_Principal_Nombre",
+        "Via_Principal_Numero",
+        "Via_Secundaria_Tipo",
+        "Via_Secundaria_Nombre",
+        "Via_Secundaria_Numero",
+        "Todas_Las_Vias",
+        "Tipo_Zona",
+        "Nombre_Zona",
+        "Manzana",
+        "Lote",
+        "Sublote",
+        "Block",
+        "Piso",
+        "Otros_Componentes",
+        "Tipo_Modulo",
+        "Numero_Modulo",
+        "Todos_Los_Modulos",
+        "Referencia",
+        "Metodo_Normalizacion",
+        "Fecha_Hora_Proceso",
+    ]
+    assert V2_EXPORT_HEADERS == expected_order
+    assert "Diagnostico_Observacion" not in V2_EXPORT_HEADERS
+
+
+def test_extract_v2_export_row_multi_via(sample_v2_records):
+    """Verifica la extracción y desglose limpio de multi-vías (Vía Principal y Vía Secundaria)."""
+    row = extract_v2_export_row(sample_v2_records[0])
+    assert row["ID"] == 1001
+    assert row["ID_Direccion"] == 501
+    assert row["Estado"] == "NORMALIZADO"
+    assert row["Via_Principal_Tipo"] == "CALLE"
+    assert row["Via_Principal_Nombre"] == "SAN JOSE"
+    assert row["Via_Principal_Numero"] == "102"
+    assert row["Via_Principal_ID"] == 2860
+    assert row["Via_Secundaria_Tipo"] == "AVENIDA"
+    assert row["Via_Secundaria_Nombre"] == "LUIS GONZALES"
+    assert row["Via_Secundaria_Numero"] == "801"
+    assert row["Via_Secundaria_ID"] == 2855
+    assert "CALLE SAN JOSE N° 102 con AVENIDA LUIS GONZALES N° 801" in row["Todas_Las_Vias"]
+    assert row["Tipo_Zona"] == "URBANIZACION"
+    assert row["Nombre_Zona"] == "SANTA VICTORIA"
+    assert row["ID_Zona"] == 1
+    assert row["Manzana"] == "B"
+    assert row["Lote"] == "14"
+    assert row["Sublote"] == "A"
+    assert row["Piso"] == "3"
+    assert "VALLE: CHICLAYO" in row["Otros_Componentes"]
+    assert row["Tipo_Modulo"] == "DEPARTAMENTO"
+    assert row["Numero_Modulo"] == "301"
+    assert "DEPARTAMENTO 301, STAND 15" in row["Todos_Los_Modulos"]
+    assert row["Referencia"] == "FRENTE AL PARQUE PRINCIPAL"
+
+
+def test_extract_v2_export_row_observed(sample_v2_records):
+    """Verifica que un registro observado no incluya diagnóstico/observación y deje en blanco campos relacionales."""
+    row = extract_v2_export_row(sample_v2_records[1])
+    assert row["ID"] == 1002
+    assert row["ID_Direccion"] == ""
+    assert row["Estado"] == "OBSERVADO"
+    assert row["Via_Principal_Nombre"] == ""
+    assert "Diagnostico_Observacion" not in row
+
+
+def test_extract_v2_export_row_legacy_fallback(sample_v2_records):
+    """Verifica la retrocompatibilidad cuando el registro solo tiene campos planos V1."""
+    row = extract_v2_export_row(sample_v2_records[2])
+    assert row["ID"] == 1003
+    assert row["ID_Direccion"] == 502
+    assert row["Estado"] == "NORMALIZADO"
+    assert row["Via_Principal_Tipo"] == "AVENIDA"
+    assert row["Via_Principal_Nombre"] == "BALTA"
+    assert row["Via_Principal_Numero"] == "250"
+    assert row["Via_Principal_ID"] == 10
+    assert row["Via_Secundaria_Nombre"] == ""
+    assert "AVENIDA BALTA N° 250" in row["Todas_Las_Vias"]
+    assert row["Tipo_Modulo"] == "INT"
+    assert row["Numero_Modulo"] == "4"
+    assert row["Referencia"] == "AL COSTADO DEL BANCO"
+
+
+def test_build_dynamic_export_headers():
+    """Verifica que build_dynamic_export_headers adapte las columnas según la cardinalidad del dataset."""
+    # 1. Dataset sin módulos ni vías secundarias: No debe tener columnas de módulos ni Via_Secundaria
+    records_simple = [
+        {"id_licencia": 1, "raw_text": "CALLE SAN JOSE 102", "vias": [{"via_nombre": "SAN JOSE", "divi_orden": 1}]}
+    ]
+    headers_simple, meta_simple = build_dynamic_export_headers(records_simple)
+    assert meta_simple["max_vias"] == 1
+    assert meta_simple["max_modulos"] == 0
+    assert "Via_Principal_Nombre" in headers_simple
+    assert "Via_Secundaria_Nombre" not in headers_simple
+    assert "Tipo_Modulo" not in headers_simple
+    assert "Modulo_1_Tipo" not in headers_simple
+    assert "Todos_Los_Modulos" not in headers_simple
+
+    # 2. Dataset con 3 vías y 3 módulos (Interior I, II, III)
+    records_complex = [
+        {
+            "id_licencia": 2,
+            "raw_text": "BALTA 100 CON SAN JOSE Y BOLOGNESI INT. 1, 2 Y 3",
+            "vias": [
+                {"via_nombre": "BALTA", "divi_orden": 1},
+                {"via_nombre": "SAN JOSE", "divi_orden": 2},
+                {"via_nombre": "BOLOGNESI", "divi_orden": 3},
+            ],
+            "modulos": [
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "1"},
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "2"},
+                {"timo_id": 1, "timo_nombre": "INTERIOR", "ditm_nombre": "3"},
+            ],
+        }
+    ]
+    headers_complex, meta_complex = build_dynamic_export_headers(records_complex)
+    assert meta_complex["max_vias"] == 3
+    assert meta_complex["max_modulos"] == 3
+    assert "Via_Principal_Nombre" in headers_complex
+    assert "Via_Secundaria_Nombre" in headers_complex
+    assert "Via_3_Nombre" in headers_complex
+    assert "Modulo_1_Tipo" in headers_complex
+    assert "Modulo_1_Valor" in headers_complex
+    assert "Modulo_2_Tipo" in headers_complex
+    assert "Modulo_2_Valor" in headers_complex
+    assert "Modulo_3_Tipo" in headers_complex
+    assert "Modulo_3_Valor" in headers_complex
+    assert "Todos_Los_Modulos" in headers_complex
+
+
+def test_generate_excel_report_structure(sample_v2_records):
+    """Verifica que generate_excel_report cree el archivo binario con columnas dinámicas y con cabeceras explícitas."""
+    # 1. Con cabeceras estándar explícitas (25 columnas)
+    buf_std = generate_excel_report(sample_v2_records, headers=V2_EXPORT_HEADERS)
+    assert isinstance(buf_std, io.BytesIO)
+    wb_std = openpyxl.load_workbook(io.BytesIO(buf_std.getvalue()))
+    ws_std = wb_std.active
+    assert ws_std.max_column == 25
+    header_cells_std = [ws_std.cell(row=1, column=col).value for col in range(1, 26)]
+    assert header_cells_std == V2_EXPORT_HEADERS
+
+    # 2. Con cabeceras dinámicas (adaptadas automáticamente a sample_v2_records: 2 vías, 2 módulos, 1 componente extra)
+    buf_dyn = generate_excel_report(sample_v2_records)
+    assert isinstance(buf_dyn, io.BytesIO)
+    content = buf_dyn.getvalue()
+    assert len(content) > 1000
+
+    wb_dyn = openpyxl.load_workbook(io.BytesIO(content))
+    ws_dyn = wb_dyn.active
+    assert ws_dyn.title == "Normalización Catastral V2"
+    assert ws_dyn.max_row == 4  # 1 fila de cabecera + 3 registros
+
+    # Verificar primera fila
+    row1 = [ws_dyn.cell(row=2, column=col).value for col in range(1, ws_dyn.max_column + 1)]
+    assert row1[0] == 1001
+    assert row1[1] == 501
+    assert row1[2] == "NORMALIZADO"
+
+
+def test_generate_csv_report_utf8_bom(sample_v2_records):
+    """Verifica que generate_csv_report cree un archivo CSV con BOM UTF-8 tanto con cabeceras estándar como dinámicas."""
+    # 1. Con cabeceras estándar explícitas
+    buf_std = generate_csv_report(sample_v2_records, headers=V2_EXPORT_HEADERS)
+    raw_bytes_std = buf_std.getvalue()
+    assert raw_bytes_std.startswith(b"\xef\xbb\xbf")
+    rows_std = list(csv.reader(io.StringIO(raw_bytes_std.decode("utf-8-sig"))))
+    assert rows_std[0] == V2_EXPORT_HEADERS
+
+    # 2. Con cabeceras dinámicas
+    buf_dyn = generate_csv_report(sample_v2_records)
+    raw_bytes_dyn = buf_dyn.getvalue()
+    assert raw_bytes_dyn.startswith(b"\xef\xbb\xbf")  # UTF-8 BOM
+
+    content = raw_bytes_dyn.decode("utf-8-sig")
+    reader = csv.reader(io.StringIO(content))
+    rows = list(reader)
+    assert len(rows) == 4  # Cabecera + 3 filas
+
+    # Fila 1 (Multi-vía)
+    assert rows[1][0] == "1001"
+    assert rows[1][1] == "501"
+    assert rows[1][2] == "NORMALIZADO"
+
+    # Fila 2 (Observado)
+    assert rows[2][0] == "1002"
+    assert rows[2][2] == "OBSERVADO"
+
+
+def test_generate_json_report_hierarchy(sample_v2_records):
+    """Verifica que generate_json_report genere la jerarquía institucional anidada."""
+    buf = generate_json_report(sample_v2_records)
+    assert isinstance(buf, io.BytesIO)
+    data = json.loads(buf.getvalue().decode("utf-8"))
+
+    assert "metadata" in data
+    assert data["metadata"]["version"] == "2.0"
+    assert data["metadata"]["total_registros"] == 3
+
+    dirs = data["direcciones"]
+    assert len(dirs) == 3
+
+    # Registro 1 (Multi-vía con anidamiento completo)
+    d1 = dirs[0]
+    assert d1["id"] == 1001
+    assert d1["dire_id"] == 501
+    assert d1["estado"] == "NORMALIZADO"
+    assert d1["zona"]["nombre_zona"] == "SANTA VICTORIA"
+    assert d1["zona"]["tipo_zona"] == "URBANIZACION"
+    assert len(d1["vias"]) == 2
+    assert d1["vias"][0]["orden"] == 1
+    assert d1["vias"][0]["nombre_via"] == "SAN JOSE"
+    assert d1["vias"][1]["orden"] == 2
+    assert d1["vias"][1]["nombre_via"] == "LUIS GONZALES"
+    assert len(d1["componentes"]) == 5
+    assert d1["catastro"]["manzana"] == "B"
+    assert d1["catastro"]["piso"] == "3"
+    assert d1["piso"] == "3"
+    assert len(d1["modulos"]) == 2
+    assert d1["modulos"][0]["tipo"] == "DEPARTAMENTO"
+    assert d1["modulos"][0]["numero"] == "301"
+
+    # Retrocompatibilidad
+    assert d1["nom_via"] == "SAN JOSE"
+    assert d1["es_procesado"] is True
+    assert "diagnostico_observacion" not in d1
+    assert "observacion" not in d1
+
+
+def test_endpoints_export_excel_csv_json(client, sample_v2_records):
+    """Verifica que los tres endpoints POST /api/export-* funcionen con registros en payload."""
+    payload = {"records": sample_v2_records}
+
+    # Excel
+    res_xlsx = client.post("/api/export-excel", json=payload)
+    assert res_xlsx.status_code == 200
+    assert "application/vnd.openxmlformats" in res_xlsx.headers["content-type"]
+    assert len(res_xlsx.content) > 1000
+
+    # CSV
+    res_csv = client.post("/api/export-csv", json=payload)
+    assert res_csv.status_code == 200
+    assert "text/csv" in res_csv.headers["content-type"]
+    csv_text = res_csv.content.decode("utf-8-sig")
+    assert "ID,ID_Direccion,Estado,Direccion_Original" in csv_text
+    assert "1001" in csv_text
+
+    # JSON
+    res_json = client.post("/api/export-json", json=payload)
+    assert res_json.status_code == 200
+    assert "application/json" in res_json.headers["content-type"]
+    json_data = res_json.json()
+    assert json_data["metadata"]["version"] == "2.0"
+    assert len(json_data["direcciones"]) == 3
+
+
+def test_api_export_db_json_format(client, sample_v2_records):
+    """Verifica que /api/export-db soporte format=json retornando la estructura V2."""
+    with patch("src.ui.server.fetch_db_records_for_export", return_value=sample_v2_records):
+        res = client.get("/api/export-db?schema=public&table=direcciones_actual&scope=processed&format=json")
+        assert res.status_code == 200
+        assert "application/json" in res.headers["content-type"]
+        data = res.json()
+        assert data["metadata"]["version"] == "2.0"
+        assert len(data["direcciones"]) == 3
+        assert data["direcciones"][0]["zona"]["nombre_zona"] == "SANTA VICTORIA"
+
+
+def test_fetch_db_records_for_export_central_tb_direccion():
+    """Verifica que fetch_db_records_for_export consulte tb_direccion y enriquezca con tablas hijas V2 sin fecha_proceso."""
+    from src.services.db_service import DatabaseService
+    from sqlalchemy import create_engine, text as sa_text
+    from sqlalchemy.orm import sessionmaker
+
+    db_svc = DatabaseService()
+    engine = create_engine("sqlite:///:memory:")
+    db_svc._engine = engine
+    db_svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    with db_svc.get_session() as s:
+        # Crear DDLs en SQLite sin fecha_proceso y con create_at, update_at
+        s.execute(sa_text("""
+            CREATE TABLE tb_direccion (
+                dire_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dire_esquema TEXT,
+                dire_tabla TEXT,
+                dire_tabla_id TEXT,
+                dire_valor_origen TEXT,
+                dire_es_procesado BOOLEAN,
+                dire_metodo TEXT,
+                dire_observacion TEXT,
+                zona_id INTEGER,
+                dire_referencia TEXT,
+                create_at DATETIME,
+                update_at DATETIME
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_tipo_via (
+                tivi_id INTEGER PRIMARY KEY,
+                tivi_nombre TEXT,
+                tivi_abreviatura TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_via (
+                via_id INTEGER PRIMARY KEY,
+                tivi_id INTEGER,
+                via_nombre TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_direccion_via (
+                divi_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dire_id INTEGER,
+                via_id INTEGER,
+                divi_numero TEXT,
+                divi_orden INTEGER
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_componente_direccion (
+                codi_id INTEGER PRIMARY KEY,
+                codi_nombre TEXT,
+                codi_es_urbano BOOLEAN
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_contenido_componente_direccion (
+                diti_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dire_id INTEGER,
+                codi_id INTEGER,
+                diti_valor TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_tipo_zona (
+                tizo_id INTEGER PRIMARY KEY,
+                tizo_nombre TEXT,
+                tizo_abreviatura TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_zona (
+                zona_id INTEGER PRIMARY KEY,
+                tizo_id INTEGER,
+                zona_nombre TEXT
+            );
+        """))
+
+        # Poblar catálogos
+        s.execute(sa_text("INSERT INTO tb_tipo_via VALUES (1, 'AVENIDA', 'AV.')"))
+        s.execute(sa_text("INSERT INTO tb_via VALUES (10, 1, 'BALTA')"))
+        s.execute(sa_text("INSERT INTO tb_componente_direccion VALUES (1, 'MANZANA', 1)"))
+        s.execute(sa_text("INSERT INTO tb_componente_direccion VALUES (2, 'LOTE', 1)"))
+        s.execute(sa_text("INSERT INTO tb_tipo_zona VALUES (1, 'URBANIZACION', 'URB.')"))
+        s.execute(sa_text("INSERT INTO tb_zona VALUES (5, 1, 'CENTRO')"))
+
+        # Insertar dirección procesada
+        s.execute(sa_text("""
+            INSERT INTO tb_direccion (
+                dire_id, dire_esquema, dire_tabla, dire_tabla_id,
+                dire_valor_origen, dire_es_procesado, dire_metodo,
+                zona_id, dire_referencia, create_at, update_at
+            ) VALUES (
+                100, 'sc_fuente', 'tb_origen', '1',
+                'AV BALTA 250 MZ A LT 2', 1, 'IA',
+                5, 'FRENTE AL PARQUE', '2026-10-09 10:00:00', '2026-10-09 10:05:00'
+            )
+        """))
+        s.execute(sa_text("INSERT INTO tb_direccion_via VALUES (1, 100, 10, '250', 1)"))
+        s.execute(sa_text("INSERT INTO tb_contenido_componente_direccion VALUES (1, 100, 1, 'A')"))
+        s.execute(sa_text("INSERT INTO tb_contenido_componente_direccion VALUES (2, 100, 2, '2')"))
+        s.commit()
+
+    records = fetch_db_records_for_export(
+        db_svc=db_svc,
+        schema="public",
+        table="tb_direccion",
+        scope="all",
+        id_col="dire_id",
+        dir_col="dire_valor_origen",
+    )
+
+    assert len(records) == 1
+    r = records[0]
+    assert r["dire_id"] == 100
+    assert r["raw_text"] == "AV BALTA 250 MZ A LT 2"
+    assert r["es_procesado"] is True
+    assert r["nom_via"] == "BALTA"
+    assert r["tipo_via_name"] == "AVENIDA"
+    assert r["num_via"] == "250"
+    assert r["manzana"] == "A"
+    assert r["lote"] == "2"
+    assert r["nom_zona"] == "CENTRO"
+    assert r["referencia"] == "FRENTE AL PARQUE"
+    assert r["update_at"] == "2026-10-09 10:05:00"
+
+    # Verificar que extract_v2_export_row no arroja errores y mapea Fecha_Hora_Proceso desde update_at
+    row_exported = extract_v2_export_row(r)
+    assert row_exported["ID"] == 100
+    assert row_exported["ID_Direccion"] == 100
+    assert row_exported["Via_Principal_Nombre"] == "BALTA"
+    assert row_exported["Fecha_Hora_Proceso"] == "2026-10-09 10:05:00"
+    assert "fecha_proceso" not in r
+

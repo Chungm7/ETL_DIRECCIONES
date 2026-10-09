@@ -32,13 +32,29 @@ class PipelineTransformer(BaseTransformer):
         3. Generación del objeto normalizado DireccionDestino.
         """
         if record.is_empty():
-            return DireccionDestino(id_licencia=record.id_licencia)
+            return DireccionDestino(
+                id_licencia=record.id_licencia,
+                dire_id=record.dire_id,
+                dire_esquema=record.dire_esquema,
+                dire_tabla=record.dire_tabla,
+                dire_tabla_id=record.dire_tabla_id,
+                dire_valor_origen=record.dire_valor_origen,
+                es_procesado=False,
+                observacion="DIRECCIÓN VACÍA: El registro no contiene texto de dirección",
+                metodo_normalizacion="N/A",
+            )
 
         # 1. Pre-limpieza
         cleaned_address = TextCleaner.sanitize(record.emp_direccion)
         cleaned_record = DireccionOrigen(
             id_licencia=record.id_licencia,
             emp_direccion=cleaned_address,
+            dire_id=record.dire_id,
+            dire_esquema=record.dire_esquema,
+            dire_tabla=record.dire_tabla,
+            dire_tabla_id=record.dire_tabla_id,
+            dire_valor_origen=record.dire_valor_origen,
+            es_procesado=record.es_procesado,
         )
 
         # 2. Parseo asistido por IA (Ollama)
@@ -52,6 +68,12 @@ class PipelineTransformer(BaseTransformer):
         )
         return DireccionDestino(
             id_licencia=record.id_licencia,
+            dire_id=record.dire_id,
+            dire_esquema=record.dire_esquema,
+            dire_tabla=record.dire_tabla,
+            dire_tabla_id=record.dire_tabla_id,
+            dire_valor_origen=record.dire_valor_origen,
             nom_via=cleaned_address,
             metodo_normalizacion="Directo (IA deshabilitada)",
         )
+

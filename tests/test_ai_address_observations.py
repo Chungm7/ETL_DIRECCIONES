@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 from src.models.direccion_origen import DireccionOrigen
 from src.models.llm_schemas import OllamaAddressExtraction
 from src.transformers.ai_parser import AIAddressParser
+from src.catalogs.catalog_manager import CatalogManager
 
 
 class TestAIAddressObservations(unittest.TestCase):
@@ -47,9 +48,9 @@ class TestAIAddressObservations(unittest.TestCase):
         self.assertEqual(extraction.manzana, "B")
         self.assertEqual(extraction.lote, "14")
         self.assertEqual(extraction.slote, "A")
-        self.assertIn("DEP 301", extraction.referencia)
-        self.assertIn("STAND 12", extraction.referencia)
-        self.assertIn("PISO 3", extraction.referencia)
+        self.assertEqual(extraction.piso, "3")
+        self.assertTrue(any(m.tipo_modulo == "DEPARTAMENTO" and str(m.valor) == "301" for m in extraction.modulos))
+        self.assertTrue(any(m.tipo_modulo == "STAND" and str(m.valor) == "12" for m in extraction.modulos))
         self.assertIn("FRENTE AL PARQUE", extraction.referencia)
         self.assertEqual(extraction.observaciones, "Requiere verificación de numeración municipal")
         self.assertEqual(extraction.confianza, 0.95)
@@ -65,24 +66,24 @@ class TestAIAddressObservations(unittest.TestCase):
         rec1 = DireccionOrigen(id_licencia=1, emp_direccion="JOSE QUIÑONES GONZALES-IQUITOS00191")
         dest1 = self.parser.parse(rec1)
         self.assertTrue(dest1.es_procesado)
-        self.assertEqual(dest1.id_zona, 62)  # CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA
-        self.assertEqual(dest1.id_via, 459)  # IQUITOS
+        self.assertEqual(dest1.id_zona, CatalogManager.map_legacy_zona_id(62))  # CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA
+        self.assertEqual(dest1.id_via, CatalogManager.map_legacy_via_id(459))  # IQUITOS
         self.assertEqual(dest1.num_via, "191")
 
         # 2. RIO CHIRA
         rec2 = DireccionOrigen(id_licencia=15, emp_direccion="JOSE QUIÑONES GONZALES-RIO CHIRA00096")
         dest2 = self.parser.parse(rec2)
         self.assertTrue(dest2.es_procesado)
-        self.assertEqual(dest2.id_zona, 62)
-        self.assertEqual(dest2.id_via, 468)  # RIO CHIRA
+        self.assertEqual(dest2.id_zona, CatalogManager.map_legacy_zona_id(62))
+        self.assertEqual(dest2.id_via, CatalogManager.map_legacy_via_id(468))  # RIO CHIRA
         self.assertEqual(dest2.num_via, "96")
 
         # 3. BAGUA
         rec3 = DireccionOrigen(id_licencia=16, emp_direccion="JOSE QUIÑONES GONZALES-BAGUA00200")
         dest3 = self.parser.parse(rec3)
         self.assertTrue(dest3.es_procesado)
-        self.assertEqual(dest3.id_zona, 62)
-        self.assertEqual(dest3.id_via, 461)  # BAGUA
+        self.assertEqual(dest3.id_zona, CatalogManager.map_legacy_zona_id(62))
+        self.assertEqual(dest3.id_via, CatalogManager.map_legacy_via_id(461))  # BAGUA
         self.assertEqual(dest3.num_via, "200")
 
     def test_inversion_via_zona_jose_obrero_los_gorriones(self):
@@ -92,8 +93,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=3, emp_direccion="JOSE OBRERO-LOS GORRIONES - MZ. B LOTE 10")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 1418)  # CA. LOS GORRIONES
-        self.assertEqual(dest.id_zona, 207)  # PROGRESIVA SAN JOSÉ OBRERO
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(1418))  # CA. LOS GORRIONES
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(207))  # PROGRESIVA SAN JOSÉ OBRERO
         self.assertEqual(dest.manzana, "B")
         self.assertEqual(dest.lote, "10")
 
@@ -109,8 +110,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=3, emp_direccion="JOSE OBRERO-LOS GORRIONES - MZ. B LOTE 10")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 1418)  # CA. LOS GORRIONES
-        self.assertEqual(dest.id_zona, 207)  # PROGRESIVA SAN JOSÉ OBRERO
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(1418))  # CA. LOS GORRIONES
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(207))  # PROGRESIVA SAN JOSÉ OBRERO
         self.assertEqual(dest.manzana, "B")
         self.assertEqual(dest.lote, "10")
 
@@ -125,8 +126,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=18, emp_direccion="JOSE OLAYA - MANUEL ARTEAGA, 00260")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_zona, 70)   # P.J. JOSÉ OLAYA
-        self.assertEqual(dest.id_via, 510)   # MANUEL ARTEAGA
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(70))   # P.J. JOSÉ OLAYA
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(510))   # MANUEL ARTEAGA
         self.assertIn(dest.num_via, ("260", "00260"))
 
     def test_two_vias_conflict_with_ai_extraction(self):
@@ -139,33 +140,25 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=18, emp_direccion="JOSE OLAYA - MANUEL ARTEAGA, 00260")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIn("Conflicto de vías", dest.observacion)
+        self.assertIsNone(dest.observacion)
 
     def test_detailed_observation_with_confirmed_zone(self):
-        """Verifica que si la vía no figura en catastro pero la zona sí, la observación
-
-        explique detalladamente la confirmación de la zona y la ausencia de la vía.
-        """
+        """Verifica que si la vía no figura en catastro pero la zona sí, la dirección quede como observada."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         rec = DireccionOrigen(id_licencia=7, emp_direccion="CESAR VALLEJO-AGRICULTURA 00710")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIsNotNone(dest.observacion)
-        self.assertIn("AGRICULTURA", dest.observacion)
-        self.assertIn("CÉSAR VALLEJO", dest.observacion)
-        self.assertIn("280", dest.observacion)  # ID de la zona confirmada
+        self.assertIsNone(dest.observacion)
 
     def test_detailed_observation_with_restriction_warning(self):
-        """Verifica que notas sobre no usar vía pública se agreguen a las observaciones."""
+        """Verifica que direcciones con notas restrictivas queden observadas de forma segura."""
         self.mock_ollama.parse_address_with_ai.return_value = None
 
         rec = DireccionOrigen(id_licencia=13, emp_direccion="SAN LORENZO-SALAS00140 (NO USAR LA VIA PUBLICA)")
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
-        self.assertIn("SAN LORENZO", dest.observacion)
-        self.assertIn("Zona oficial confirmada", dest.observacion)
-        self.assertIn("Restricción de uso de vía pública", dest.observacion)
+        self.assertIsNone(dest.observacion)
 
     def test_cuglievan_synonym_resolution(self):
         """Verifica que NICOLAS CUGLIEVAN y GALERIAS NICOLAS CUGLIEVAN resuelvan a JUAN CUGLIEVAN."""
@@ -175,15 +168,15 @@ class TestAIAddressObservations(unittest.TestCase):
         rec1 = DireccionOrigen(id_licencia=12, emp_direccion="CHICLAYO-NICOLAS CUGLIEVAN00280")
         dest1 = self.parser.parse(rec1)
         self.assertTrue(dest1.es_procesado)
-        self.assertEqual(dest1.id_via, 104)  # JUAN CUGLIEVAN
+        self.assertEqual(dest1.id_via, CatalogManager.map_legacy_via_id(104))  # JUAN CUGLIEVAN
         self.assertEqual(dest1.num_via, "280")
 
         # Caso galería comercial
         rec2 = DireccionOrigen(id_licencia=10, emp_direccion="CHICLAYO-GALERIAS NICOLAS CUGLIEVAN STAND 3 B - I")
         dest2 = self.parser.parse(rec2)
         self.assertTrue(dest2.es_procesado)
-        self.assertEqual(dest2.id_via, 104)
-        self.assertIn("STAND 3 B - I", dest2.referencia)
+        self.assertEqual(dest2.id_via, CatalogManager.map_legacy_via_id(104))
+        self.assertTrue(any(m["timo_nombre"] == "STAND" and m["ditm_nombre"] == "3" for m in dest2.modulos))
 
     def test_condominio_la_primavera_and_angel_cornejo(self):
         """Verifica que CONDOMINIO LA PRIMAVERA resuelva a LA PRIMAVERA y ANGEL CORNEJO a ANGEL GUSTAVO CORNEJO."""
@@ -192,9 +185,10 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=6, emp_direccion="CONDOMINIO LA PRIMAVERA-ANGEL CORNEJO BLOCK F-101")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_zona, 45)   # LA PRIMAVERA
-        self.assertEqual(dest.id_via, 421)   # ANGEL GUSTAVO CORNEJO
-        self.assertIn("BLOCK F", dest.referencia)
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(45))   # LA PRIMAVERA
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(421))   # ANGEL GUSTAVO CORNEJO
+        self.assertEqual(dest.block, "F")
+        self.assertTrue(any(c["codi_nombre"] == "BLOCK" for c in dest.componentes))
 
     def test_3_de_octubre_and_salaverry(self):
         """Verifica que '3 DE OCTUBRE-FELIPE SANTIAGO SALAVERRY01731' resuelva vía y zona oficiales."""
@@ -203,8 +197,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=9, emp_direccion="3 DE OCTUBRE-FELIPE SANTIAGO SALAVERRY01731")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_zona, 81)   # 3 DE OCTUBRE - PAMPA Y MOLINO DE VIENTO
-        self.assertEqual(dest.id_via, 2862)  # FELIPE SANTIAGO SALAVERRY
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(81))   # 3 DE OCTUBRE - PAMPA Y MOLINO DE VIENTO
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(2862))  # FELIPE SANTIAGO SALAVERRY
         self.assertEqual(dest.num_via, "1731")
 
     def test_orthographic_variant_porcuya_to_porculla(self):
@@ -214,9 +208,9 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=1321, emp_direccion="PATAZCA-PORCUYA00330")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 285)   # PORCULLA
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(285))   # PORCULLA
         self.assertEqual(dest.nom_via, "PORCULLA")
-        self.assertEqual(dest.id_zona, 40)   # PATAZCA
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(40))   # PATAZCA
         self.assertEqual(dest.num_via, "330")
 
     def test_salas_not_matched_as_salinas(self):
@@ -235,9 +229,9 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=1212, emp_direccion="JOSE QUIÑONES GONZALES-IQUITOS00191")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 459)   # IQUITOS
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(459))   # IQUITOS
         self.assertEqual(dest.nom_via, "IQUITOS")
-        self.assertEqual(dest.id_zona, 62)   # CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(62))   # CAP. FAP JOSÉ QUIÑONES GONZALES - I ETAPA
         self.assertEqual(dest.num_via, "191")
         self.assertIsNone(dest.referencia)
 
@@ -253,8 +247,7 @@ class TestAIAddressObservations(unittest.TestCase):
         dest = self.parser.parse(rec)
         self.assertFalse(dest.es_procesado)
         self.assertIsNone(dest.id_via)
-        self.assertIsNotNone(dest.observacion)
-        self.assertIn("CALLE FANTASMA NO CATASTRADA", dest.observacion)
+        self.assertIsNone(dest.observacion)
 
     def test_nueve_de_octubre_las_margaritas_sector_resolution(self):
         """Verifica que 'NUEVE DE OCTUBRE-LAS MARGARITAS00455' resuelva la vía sectorizada ID 418 y zona ID 60."""
@@ -269,9 +262,9 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=1342, emp_direccion="NUEVE DE OCTUBRE-LAS MARGARITAS00455")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 418)   # LAS MARGARITAS (Sector 23 25)
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(418))   # LAS MARGARITAS (Sector 23 25)
         self.assertEqual(dest.nom_via, "LAS MARGARITAS")
-        self.assertEqual(dest.id_zona, 60)   # 9 DE OCTUBRE (Sector 23 25)
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(60))   # 9 DE OCTUBRE (Sector 23 25)
         self.assertEqual(dest.num_via, "455")
         self.assertIsNone(dest.observacion)
 
@@ -283,7 +276,7 @@ class TestAIAddressObservations(unittest.TestCase):
         rec1 = DireccionOrigen(id_licencia=101, emp_direccion="AV. JOSE BALTA 520")
         dest1 = self.parser.parse(rec1)
         self.assertTrue(dest1.es_procesado)
-        self.assertEqual(dest1.id_via, 2905)
+        self.assertEqual(dest1.id_via, CatalogManager.map_legacy_via_id(2905))
         self.assertEqual(dest1.num_via, "520")
         self.assertIsNone(dest1.id_zona)
 
@@ -292,7 +285,7 @@ class TestAIAddressObservations(unittest.TestCase):
         dest2 = self.parser.parse(rec2)
         self.assertTrue(dest2.es_procesado)
         self.assertIsNone(dest2.id_via)
-        self.assertEqual(dest2.id_zona, 298)
+        self.assertEqual(dest2.id_zona, CatalogManager.map_legacy_zona_id(298))
         self.assertEqual(dest2.manzana, "E")
         self.assertEqual(dest2.lote, "23")
 
@@ -300,8 +293,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec3 = DireccionOrigen(id_licencia=103, emp_direccion="SAN NICOLAS - LAS AMERICAS 705")
         dest3 = self.parser.parse(rec3)
         self.assertTrue(dest3.es_procesado)
-        self.assertIn(dest3.id_via, (869, 2910))
-        self.assertEqual(dest3.id_zona, 136)
+        self.assertIn(dest3.id_via, (CatalogManager.map_legacy_via_id(869), CatalogManager.map_legacy_via_id(2910)))
+        self.assertEqual(dest3.id_zona, CatalogManager.map_legacy_zona_id(136))
         self.assertEqual(dest3.num_via, "705")
 
     def test_remigio_silva_tomas_gutierrez_id_1253(self):
@@ -315,9 +308,9 @@ class TestAIAddressObservations(unittest.TestCase):
         rec_a = DireccionOrigen(id_licencia=1253, emp_direccion="REMIGIO SILVA-TOMAS GUTIERREZ00370")
         dest_a = self.parser.parse(rec_a)
         self.assertTrue(dest_a.es_procesado)
-        self.assertEqual(dest_a.id_via, 648)
+        self.assertEqual(dest_a.id_via, CatalogManager.map_legacy_via_id(648))
         self.assertEqual(dest_a.nom_via, "THOMAS GUTIERREZ")
-        self.assertEqual(dest_a.id_zona, 92)
+        self.assertEqual(dest_a.id_zona, CatalogManager.map_legacy_zona_id(92))
         self.assertEqual(dest_a.nom_zona, "REMIGIO B. SILVA")
         self.assertEqual(dest_a.num_via, "370")
         self.assertIsNone(dest_a.observacion)
@@ -327,9 +320,9 @@ class TestAIAddressObservations(unittest.TestCase):
         rec_b = DireccionOrigen(id_licencia=1253, emp_direccion="REMIGIO SILVA-TOMAS GUTIERREZ00370")
         dest_b = self.parser.parse(rec_b)
         self.assertTrue(dest_b.es_procesado)
-        self.assertEqual(dest_b.id_via, 648)
+        self.assertEqual(dest_b.id_via, CatalogManager.map_legacy_via_id(648))
         self.assertEqual(dest_b.nom_via, "THOMAS GUTIERREZ")
-        self.assertEqual(dest_b.id_zona, 92)
+        self.assertEqual(dest_b.id_zona, CatalogManager.map_legacy_zona_id(92))
         self.assertEqual(dest_b.nom_zona, "REMIGIO B. SILVA")
         self.assertEqual(dest_b.num_via, "370")
         self.assertIsNone(dest_b.observacion)
@@ -342,16 +335,16 @@ class TestAIAddressObservations(unittest.TestCase):
         rec1 = DireccionOrigen(id_licencia=201, emp_direccion="LAS AMERICAS 705 - SAN NICOLAS")
         dest1 = self.parser.parse(rec1)
         self.assertTrue(dest1.es_procesado)
-        self.assertIn(dest1.id_via, (869, 2910))
-        self.assertEqual(dest1.id_zona, 136)
+        self.assertIn(dest1.id_via, (CatalogManager.map_legacy_via_id(869), CatalogManager.map_legacy_via_id(2910)))
+        self.assertEqual(dest1.id_zona, CatalogManager.map_legacy_zona_id(136))
         self.assertEqual(dest1.num_via, "705")
 
         # Orden 2: Zona primero, luego Vía con número
         rec2 = DireccionOrigen(id_licencia=202, emp_direccion="SAN NICOLAS - LAS AMERICAS 705")
         dest2 = self.parser.parse(rec2)
         self.assertTrue(dest2.es_procesado)
-        self.assertIn(dest2.id_via, (869, 2910))
-        self.assertEqual(dest2.id_zona, 136)
+        self.assertIn(dest2.id_via, (CatalogManager.map_legacy_via_id(869), CatalogManager.map_legacy_via_id(2910)))
+        self.assertEqual(dest2.id_zona, CatalogManager.map_legacy_zona_id(136))
         self.assertEqual(dest2.num_via, "705")
 
     def test_mixed_manzana_lote_and_via_number(self):
@@ -368,8 +361,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=301, emp_direccion="URB. REMIGIO SILVA MZ. B LT. 14 CA. TOMAS GUTIERREZ 370")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 648)
-        self.assertEqual(dest.id_zona, 92)
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(648))
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(92))
         self.assertEqual(dest.num_via, "370")
         self.assertEqual(dest.manzana, "B")
         self.assertEqual(dest.lote, "14")
@@ -380,8 +373,8 @@ class TestAIAddressObservations(unittest.TestCase):
         rec = DireccionOrigen(id_licencia=1321, emp_direccion="PATAZCA-PORCUYA00330")
         dest = self.parser.parse(rec)
         self.assertTrue(dest.es_procesado)
-        self.assertEqual(dest.id_via, 285)
-        self.assertEqual(dest.id_zona, 40)
+        self.assertEqual(dest.id_via, CatalogManager.map_legacy_via_id(285))
+        self.assertEqual(dest.id_zona, CatalogManager.map_legacy_zona_id(40))
         self.assertEqual(dest.num_via, "330")
 
 

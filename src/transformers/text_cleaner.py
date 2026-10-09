@@ -35,6 +35,43 @@ class TextCleaner:
         clean = re.sub(r"\bEXT(?:\.|\b)", "EXTERIOR", clean)
         clean = re.sub(r"\bCDRA(?:\.|\b)", "CUADRA", clean)
 
+        # 2d. Despegar módulos, números y componentes catastrales pegados
+        clean = re.sub(
+            r"(\d+)(DPTO|DEP|DEPARTAMENTO|INT|INTERIOR|TDA|TIENDA|STAND|STD|PTO|PUESTO|LOCAL|LOC|OF|OFICINA|BLOCK|BLQ|PISO|PLANTA|MZ|MZA|LT|LOTE)\b",
+            r"\1 \2",
+            clean,
+            flags=re.IGNORECASE,
+        )
+        clean = re.sub(
+            r"([A-ZÁÉÍÓÚÑ]{2,})(MZ|MZA|LOTE)\b",
+            r"\1 \2",
+            clean,
+            flags=re.IGNORECASE,
+        )
+        clean = re.sub(
+            r"([A-ZÁÉÍÓÚÑ]{2,})(LT)(?=[0-9\.\s])",
+            r"\1 \2",
+            clean,
+            flags=re.IGNORECASE,
+        )
+        clean = re.sub(
+            r"\b(MZ|MZA)\.?\s*([A-Z0-9])\s*(LT|LOTE)\b",
+            r"\1 \2 \3",
+            clean,
+            flags=re.IGNORECASE,
+        )
+        clean = re.sub(
+            r"([A-ZÁÉÍÓÚÑ]{3,})(0\d{2,5})",
+            r"\1 \2",
+            clean,
+        )
+        clean = re.sub(
+            r"\b(PORVENIR|VICTORIA|LORENZO|MARTIN|CAMPODONICO)(SIMON|MANUEL|JOSE|FRANCISCO|PEDRO|AV|CA|CALLE|AVENIDA)\b",
+            r"\1 \2",
+            clean,
+            flags=re.IGNORECASE,
+        )
+
         # 3. Despegar nombres de ciudades o distritos unidos a nombres de calles (ej. CHICLAYOALFREDO -> CHICLAYO ALFREDO)
         clean = re.sub(
             r"^(CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO|REQUE|MONSEFU)([A-ZÁÉÍÓÚ])",
@@ -58,9 +95,9 @@ class TextCleaner:
         clean = re.sub(r"\bINT\s*[-–.]\s*([A-Z0-9]+)", r"INT-\1", clean)
         clean = re.sub(r"\bDPTO\s*[-–.]\s*([A-Z0-9]+)", r"DPTO-\1", clean)
 
-        # 6. Normalizar números y prefijos N°
-        clean = re.sub(r"\bN\s*°?\s*(\d+)", r"N° \1", clean)
-        clean = re.sub(r"\bNUM\s*°?\s*(\d+)", r"N° \1", clean)
+        # 6. Normalizar números y prefijos N°, Nª, Nº, NUM, NRO
+        clean = re.sub(r"\b(N|NUM|NRO)[°ºª\.]*\s*(\d+)", r"N° \2", clean, flags=re.IGNORECASE)
+        clean = re.sub(r"\b(N|NUM|NRO)[°ºª\.]*\s*S/?N\b", "S/N", clean, flags=re.IGNORECASE)
 
         # 7. Normalizar tipos de vía abreviados sin punto al inicio
         clean = re.sub(r"^AV\s+([A-Z])", r"AV. \1", clean)

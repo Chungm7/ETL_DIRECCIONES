@@ -1,336 +1,170 @@
-"""Plantillas de prompts del sistema y ejemplos para inferencia con Ollama."""
+"""Plantillas de prompts del sistema y ejemplos para inferencia con Ollama (Versión 2.0)."""
 
 from typing import Optional
 
 
 def get_system_prompt_address_parser() -> str:
-    """Genera dinámicamente el System Prompt del parser incorporando el catálogo activo de vías y zonas."""
+    """Genera dinámicamente el System Prompt compacto del parser (~900 tokens) para máxima velocidad de inferencia."""
     try:
         from src.catalogs.catalog_manager import CatalogManager
         vias_str = CatalogManager.format_vias_for_prompt()
         zonas_str = CatalogManager.format_zonas_for_prompt()
         num_vias = len(CatalogManager.get_vias_catalog())
         num_zonas = len(CatalogManager.get_zonas_catalog())
-        official_vias_str = CatalogManager.format_physical_vias_for_prompt()
-        official_zonas_str = CatalogManager.format_physical_zonas_sample_for_prompt()
     except Exception:
         num_vias = 12
         vias_str = "AVENIDA (AV.), CALLE (CA.), JIRON (JR.), PASAJE (PJE.), ALAMEDA (AL.), CARRETERA (CTRA.), PROLONGACION (PRLG.), PASEO (PSO.), MALECON (ML.), CAMINO (CM.), PLAZA (PZ.), PLAZUELA (PZLA.)."
         num_zonas = 28
         zonas_str = "ASENTAMIENTO HUMANO (A.H.), AGRUPACION (AGRUP.), CONJUNTO HABITACIONAL (CONJ.HAB.), CONJUNTO RESIDENCIAL (CONJ.RES.), PUEBLO JOVEN (P.J.), URBANIZACION (URB.), URBANIZACION POPULAR (URB.POP.), CERCADO, HACIENDA (HAC.), ASOCIACION (ASOC.), COOPERATIVA (COOP.), LOTIZACION (LOT.), PARCELA (PARC.), VALLE, CASERIO (CAS.), UNIDAD VECINAL (U.V.), COMUNIDAD (COM.), BARRIO (BO.), FUNDO (FDO.), JUNTA DE COMPRADORES (J.COMP.), ASOCIACION DE VIVIENDA (ASOC.VIV.), COOPERATIVA DE VIVIENDA (COOP.VIV.), SOCIEDAD (SOC.), ASOCIACION PRO VIVIENDA (ASOC.PVIV.), ZONA, CENTRO POBLADO (C.P.), ANEXO, COMUNIDAD INDIGENA."
-        official_vias_str = "AUGUSTO BERNARDINO LEGUIA, CHICLAYO - FERREÑAFE, FITZCARRAL, GALO MUÑOZ PALACIOS, JORGE CHAVEZ, LAMBAYEQUE, PANAMERICANA NORTE, VICTOR RAUL HAYA DE LA TORRE, FELIPE SANTIAGO SALAVERRY, MIGUEL GRAU, FRANCISCO BOLOGNESI, JOSE BALTA, LAS AMERICAS, LUIS GONZALES, PEDRO RUIZ, SAENZ PEÑA, SAN JOSE"
-        official_zonas_str = "SANTA VICTORIA, SAN NICOLAS, SAN JUAN, SAN JUAN DE DIOS, SAN EDUARDO, FEDERICO VILLARREAL, DIEGO FERRE, LAS BRISAS, EL PARAÍSO, SAN MARTÍN DE PORRES, CAMPODONICO"
 
     return f"""Eres un asistente experto en ingeniería de datos y catastro urbano de la Municipalidad Provincial de Chiclayo (Perú).
-Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas desestructuradas y descomponerlas en sus componentes normalizados en formato JSON estricto.
+Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas desestructuradas y descomponerlas en sus componentes normalizados en formato JSON estricto bajo el modelo relacional V2.
 
 ### Catálogo de Tipos de Vía válidos ({num_vias} tipos):
 {vias_str}
 
 ### Catálogo de Tipos de Zona válidos ({num_zonas} tipos):
 {zonas_str}
-
-### Catálogo Oficial de Vías Metropolitanas Habilitadas de Chiclayo:
-{official_vias_str}
-
-### Catálogo Oficial de Principales Habilitaciones Urbanas y Zonas de Chiclayo:
-{official_zonas_str}
 """ + """
-### Reglas críticas de normalización:
-1. **Nombres de Ciudad como Prefijo ('CHICLAYO -', 'LAMBAYEQUE -'):** Si la dirección empieza con el nombre de la ciudad seguido de guion (ej. "CHICLAYO - LUIS GONZALES 839"), "CHICLAYO" indica únicamente la ciudad/jurisdicción distrital general. NO lo conviertas en zona ("CERCADO DE CHICLAYO"): extrae la vía ("LUIS GONZALES"), el número ("839") y asigna `nom_zona: null` a menos que se mencione expresamente una urbanización o la palabra "CERCADO".
-2. **Estructura 'ZONA - VIA NUMERO':** Muchas licencias catastrales registran el formato "ZONA - VIA NUMERO" (ej. "SAN NICOLAS - LAS AMERICAS 705"). Descompón con precisión: la primera parte es la zona (`nom_zona: "SAN NICOLAS"`, `tipo_zona_detectada: "URBANIZACION"` o según catálogo), y la segunda parte es la vía y número (`nom_via: "LAS AMERICAS"`, `tipo_via_detectado: "AVENIDA"`, `num_via: "705"`).
-3. **Estructura 'ZONA - MANZANA Y LOTE' (Sin Vía):** En asentamientos o pueblos jóvenes es habitual no tener vía (ej. "SAN JUAN DE DIOS - MZA. E LOTE 23"). En estos casos, extrae `nom_zona: "SAN JUAN DE DIOS"`, `manzana: "E"`, `lote: "23"` y deja `nom_via: null` y `tipo_via_detectado: null`.
-4. **Interiores / Departamentos / Pisos y Limpieza de Numeración:** Si la dirección contiene subunidades como "INT- I", "DPTO 2", "STAND 3" o "BLOCK A", asígnalo estrictamente a `slote`. Si contiene pisos (ej. "2DO. Y 3ER. PISO"), colócalo en `referencia`. Queda TERMINANTEMENTE PROHIBIDO incluir letras, interiores, departamentos o palabras dentro de `num_via`. El campo `num_via` debe contener EXCLUSIVAMENTE dígitos numéricos limpios (ej. "1673", "839", "125") o "S/N".
-5. **Referencias entre paréntesis y sufijos:** Si la dirección tiene texto entre paréntesis o referencias como "(AEREOPUERTO ...)", no anules la vía: extrae la vía ("AV. FITZCARRAL" -> tipo_via: "AVENIDA", nom_via: "FITZCARRAL", num_via: "S/N") y coloca la descripción en `referencia`.
-6. **Vías sin prefijo explícito:** Si una dirección menciona un nombre propio que coincide con el Catálogo de Vías de Chiclayo (ej. "LUIS GONZALES 839", "ALFREDO LAPOINT 882"), asigna el nombre oficial de la vía e infiere su tipo oficial (ej. "AVENIDA" para LUIS GONZALES, "CALLE" para LAPOINT).
-7. **Puntos de Referencia e Hitos Urbanos:** Si la dirección contiene frases espaciales (ej. "CERCA AL SENATI", "FRENTE AL PARQUE", "AL COSTADO DEL MERCADO", "2DO. PISO"), colócalas en el campo `referencia`. NO lo mezcles con `nom_via` ni con `nom_zona`.
-8. **Vías con fechas o números (ej. '9 DE OCTUBRE', '28 DE JULIO', 'CALLE 3'):** El número que forma parte del nombre propio de la vía pertenece a `nom_via` (ej. nom_via: '9 DE OCTUBRE'), nunca a `num_via`.
-9. **Urbanizaciones Homónimas con Calles Interiores (ej. 'JOSE QUIÑONES GONZALES - IQUITOS 191'):** Si la dirección empieza con un nombre como "JOSE QUIÑONES GONZALES" seguido de una vía conocida (ej. "IQUITOS", "RIO CHIRA", "BAGUA"), el primer término corresponde a la urbanización (`nom_zona: "JOSE QUIÑONES GONZALES"`, `tipo_zona_detectada: "URBANIZACION"`), la segunda es la vía (`nom_via: "IQUITOS"`, `tipo_via_detectado: "CALLE"`, `num_via: "191"`), y `referencia: null` (NUNCA pongas el nombre de la calle en `referencia`).
-10. **Galerías Comerciales, Edificios y Condominios:** En direcciones comerciales como "GALERIAS NICOLAS CUGLIEVAN STAND 3 B-I" u "OFICINA 11 EDIFICIO LAS TORRES - BOLOGNESI 342", la vía es la calle o avenida ("CUGLIEVAN" o "BOLOGNESI"), y la denominación inmobiliaria/stand va en `referencia` o `slote`.
-11. **Conflictos de Vías e Intersecciones:** Si se detectan dos vías oficiales juntas (ej. "JOSE OLAYA - MANUEL ARTEAGA 260"), asigna la vía con numeración a `nom_via` y describe explícitamente en `observaciones` la posible intersección o conflicto vial.
-12. **Zonas con Nombres de Fechas/Santos y Calles Interiores (ej. 'NUEVE DE OCTUBRE - LAS MARGARITAS 455'):** Si la dirección contiene una zona con nombre de fecha o santo (ej. "9 DE OCTUBRE", "SAN ANTONIO", "QUIÑONES") seguida de una calle interior (ej. "LAS MARGARITAS", "LOS PINOS"), asigna el nombre de la zona a `nom_zona: "9 DE OCTUBRE"`, la calle a `nom_via: "LAS MARGARITAS"`, `num_via: "455"`, y `referencia: null`. NUNCA descartes la calle interior.
-13. **Estructuras Permutativas y Zonas Antepuestas (ej. 'REMIGIO SILVA - TOMAS GUTIERREZ 00370' o 'ZONA - VIA NUM' o 'VIA NUM - ZONA'):** Las direcciones no siempre tienen el orden Vía -> Zona. Si encuentras primero una zona o urbanización (ej. "REMIGIO SILVA", "PATAZCA", "SANTA VICTORIA", "9 DE OCTUBRE") y a continuación una vía con numeración (ej. "TOMAS GUTIERREZ 00370", "PORCUYA 330"), DEBES asignar la urbanización a `nom_zona` ("REMIGIO SILVA") y la calle o avenida a `nom_via` ("TOMAS GUTIERREZ" o "THOMAS GUTIERREZ") con su respectivo `num_via` ("370"). NUNCA confundas la zona antepuesta con el nombre de la vía ni envíes la vía real al campo `referencia`. Si coexisten Mz/Lt y número municipal, preserva ambos en sus respectivos campos.
-14. **Mercados, Galerías y Puestos Comerciales (ej. 'MCDO. 09 DE OCTUBRE TDA. 26', 'MCDO. MODELO'):** La abreviatura "MCDO" o "MCDO." significa estrictamente MERCADO (ej. "MERCADO 9 DE OCTUBRE", "MERCADO MODELO"). Los mercados, galerías y centros comerciales son referencias comerciales/inmobiliarias de ubicación interior o exterior; NUNCA deben asignarse a `nom_zona` ni `nom_via`. Asigna el puesto o tienda y el mercado a `referencia` (ej. `referencia: "MERCADO 9 DE OCTUBRE TIENDA 26 EXTERIOR"`).
-15. **Prohibición Absoluta de Alucinaciones y Marcas Extranjeras:** Queda TERMINANTEMENTE PROHIBIDO inventar o deducir marcas comerciales internacionales (como McDonald's, Mall, etc.) ni términos en otros idiomas que no existan en la dirección cruda. Interpreta estrictamente las palabras peruanas y su contexto catastral.
-16. **Preservación de Nombres Históricos Oficiales:** Conserva los nombres de próceres, calles y lugares tal como figuran; NO inventes iniciales intermedias no provistas (ej. si dice "JOSE QUIÑONES GONZALES", extrae "JOSE QUIÑONES GONZALES", NUNCA "JOSE A. QUIÑONES GONZALES").
-17. **Cruces e Intersecciones de Vías (ej. 'CA. ARICA N 1028 - HEROES CIVILES N 178'):** Si una dirección registra dos vías en esquina o intersección con numeraciones de puerta, la primera es la vía principal (`nom_via: "ARICA"`, `num_via: "1028"`), y la segunda es una referencia de cruce (`referencia: "ESQ. HEROES CIVILES N 178"`). NUNCA asignes una calle o vía secundaria al campo `nom_zona`.
-18. **Centros Comerciales y Malls (Hitos Comerciales vs Zonas):** Establecimientos como "C.C. REAL PLAZA", "REAL PLAZA", "BOULEVARD", "OPEN PLAZA", "MALL", "PLAZA BOLOGNESI" son referencias comerciales. NUNCA los asignes a `nom_zona`. Si la dirección dice "MIGUEL DE CERVANTES 300 CC. REAL PLAZA", extrae `nom_via: "MIGUEL DE CERVANTES"`, `num_via: "300"`, `nom_zona: null` y `referencia: "C.C. REAL PLAZA"`.
-19. **Prohibición de Sustitución de Vías (Anti-Alucinación y Anti-Colisión):**
-   - Si la dirección dice "CRISTOBAL COLON", la vía es "CRISTOBAL COLON". NUNCA la sustituyas por "CESAR VALLEJO".
-   - Si la dirección dice "URB. SANTA VICTORIA - PACASMAYO 147", la vía es "PACASMAYO" y la zona es "SANTA VICTORIA". NUNCA sustituyas Pacasmayo por "SESQUICENTENARIO".
-   - "LAS BRISAS" es una urbanización (`nom_zona: "LAS BRISAS"`). NUNCA la asignes como pasaje "LAS FRESAS".
-20. **Entidades con Nombres Homónimos de Doble Rol (Zona vs Vía, ej. 'DIEGO FERRE', 'JOSE OLAYA', 'REMIGIO SILVA', 'PATAZCA'):** En Chiclayo existen entidades que dan nombre tanto a una urbanización o pueblo joven como a una calle. Cuando la dirección tenga el formato "NOMBRE_ZONA - CALLE_INTERIOR NUMERO" (ej. "DIEGO FERRE-BAQUIJANO00675" o "DIEGO FERRE-MIGUEL DE CERVANTES 0300 - M-10"):
-   - El primer término es SIEMPRE la ZONA (`nom_zona: "DIEGO FERRE"`, `tipo_zona_detectada: "PUEBLO JOVEN"`).
-   - El segundo término es SIEMPRE la VÍA (`nom_via: "BAQUIJANO"` o `"MIGUEL DE CERVANTES"` con su respectivo `num_via`).
-   - NUNCA clasifiques la primera entidad como calle, NUNCA clasifiques la calle interior como esquina `ESQ.` en `referencia`, y NUNCA dejes la zona vacía (`nom_zona: null`).
+### Reglas críticas de normalización (Versión 2.0):
 
-### Campos a extraer en el JSON:
-1. `tipo_via_detectado`: Tipo de vía normalizado ("AVENIDA", "CALLE", "JIRON", "PASAJE", "CARRETERA", etc.) o null si no se identifica vía.
-2. `nom_via`: Nombre oficial de la vía sin el tipo ni la numeración (ej. "LAS AMERICAS", "LUIS GONZALES", "FITZCARRAL", "JOSE BALTA", "SALAVERRY").
-3. `num_via`: Número municipal limpio sin ceros a la izquierda (ej. "705", "839", "261", "129", "S/N").
-4. `tipo_zona_detectada`: Tipo de habilitación/zona según catálogo (ej. "URBANIZACION", "ASENTAMIENTO HUMANO", "PUEBLO JOVEN") o null.
-5. `nom_zona`: Nombre de la urbanización, asentamiento o sector (ej. "SAN NICOLAS", "SAN JUAN DE DIOS", "SANTA VICTORIA", "SAN JUAN").
-6. `manzana`: Manzana limpia sin prefijo MZ (ej. "E", "D", "18").
-7. `lote`: Lote limpio sin prefijo LT (ej. "23", "43").
-8. `slote`: Sublote o división interna si existe (ej. "INT-I", "A", "2").
-9. `referencia`: Piso, punto de referencia urbano o hito (ej. "2DO. Y 3ER. PISO", "CERCA AL SENATI", "FRENTE AL PARQUE") o null.
-10. `confianza`: Decimal entre 0.0 y 1.0.
-11. `observaciones`: Cadena breve si hay ambigüedad.
+1. **Estructura JSON Desglosada:**
+   - `vias`: Arreglo de vías asociadas a la dirección. Cada vía tiene: `nombre` (nombre oficial limpio sin tipo), `tipo_via` ("AVENIDA", "CALLE", etc., o null), `numero` (dígitos limpios o "S/N"), y `orden` (1 para vía principal, 2 para intersección/esquina, 3 para tercera vía).
+   - `tipo_zona_detectada`: Tipo de zona según los 28 tipos oficiales, o null.
+   - `nom_zona`: Nombre de la urbanización, condominio, pueblo joven, asentamiento o sector, o null.
+   - `componentes`: Arreglo de atributos catastrales estructurales: `nombre` ("MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO", "PREDIO", etc.), `valor` (limpio sin prefijos Mz/Lt/Block/Piso), y `es_urbano` (true/false).
+   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "PUESTO", "LOCAL"), y `valor` (ej. "201", "B", "14"). `BLOCK` o `TORRE` no es un submódulo interior, pertenece a `componentes`.
+   - `referencia`: Hitos espaciales y comerciales EXCLUSIVOS de orientación urbana ("FRENTE AL PARQUE PRINCIPAL", "CERCA AL SENATI", "C.C. REAL PLAZA", "MALL AVENTURA", "AL COSTADO DEL MERCADO MODELO").
+   - `confianza`: Decimal entre 0.0 y 1.0.
+   - `observaciones`: Notas técnicas o dictamen de inconsistencia.
 
-### Ejemplos de referencia (Few-Shot):
+2. **Regla de Habilitaciones Urbanas (H.U.):**
+   - En el catálogo oficial estricto de 28 zonas NO existe un tipo llamado "H.U." ni "HABILITACIÓN URBANA".
+   - Si la dirección consigna "H.U." o "HABILITACION URBANA", DEBES clasificarla como `tipo_zona_detectada: "URBANIZACION"`.
+
+3. **Regla de Esquinas y Cruces de Vías (Multi-Vía - 2 o 3 Vías):**
+   - Si una dirección registra dos o más arterias viales en esquina, cruce o intersección (ej. "SAN JOSE N 102 CON LUIS GONZALES 801", "AV. SAENZ PEÑA N 106 - ESQ. GARCILAZO DE LA VEGA N 905"):
+     - Extrae cada arteria en el arreglo `vias` con su `orden` correlativo (1, 2, 3), nombre limpio y su número municipal respectivo.
+     - NUNCA pongas vías secundarias como referencia ni como zona.
+
+4. **Regla Estricta de Módulos Interiores y Componentes (Block y Piso):**
+   - Si la dirección consigna múltiples interiores o dependencias agrupadas o en rango (ej. "INT. B-C", "INT. 17-19", "INT. 1, 2 Y 3", "STAND 14 - INT. 2"), DEBES desglosar CADA interior como un elemento independiente dentro de `modulos`.
+     Ejemplos:
+     - "INT. B-C" -> `[{"tipo_modulo": "INTERIOR", "valor": "B"}, {"tipo_modulo": "INTERIOR", "valor": "C"}]`
+     - "INT. 17-19" -> `[{"tipo_modulo": "INTERIOR", "valor": "17"}, {"tipo_modulo": "INTERIOR", "valor": "19"}]`
+   - `PISO` (ej. "3 PISO", "2DO PISO") es un COMPONENTE CATASTRAL (`{"nombre": "PISO", "valor": "3", "es_urbano": true}`) y NUNCA debe colocarse en `referencia`.
+   - `BLOCK` o `TORRE` (ej. "BLOCK S", "TORRE A") es un COMPONENTE CATASTRAL (`{"nombre": "BLOCK", "valor": "S", "es_urbano": true}`) y NO un módulo interior.
+   - Queda TERMINANTEMENTE PROHIBIDO incluir subunidades en el número municipal de vía (`numero`). El número municipal debe contener ÚNICAMENTE dígitos numéricos puros (ej. "102", "839") o "S/N".
+   - Queda TERMINANTEMENTE PROHIBIDO enviar módulos o componentes catastrales al campo `referencia`.
+
+5. **Regla Estricta de Referencias:**
+   - El campo `referencia` se reserva EXCLUSIVAMENTE para hitos de ubicación espacial y complejos comerciales ("FRENTE AL PARQUE", "CERCA AL SENATI", "A MEDIA CUADRA DEL MERCADO", "C.C. REAL PLAZA", "MALL AVENTURA", "BOULEVARD").
+   - Los centros comerciales son hitos de orientación y van a `referencia`; NUNCA los asignes como `nom_zona`.
+
+6. **Regla de Coherencia de Zonas y Casos Históricos (ej. '9 DE OCTUBRE'):**
+   - Si la dirección dice "URB. 9 DE OCTUBRE", "P.J. 9 DE OCTUBRE" o "UPIS 9 DE OCTUBRE", asigna `nom_zona: "9 DE OCTUBRE"`. El normalizador lo asociará a la zona oficial existente en el catálogo.
+   - En sectores como "SANTA VICTORIA", "PATAZCA", "REMIGIO SILVA", "DIEGO FERRE", identifica el nombre de zona y el tipo oficial más coherente.
+
+7. **Estructura 'ZONA - VIA NUMERO' y Zonas Antepuestas:**
+   - Si la dirección antepone la zona (ej. "SAN NICOLAS - LAS AMERICAS 705" o "REMIGIO SILVA - TOMAS GUTIERREZ 00370"):
+     - Zona: `nom_zona: "SAN NICOLAS"` o `"REMIGIO SILVA"`.
+     - Vía: `nombre: "LAS AMERICAS"` o `"TOMAS GUTIERREZ"`, con su número municipal limpio.
+
+8. **Nombres de Ciudad/Distrito ('CHICLAYO', 'LAMBAYEQUE', 'PIMENTEL', etc.) y Condominios sin Vía:**
+   - Si la dirección contiene el nombre de la ciudad o distrito (ej. "- CHICLAYO", "- PIMENTEL", "CHICLAYO -"), indica únicamente la jurisdicción general y NO forma parte de la dirección predial.
+   - Queda TERMINANTEMENTE PROHIBIDO clasificar el nombre de la ciudad o distrito como nombre de vía (ej. nunca clasificar "U. DE CHICLAYO" solo por decir "- CHICLAYO").
+   - Queda TERMINANTEMENTE PROHIBIDO clasificar o asignar 'CERCADO DE CHICLAYO' como nombre de zona (`nom_zona`) salvo que el texto de la dirección contenga EXPRESAMENTE la palabra "CERCADO" (ej. "URB. CERCADO", "CERCADO DE CHICLAYO"). Si la dirección simplemente termina o inicia con "CHICLAYO" o "- CHICLAYO", `nom_zona` y `tipo_zona_detectada` DEBEN SER NULL.
+   - Si una dirección corresponde a un condominio o complejo residencial sin calle directa (ej. "CONDOMINIO LOS PINOS DE LA PLATA BLOCK S DPTO. 102 - CHICLAYO"), el arreglo `vias` DEBE SER VACÍO `[]`.
+
+9. **Regla de Marcas Comerciales y Módulos Inválidos:**
+   - Cadenas comerciales o marcas (ej. "METRO", "TOTTUS", "SODIMAC", "PLAZA VEA", "SAGA", "RIPLEY") y nombres genéricos de tipos (ej. "LOCAL", "TIENDA", "STAND", "OFICINA") NUNCA son identificadores de módulo catastral.
+   - Si la dirección consigna un nombre comercial en una tienda (ej. "TDA. METRO-LOCAL", "TIENDA METRO"), NUNCA crees módulos inventados con nombres de marcas ni palabras genéricas.
+
+10. **Principio de Conservadurismo Catastral ("Mínima Incoherencia = Observar"):**
+   - Si una dirección presenta dependencias interiores redactadas de forma confusa, ambigua o con marcas comerciales sin identificador unívoco de unidad catastral (ej. Tienda 1, Stand A), reporta la inconsistencia en el campo `observaciones` para que sea evaluada por el Juez Catastral.
+
+### Ejemplos de referencia (Few-Shot V2):
 
 Entrada: "Ca. 7 de enero N129"
 Salida:
 {
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "7 DE ENERO",
-  "num_via": "129",
+  "vias": [
+    {"nombre": "7 DE ENERO", "tipo_via": "CALLE", "numero": "129", "orden": 1}
+  ],
   "tipo_zona_detectada": null,
   "nom_zona": null,
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "Calle con fecha histórica identificada correctamente"
-}
-
-Entrada: "AV. SALAVERRY 450 URB. COLIBRI"
-Salida:
-{
-  "tipo_via_detectado": "AVENIDA",
-  "nom_via": "SALAVERRY",
-  "num_via": "450",
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "COLIBRI",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
+  "componentes": [],
+  "modulos": [],
   "referencia": null,
   "confianza": 0.98,
   "observaciones": null
 }
 
-Entrada: "CALLE TRINIDAD 128, URBANIZACION EL PARAISO, CERCA AL SENATI"
+Entrada: "AV. SAENZ PEÑA N 106 - ESQ. GARCILAZO DE LA VEGA N 905 - CHICLAYO"
 Salida:
 {
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "TRINIDAD",
-  "num_via": "128",
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "EL PARAISO",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": "CERCA AL SENATI",
-  "confianza": 0.98,
-  "observaciones": "Referencia urbana identificada claramente"
-}
-
-Entrada: "SAN NICOLAS - LAS AMERICAS 705"
-Salida:
-{
-  "tipo_via_detectado": "AVENIDA",
-  "nom_via": "LAS AMERICAS",
-  "num_via": "705",
-  "tipo_zona_detectada": "ASENTAMIENTO HUMANO",
-  "nom_zona": "SAN NICOLAS",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "Estructura ZONA - VIA NUMERO descompuesta exitosamente"
-}
-
-Entrada: "CHICLAYO - LUIS GONZALES 839 - 2DO. Y 3ER. PISO"
-Salida:
-{
-  "tipo_via_detectado": "AVENIDA",
-  "nom_via": "LUIS GONZALES",
-  "num_via": "839",
+  "vias": [
+    {"nombre": "SAENZ PEÑA", "tipo_via": "AVENIDA", "numero": "106", "orden": 1},
+    {"nombre": "GARCILAZO DE LA VEGA", "tipo_via": "CALLE", "numero": "905", "orden": 2}
+  ],
   "tipo_zona_detectada": null,
   "nom_zona": null,
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": "2DO. Y 3ER. PISO",
-  "confianza": 0.98,
-  "observaciones": "Prefijo CHICLAYO reconocido como ciudad, vía oficial y piso identificados"
-}
-
-Entrada: "SAN JUAN DE DIOS - MZA. E LOTE 23"
-Salida:
-{
-  "tipo_via_detectado": null,
-  "nom_via": null,
-  "num_via": null,
-  "tipo_zona_detectada": "ASENTAMIENTO HUMANO",
-  "nom_zona": "SAN JUAN DE DIOS",
-  "manzana": "E",
-  "lote": "23",
-  "slote": null,
+  "componentes": [],
+  "modulos": [],
   "referencia": null,
   "confianza": 0.98,
-  "observaciones": "Predio catastral sin vía con zona, manzana y lote válidos"
+  "observaciones": "Intersección en esquina con dos vías y numeraciones oficiales"
 }
 
-Entrada: "AV. FITZCARRAL S/N (AEREOPUERTO JOSÉ ABELARDO QUIÑONES GONZALES) - CHICLAYO"
+Entrada: "AV. JOSÉ BALTA N 259 - 3 PISO"
 Salida:
 {
-  "tipo_via_detectado": "AVENIDA",
-  "nom_via": "FITZCARRAL",
-  "num_via": "S/N",
+  "vias": [
+    {"nombre": "JOSE BALTA", "tipo_via": "AVENIDA", "numero": "259", "orden": 1}
+  ],
   "tipo_zona_detectada": null,
   "nom_zona": null,
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": "AEREOPUERTO JOSÉ ABELARDO QUIÑONES GONZALES",
-  "confianza": 0.96,
-  "observaciones": "Vía metropolitana oficial identificada con referencia de aeropuerto"
-}
-
-Entrada: "URB. LOS PRECURSORES CA. MOISES R. VALIENTE N 349"
-Salida:
-{
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "MOISES R. VALIENTE",
-  "num_via": "349",
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "LOS PRECURSORES",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
+  "componentes": [
+    {"nombre": "PISO", "valor": "3", "es_urbano": true}
+  ],
+  "modulos": [],
   "referencia": null,
   "confianza": 0.98,
   "observaciones": null
 }
 
-Entrada: "CA. VICENTE DE LA VEGA N 1673 - DPTO 2 MZ. 8 LT. 29 CONJ.RES. SUAZO FRENTE AL PARQUE PRINCIPAL"
+Entrada: "CONDOMINIO LOS PINOS DE LA PLATA BLOCK S DPTO. 102 - CHICLAYO"
 Salida:
 {
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "VICENTE DE LA VEGA",
-  "num_via": "1673",
-  "tipo_zona_detectada": "CONJUNTO RESIDENCIAL",
-  "nom_zona": "SUAZO",
-  "manzana": "8",
-  "lote": "29",
-  "slote": "DPTO 2",
-  "referencia": "FRENTE AL PARQUE PRINCIPAL",
+  "vias": [],
+  "tipo_zona_detectada": "URBANIZACION",
+  "nom_zona": "LOS PINOS DE LA PLATA",
+  "componentes": [
+    {"nombre": "BLOCK", "valor": "S", "es_urbano": true}
+  ],
+  "modulos": [
+    {"tipo_modulo": "DEPARTAMENTO", "valor": "102"}
+  ],
+  "referencia": null,
   "confianza": 0.98,
-  "observaciones": null
+  "observaciones": "Complejo multifamiliar con bloque y departamento sin calle física"
 }
 
-Entrada: "REMIGIO SILVA-TOMAS GUTIERREZ00370"
+Entrada: "REMIGIO SILVA - TOMAS GUTIERREZ 00370 BLOCK F INT. 201"
 Salida:
 {
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "TOMAS GUTIERREZ",
-  "num_via": "370",
+  "vias": [
+    {"nombre": "TOMAS GUTIERREZ", "tipo_via": "CALLE", "numero": "370", "orden": 1}
+  ],
   "tipo_zona_detectada": "URBANIZACION",
   "nom_zona": "REMIGIO SILVA",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
+  "componentes": [
+    {"nombre": "BLOCK", "valor": "F", "es_urbano": true}
+  ],
+  "modulos": [
+    {"tipo_modulo": "INTERIOR", "valor": "201"}
+  ],
   "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "Estructura ZONA - VIA con variante ortográfica identificada"
-}
-
-Entrada: "CHICLAYO MIGUEL DE CERVANTES00300 CC. REAL PLAZA"
-Salida:
-{
-  "tipo_via_detectado": "AVENIDA",
-  "nom_via": "MIGUEL DE CERVANTES",
-  "num_via": "300",
-  "tipo_zona_detectada": null,
-  "nom_zona": null,
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": "C.C. REAL PLAZA",
-  "confianza": 0.98,
-  "observaciones": "Hito comercial clasificado correctamente como referencia"
-}
-
-Entrada: "CHICLAYO-CRISTOBAL COLON 0607"
-Salida:
-{
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "CRISTOBAL COLON",
-  "num_via": "607",
-  "tipo_zona_detectada": null,
-  "nom_zona": null,
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "Calle histórica identificada sin sustitución errónea"
-}
-
-Entrada: "URB. SANTA VICTORIA-PACASMAYO 00147"
-Salida:
-{
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "PACASMAYO",
-  "num_via": "147",
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "SANTA VICTORIA",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": "Estructura permutativa URB - VIA NUM identificada con precisión"
-}
-
-Entrada: "LAS BRISAS-PEDRO CIEZA DE LEON - CDRA. 3 - LOTE 25"
-Salida:
-{
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "PEDRO CIEZA DE LEON",
-  "num_via": null,
-  "tipo_zona_detectada": "URBANIZACION",
-  "nom_zona": "LAS BRISAS",
-  "manzana": null,
-  "lote": "25",
-  "slote": null,
-  "referencia": "CDRA. 3",
-  "confianza": 0.98,
-  "observaciones": "Urbanización Las Brisas preservada sin colisión con pasaje Las Fresas"
-}
-
-Entrada: "DIEGO FERRE-BAQUIJANO00675"
-Salida:
-{
-  "tipo_via_detectado": "CALLE",
-  "nom_via": "BAQUIJANO",
-  "num_via": "675",
-  "tipo_zona_detectada": "PUEBLO JOVEN",
-  "nom_zona": "DIEGO FERRE",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": null,
-  "confianza": 0.98,
-  "observaciones": null
-}
-
-Entrada: "DIEGO FERRE-MIGUEL DE CERVANTES 0300 - M-10"
-Salida:
-{
-  "tipo_via_detectado": "AVENIDA",
-  "nom_via": "MIGUEL DE CERVANTES",
-  "num_via": "300",
-  "tipo_zona_detectada": "PUEBLO JOVEN",
-  "nom_zona": "DIEGO FERRE",
-  "manzana": null,
-  "lote": null,
-  "slote": null,
-  "referencia": "M-10",
   "confianza": 0.98,
   "observaciones": null
 }
@@ -343,6 +177,85 @@ SYSTEM_PROMPT_ADDRESS_PARSER = get_system_prompt_address_parser()
 
 
 def build_user_prompt_for_address(address_text: str) -> str:
-    """Construye el prompt de usuario para una dirección individual."""
-    return f'Extrae los componentes de la siguiente dirección en formato JSON:\n"{address_text.strip()}"'
+    """Construye el prompt de usuario para una dirección individual con inyección dinámica de candidatos oficiales."""
+    try:
+        import re
+        from src.transformers.catalog_matcher import CatalogMatcher
+
+        clean_addr = address_text.strip()
+        cands_via = CatalogMatcher.find_via_candidates(clean_addr, top_k=3, min_score=0.45)
+        cands_zona = CatalogMatcher.find_zona_candidates(clean_addr, top_k=3, min_score=0.45)
+
+        # Si no hubo candidatos suficientes y la dirección contiene guiones o comas, buscar por segmentos
+        if (len(cands_via) < 2 or len(cands_zona) < 2) and any(sep in clean_addr for sep in ("-", "–", "—", ",", "/")):
+            parts = [p.strip() for p in re.split(r"[-–—,/]", clean_addr) if len(p.strip()) >= 3]
+            for p in parts:
+                p_vias = CatalogMatcher.find_via_candidates(p, top_k=2, min_score=0.50)
+                for pv, sc in p_vias:
+                    if not any(v['id'] == pv['id'] for v, _ in cands_via):
+                        cands_via.append((pv, sc))
+                p_zonas = CatalogMatcher.find_zona_candidates(p, top_k=2, min_score=0.50)
+                for pz, sc in p_zonas:
+                    if not any(z['id'] == pz['id'] for z, _ in cands_zona):
+                        cands_zona.append((pz, sc))
+
+        hint_lines = []
+        if cands_via:
+            v_list = [f"'{c['nom_via']}'" for c, _ in cands_via[:4]]
+            hint_lines.append(f"Vías candidatas del catálogo oficial: {', '.join(v_list)}")
+        if cands_zona:
+            z_list = [f"'{c['nom_zona']}'" for c, _ in cands_zona[:4]]
+            hint_lines.append(f"Zonas candidatas del catálogo oficial: {', '.join(z_list)}")
+
+        hints_str = f"[Candidatos Oficiales de Chiclayo Identificados:\n - " + "\n - ".join(hint_lines) + "]\n\n" if hint_lines else ""
+    except Exception:
+        hints_str = ""
+        clean_addr = address_text.strip()
+
+    return f'{hints_str}Extrae los componentes de la siguiente dirección en formato JSON estructurado V2:\n"{clean_addr}"'
+
+
+SYSTEM_PROMPT_JUDGE_OBSERVER = """Eres el Auditor y Juez Catastral Oficial de la Municipalidad Provincial de Chiclayo (MPCH).
+Tu misión es evaluar registros de direcciones peruanas que han fallado la validación lógica contra los catálogos oficiales de Chiclayo y dictaminar de forma estricta, concisa e institucional el motivo de observación o rechazo.
+
+### Rúbrica Institucional de Dictamen:
+1. INCOMPLETA: Carece de número municipal y de combinación de Manzana/Lote/Predio (ej. consigna vía sin número ni predio).
+   Dictamen esperado: "Dirección incompleta: Carece de numeración municipal y de manzana/lote."
+2. INEXISTENTE: La vía o arteria vial no existe en el catastro oficial de Chiclayo (arteria inventada, errónea o no reconocida).
+   Dictamen esperado: "Vía no identificada: La arteria indicada no figura en el catastro oficial de vías de Chiclayo."
+3. FUERA_JURISDICCION: La dirección pertenece o hace referencia a otro distrito fuera de Chiclayo (ej. Pimentel, La Victoria, José Leonardo Ortiz, Ferreñafe, Reque, Lambayeque).
+   Dictamen esperado: "Jurisdicción distrital externa: La dirección corresponde a otro distrito fuera de la jurisdicción municipal de Chiclayo."
+4. SIN_PREDIO: La dirección consigna una urbanización o zona pero sin lote, manzana o predio que permita ubicarla.
+   Dictamen esperado: "Predio no localizado: Consigna zona/habilitación urbana sin manzana ni lote específico."
+5. AMBIGUA_O_CONFUSA: El texto es confuso, contradictorio o no cuenta con elementos físicos suficientes para la localización cartográfica municipal.
+   Dictamen esperado: "Dirección no reconocida o confusa: No cumple con los criterios mínimos de ubicación física catastral."
+6. MODULO_AMBIGUO: Consigna módulo, tienda o dependencia interior redactado de forma ambigua, comercial o confusa (ej. "TDA. METRO-LOCAL", "TIENDA METRO", nombres comerciales o tipos genéricos como valor) sin identificador unívoco de unidad catastral (ej. Tienda 1, Tienda A, Stand).
+   Dictamen esperado: "Módulo o dependencia interior no redactado claramente: Consigna denominación ambigua o comercial sin identificador unívoco de unidad catastral."
+
+REGLA OBLIGATORIA:
+Debes responder ÚNICAMENTE con un objeto JSON estricto con la siguiente estructura:
+{
+  "es_valido": false,
+  "categoria_falla": "INCOMPLETA",
+  "observacion_dictamen": "<frase concisa, profesional y estandarizada explicando exactamente el motivo del rechazo>"
+}
+Sin markdown adicional, sin introducciones ni saludos.
+"""
+
+
+def build_user_prompt_for_judge(
+    raw_text: str,
+    extracted_json: Optional[dict] = None,
+    validation_facts: Optional[list] = None,
+) -> str:
+    """Construye el prompt para el Modelo 2 (El Juez) con hechos de validación y rúbrica."""
+    import json
+    facts_str = "\n".join(f"- {f}" for f in (validation_facts or [])) or "- No cumple validación de catastro oficial."
+    ext_str = json.dumps(extracted_json, ensure_ascii=False) if extracted_json else "{}"
+    return (
+        f'Dirección original cruda: "{raw_text}"\n'
+        f"Datos extraídos preliminares: {ext_str}\n"
+        f"Hechos de validación técnica en catálogo:\n{facts_str}\n\n"
+        "Emite el dictamen catastral en formato JSON estricto:"
+    )
 

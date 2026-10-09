@@ -67,9 +67,11 @@ class ETLPipeline:
         on_record_processed: Optional[Callable[[Dict[str, Any]], None]] = None,
         on_progress_update: Optional[Callable[[Any], None]] = None,
         num_workers: Optional[int] = None,
+        source_mode: str = "source_table",
     ):
         settings = get_settings()
         self.mode = "in_place"
+        self.source_mode = source_mode  # "source_table" o "central_tb_direccion"
         self.schema = schema or settings.db.schema
         self.table = table or settings.db.table
         self.batch_size = batch_size or settings.etl.batch_size
@@ -83,28 +85,31 @@ class ETLPipeline:
         self._metrics_lock = threading.Lock()
         self._index_lock = threading.Lock()
         self._current_index = 0
+        self._environment_prepared = False
 
         # Mapeo dinámico de configuración de base de datos
         db_settings = getattr(self.db, "settings", None) or settings.db
 
-        # Extractor (extrae de la tabla de direcciones en el esquema configurado)
+        # Extractor (extrae de la tabla de direcciones o desde tb_direccion central)
         self.extractor = extractor or DatabaseExtractor(
             db_service=self.db,
             schema=self.schema,
             table=self.table,
             id_col=getattr(db_settings, "id_col", "id_licencia"),
             dir_col=getattr(db_settings, "dir_col", "emp_direccion"),
+            source_mode=self.source_mode,
         )
 
         # Transformer
         self.transformer = transformer or PipelineTransformer()
 
-        # Loader (actualiza in-place en la misma tabla y esquema conservando los IDs originales)
+        # Loader (persiste sobre tb_direccion central o in-place en la tabla fuente)
         self.loader = loader or DatabaseLoader(
             db_service=self.db,
             schema=self.schema,
             table=self.table,
             mode="in_place",
+            source_mode=self.source_mode,
             db_settings=db_settings,
         )
 
@@ -123,6 +128,8 @@ class ETLPipeline:
         2. Sincroniza dinámicamente CatalogMatcher con los IDs reales de este esquema.
         3. Verifica y agrega las 8 columnas normalizadas in-place en la tabla actual conservando sus IDs.
         """
+        if self._environment_prepared:
+            return
         # Paso 0: Verificación de salud y respuesta en vivo del modelo IA
         ollama_svc = None
         if hasattr(self.transformer, "ai_parser") and self.transformer.ai_parser:
@@ -150,19 +157,38 @@ class ETLPipeline:
                     f"Ejecución abortada (--require-ai): El modelo '{ollama_svc.model_name}' está apagado o no responde."
                 )
 
-        # Paso 1: Examinar tablas categorizables
-        self.db.ensure_catalogs_exist(schema=self.schema, directions_table=self.table)
+        judge_model = getattr(ollama_svc, "judge_model_name", None) or getattr(ollama_svc, "model_name", "N/D")
+        if RICH_AVAILABLE and console:
+            console.print(f"[bold cyan][CONFIG][/bold cyan] Juez IA: [bold green]OPERATIVO[/bold green] (Modelo 2: {judge_model})")
+        else:
+            print(f"[CONFIG] Juez IA: OPERATIVO (Modelo 2: {judge_model})")
+
+        # Paso 1: Arquitectura relacional V2 en central_tb_direccion
+        if self.source_mode == "central_tb_direccion":
+            # Garantizar que las 10 tablas relacionales V2 y sus catálogos existan en public.
+            # Gracias al fast-path en ensure_v2_tables_exist, si ya existen todas completa en < 5ms.
+            self.db.ensure_v2_tables_exist(schema="public")
+            CatalogMatcher.sync_with_db(self.db, "public")
+            msg = f"[CONFIG] BD: Catastro Central public.tb_direccion listo para normalización de [{self.schema}.{self.table}]"
+            if RICH_AVAILABLE and console:
+                console.print(f"[bold cyan][CONFIG][/bold cyan] BD: [bold green]Catastro Central public.tb_direccion listo[/bold green] para [{self.schema}.{self.table}]")
+            else:
+                print(msg)
+            sys.stdout.flush()
+            self._environment_prepared = True
+            return
+
+        self.db.ensure_v2_tables_exist(schema=self.schema)
+        cols = self.db.ensure_v2_source_columns(schema=self.schema, table=self.table)
 
         # Paso 2: Sincronizar mapeo dinámico de CatalogMatcher para el esquema
         CatalogMatcher.sync_with_db(self.db, self.schema)
-
-        # Paso 3: Asegurar columnas in-place en la tabla
-        cols = self.db.ensure_in_place_columns(schema=self.schema, table=self.table)
         if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan][CONFIG][/bold cyan] BD: Esquema '{self.schema}', Tabla '{self.table}' lista ({len(cols)} columnas)")
+            console.print(f"[bold cyan][CONFIG][/bold cyan] BD: Esquema '{self.schema}', Tabla '{self.table}' lista (vinculación V2 lista)")
         else:
-            print(f"[CONFIG] BD: Esquema '{self.schema}', Tabla '{self.table}' lista ({len(cols)} columnas)")
+            print(f"[CONFIG] BD: Esquema '{self.schema}', Tabla '{self.table}' lista (vinculación V2 lista)")
         sys.stdout.flush()
+        self._environment_prepared = True
 
     def _log_record_progress(
         self,
@@ -184,7 +210,9 @@ class ETLPipeline:
 
         # 1. Identificación del motor
         metodo = getattr(destino, "metodo_normalizacion", "IA")
-        if "IA" in metodo:
+        if "Juez" in metodo:
+            motor_lbl = "Juez IA"
+        elif "IA" in metodo:
             motor_lbl = "IA"
         elif "Híbrido" in metodo or "Hibrido" in metodo:
             motor_lbl = "Híbrido"
@@ -204,24 +232,45 @@ class ETLPipeline:
             tag_plain = "[NORMALIZADO]"
             tag_rich = "[bold green][NORMALIZADO][/bold green]"
 
-            tipo_via = CatalogMatcher.get_via_name(destino.tipo_via) or ""
-            via_part = f"{tipo_via} {destino.nom_via or ''}".strip()
-            if destino.num_via:
-                via_part = f"{via_part} N° {destino.num_via}".strip()
+            # Manejo V2 de vías (soporte esquina / multi-vía)
+            if destino.vias and len(destino.vias) > 1:
+                via_names = []
+                for v in destino.vias:
+                    t_via = CatalogMatcher.get_via_name(v.get("tipo_via")) or ""
+                    v_nom = f"{t_via} {v.get('via_nombre') or ''}".strip()
+                    if v.get("divi_numero"):
+                        v_nom += f" N° {v.get('divi_numero')}"
+                    via_names.append(v_nom)
+                via_part = " / ".join(via_names)
+            else:
+                tipo_via = CatalogMatcher.get_via_name(destino.tipo_via) or ""
+                via_part = f"{tipo_via} {destino.nom_via or ''}".strip()
+                if destino.num_via:
+                    via_part = f"{via_part} N° {destino.num_via}".strip()
 
             tipo_zona = CatalogMatcher.get_zona_name(destino.tipo_zona) or ""
             zona_part = f"{tipo_zona} {destino.nom_zona or ''}".strip()
 
             cat_part = []
-            if destino.manzana:
-                cat_part.append(f"Mz. {destino.manzana}")
-            if destino.lote:
-                cat_part.append(f"Lt. {destino.lote}")
-            if getattr(destino, "slote", None):
-                cat_part.append(f"Sl. {destino.slote}")
+            if destino.componentes:
+                for c in destino.componentes:
+                    cat_part.append(f"{c.get('codi_nombre', '')}: {c.get('diti_nombre', '')}")
+            else:
+                if destino.manzana:
+                    cat_part.append(f"Mz. {destino.manzana}")
+                if destino.lote:
+                    cat_part.append(f"Lt. {destino.lote}")
+                if getattr(destino, "slote", None):
+                    cat_part.append(f"Sl. {destino.slote}")
             cat_str = " ".join(cat_part)
 
-            parts = [p for p in [via_part, zona_part, cat_str] if p]
+            mod_part = []
+            if destino.modulos:
+                for m in destino.modulos:
+                    mod_part.append(f"{m.get('timo_nombre', '')} {m.get('ditm_nombre', '')}".strip())
+            mod_str = " ".join(mod_part)
+
+            parts = [p for p in [via_part, zona_part, cat_str, mod_str] if p]
             res_str = ", ".join(parts) if parts else (destino.referencia or "NORMALIZADO")
             if len(res_str) > 55:
                 res_str = res_str[:52] + "..."
@@ -264,7 +313,7 @@ class ETLPipeline:
         """Actualiza métricas protegidas, emite eventos visuales a consola y notifica callbacks."""
         with self._metrics_lock:
             metodo = getattr(rec_dest, "metodo_normalizacion", "")
-            if "IA (" in metodo:
+            if "Juez" in metodo or "IA (" in metodo:
                 summary.ai_records += 1
             elif "Híbrido" in metodo:
                 summary.hybrid_records += 1
@@ -301,7 +350,22 @@ class ETLPipeline:
         zona_desc = f"{zona_id_str} {rec_dest.nom_zona or 'N/D'}"
         if getattr(rec_dest, "id_zona", None):
             zona_desc += f" [ID Zona: {rec_dest.id_zona}]"
-        catastro = f"Mz: {rec_dest.manzana or '-'} | Lt: {rec_dest.lote or '-'} | Sublote: {rec_dest.slote or '-'}"
+        cat_items = []
+        if rec_dest.manzana:
+            cat_items.append(f"Mz: {rec_dest.manzana}")
+        if rec_dest.lote:
+            cat_items.append(f"Lt: {rec_dest.lote}")
+        if rec_dest.slote:
+            cat_items.append(f"Sublote: {rec_dest.slote}")
+        if getattr(rec_dest, "block", None):
+            cat_items.append(f"Block: {rec_dest.block}")
+        if getattr(rec_dest, "piso", None):
+            cat_items.append(f"Piso: {rec_dest.piso}")
+        catastro = " | ".join(cat_items) if cat_items else "Sin Catastro"
+        if getattr(rec_dest, "modulos", None):
+            mod_strs = [f"{m.get('timo_nombre') or m.get('tipo', 'MOD')}: {m.get('ditm_nombre') or m.get('numero', '')}".strip() for m in rec_dest.modulos]
+            if mod_strs:
+                catastro += f" | Módulos: {', '.join(mod_strs)}"
         status_str = "Cargado en BD ✅" if is_success else "Error en Carga ❌"
 
         # Mostrar seguimiento visual en vivo al instante en consola (1 sola línea limpia)
@@ -340,6 +404,11 @@ class ETLPipeline:
                     "slote": rec_dest.slote,
                     "catastro": catastro,
                     "referencia": rec_dest.referencia,
+                    "dire_id": getattr(rec_dest, "dire_id", None),
+                    "dire_referencia": getattr(rec_dest, "dire_referencia", None),
+                    "vias": getattr(rec_dest, "vias", []),
+                    "componentes": getattr(rec_dest, "componentes", []),
+                    "modulos": getattr(rec_dest, "modulos", []),
                     "es_procesado": bool(rec_dest.es_procesado),
                     "observacion": rec_dest.observacion or "",
                     "success": is_success,
@@ -534,21 +603,29 @@ class ETLPipeline:
             while enqueued < records_to_process and not self._stop_requested:
                 limit_chunk = min(self.batch_size, records_to_process - enqueued)
                 try:
-                    # Intenta primero keyset pagination con after_id para inmunidad total ante concurrencia
+                    # Intenta primero keyset pagination con after_id y lock_for_update
                     try:
                         batch_raw = self.extractor.extract_batch(
                             limit=limit_chunk,
                             filter_mode=filter_mode,
                             after_id=last_seen_id,
+                            lock_for_update=(self.num_workers > 1),
                         )
                     except TypeError:
-                        # Fallback seguro para extractores personalizados o mocks sin soporte after_id
-                        fetch_offset = 0 if filter_mode == "pending" else enqueued
-                        batch_raw = self.extractor.extract_batch(
-                            offset=fetch_offset,
-                            limit=limit_chunk,
-                            filter_mode=filter_mode,
-                        )
+                        try:
+                            batch_raw = self.extractor.extract_batch(
+                                limit=limit_chunk,
+                                filter_mode=filter_mode,
+                                after_id=last_seen_id,
+                            )
+                        except TypeError:
+                            # Fallback seguro para extractores personalizados o mocks sin soporte after_id
+                            fetch_offset = 0 if filter_mode == "pending" else enqueued
+                            batch_raw = self.extractor.extract_batch(
+                                offset=fetch_offset,
+                                limit=limit_chunk,
+                                filter_mode=filter_mode,
+                            )
 
                     if not batch_raw:
                         break
@@ -561,8 +638,12 @@ class ETLPipeline:
                             try:
                                 work_queue.put(rec, timeout=0.2)
                                 enqueued += 1
-                                if hasattr(rec, "id_licencia") and rec.id_licencia is not None:
-                                    last_seen_id = rec.id_licencia
+                                if self.source_mode == "central_tb_direccion":
+                                    current_rec_id = getattr(rec, "dire_id", None) or getattr(rec, "id_licencia", None)
+                                else:
+                                    current_rec_id = getattr(rec, "id_licencia", None)
+                                if current_rec_id is not None:
+                                    last_seen_id = current_rec_id
                                 break
                             except queue.Full:
                                 continue
