@@ -25,6 +25,7 @@ from src.loaders.db_loader import DatabaseLoader
 from src.pipelines.etl_pipeline import ETLPipeline
 from src.services.db_service import DatabaseService
 from src.services.ollama_service import OllamaService
+from src.services.scheduler_service import SchedulerConfig, SchedulerService
 from src.transformers.ai_parser import AIAddressParser
 from src.transformers.pipeline_transformer import PipelineTransformer
 
@@ -274,11 +275,19 @@ state = ExecutionState()
 
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI):
-    """Ciclo de vida de FastAPI: registra el event loop activo en el estado."""
+    """Ciclo de vida de FastAPI: registra el event loop activo en el estado e inicia el scheduler."""
     state.loop = asyncio.get_running_loop()
     try:
+        try:
+            scheduler_service.start()
+        except Exception as ex_sched:
+            logger.debug("Aviso al iniciar scheduler en startup: %s", ex_sched)
         yield
     finally:
+        try:
+            scheduler_service.stop()
+        except Exception:
+            pass
         state.shutdown()
 
 
@@ -437,6 +446,12 @@ async def get_system_status():
     except Exception:
         pass
 
+    central_catalog = {"total": 0, "pendientes": 0, "normalizados": 0, "rechazados": 0, "has_records": False}
+    try:
+        central_catalog = db_svc.get_central_tb_direccion_stats("public")
+    except Exception as e:
+        logger.debug("Aviso al consultar estadísticas de central_catalog en /api/status: %s", e)
+
     return {
         "running": state.is_running,
         "is_running": state.is_running,
@@ -473,6 +488,7 @@ async def get_system_status():
             "base_url": ollama_base_url,
             "message": ai_health.get("message", ""),
         },
+        "central_catalog": central_catalog,
         "table_counts": table_counts,
         "stats": state.stats,
         "recent_records": state.recent_records[-100:],
@@ -494,12 +510,19 @@ async def get_schemas():
 @app.get("/api/counts")
 async def get_table_counts(
     schema: str = Query("public"),
-    table: str = Query("direcciones_actual")
+    table: str = Query("direcciones_actual"),
+    source_mode: Optional[str] = Query(None)
 ):
-    """Devuelve los conteos catastrales de la tabla especificada."""
+    """Devuelve los conteos catastrales de la tabla especificada o del catastro central."""
     try:
         db_svc = state.dynamic_db_service or DatabaseService()
-        extractor = DatabaseExtractor(db_service=db_svc, schema=schema, table=table)
+        mode = source_mode or ("central_tb_direccion" if table == "tb_direccion" or schema == "public" else "source_table")
+        extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema=schema,
+            table=table,
+            source_mode=mode,
+        )
         counts = extractor.get_status_counts()
         return counts
     except Exception as e:
@@ -696,6 +719,27 @@ async def wizard_connect(req: ConnectRequest):
         state.dynamic_db_service = db_svc
         state.dynamic_db_settings = dyn_settings
 
+        # Asegurar desde el primer momento (antes de cualquier proceso) que tb_direccion y sus 8 columnas de auditoría existan
+        try:
+            db_svc.ensure_tb_direccion_exists("public")
+        except Exception as ex_tb:
+            logger.debug("Aviso al asegurar tb_direccion en /api/connect: %s", ex_tb)
+
+        ingested_sources = []
+        central_stats = {
+            "total": 0,
+            "pendientes": 0,
+            "normalizados": 0,
+            "rechazados": 0,
+            "has_records": False,
+            "sources_count": 0,
+        }
+        try:
+            ingested_sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
+            central_stats = db_svc.get_central_tb_direccion_stats(catalog_schema="public")
+        except Exception as ex_ing:
+            logger.debug("Aviso al consultar fuentes ingestadas en /api/connect: %s", ex_ing)
+
         return {
             "success": True,
             "message": f"Conexión exitosa a '{req.dbname}' en {req.host}:{req.port}",
@@ -703,6 +747,8 @@ async def wizard_connect(req: ConnectRequest):
             "host": req.host,
             "port": req.port,
             "dbname": req.dbname,
+            "ingested_sources": ingested_sources,
+            "central_stats": central_stats,
         }
     except HTTPException:
         raise
@@ -1026,15 +1072,26 @@ async def wizard_migrate_source_table(req: MigrateSourceTableRequest):
 @app.get("/api/ingested-sources")
 async def get_ingested_sources():
     """Retorna el listado de tablas y esquemas ya migrados a public.tb_direccion
-    para permitir reanudar o iniciar la normalización directa sin volver a migrar.
+    junto a sus estadísticas globales para permitir reanudar o normalizar directamente.
     """
     db_svc = state.dynamic_db_service or DatabaseService()
     try:
+        try:
+            db_svc.ensure_tb_direccion_exists("public")
+        except Exception as ex_ensure:
+            logger.debug("Aviso al asegurar tb_direccion en /api/ingested-sources: %s", ex_ensure)
+
         sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
-        return {"success": True, "sources": sources}
+        stats = db_svc.get_central_tb_direccion_stats(catalog_schema="public")
+        return {"success": True, "sources": sources, "stats": stats}
     except Exception as e:
         logger.debug("Aviso al consultar fuentes ingestadas: %s", e)
-        return {"success": False, "sources": [], "error": str(e)}
+        return {
+            "success": False,
+            "sources": [],
+            "stats": {"total": 0, "pendientes": 0, "normalizados": 0, "rechazados": 0, "has_records": False, "sources_count": 0},
+            "error": str(e),
+        }
 
 
 @app.post("/api/test-ai")
@@ -1122,17 +1179,29 @@ def _run_pipeline_worker(req: StartPipelineRequest):
 
     dynamic_db_settings = state.dynamic_db_settings or getattr(db_svc, "settings", None) or settings.db
 
-    target_schema = req.schema_name or getattr(dynamic_db_settings, "schema", "public")
-    target_table  = req.table_name  or getattr(dynamic_db_settings, "table", "direcciones_actual")
-    state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
-
-    try:
-        # Resolver columnas: las del wizard tienen prioridad sobre cualquier default
+    source_mode = req.source_mode or "central_tb_direccion"
+    if source_mode == "central_tb_direccion":
+        if not req.table_name or str(req.table_name).strip().lower() in ("tb_direccion", "*", "todas", "all"):
+            target_schema = "public"
+            target_table = "tb_direccion"
+            id_col = "dire_id"
+            dir_col = "dire_valor_origen"
+            state.add_log("Iniciando normalización de Catastro Central [public.tb_direccion] (Todas las fuentes)...")
+        else:
+            target_schema = req.schema_name or "public"
+            target_table = req.table_name
+            id_col = "dire_id"
+            dir_col = "dire_valor_origen"
+            state.add_log(f"Iniciando normalización de Catastro Central [public.tb_direccion] para fuente [{target_schema}.{target_table}]...")
+    else:
+        target_schema = req.schema_name or getattr(dynamic_db_settings, "schema", "public")
+        target_table  = req.table_name  or getattr(dynamic_db_settings, "table", "direcciones_actual")
         id_col   = req.id_col      or getattr(dynamic_db_settings, "id_col", "id_licencia")
         dir_col  = req.address_col or getattr(dynamic_db_settings, "dir_col", "emp_direccion")
+        state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
+    try:
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
-        source_mode = req.source_mode or "central_tb_direccion"
         state.add_log(f"Modo de origen: [{source_mode}]")
 
         # Construir el extractor con las columnas identificadas por el usuario en el wizard
@@ -1191,21 +1260,21 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         pending_avail = status_counts.get("pendientes", 0)
         observed_avail = status_counts.get("observados", 0)
 
-        # Normalizar modo de filtro (soporta 'pending', 'observed', 'all', 'unprocessed')
-        raw_filter = str(req.filter_mode or "pending").strip().lower()
-        if raw_filter in ("unprocessed", "observados", "observed"):
-            filter_mode = "observed"
-        elif raw_filter in ("pending", "pendientes"):
+        # En modo central_tb_direccion, la normalización automatizada aplica ESTRICTAMENTE a dire_es_procesado IS NULL
+        if req.source_mode == "central_tb_direccion" or target_table == "tb_direccion":
             filter_mode = "pending"
-        else:
-            filter_mode = "all"
-
-        if filter_mode == "pending":
             target_pool = pending_avail
-        elif filter_mode == "observed":
-            target_pool = observed_avail
         else:
-            target_pool = total_avail
+            raw_filter = str(req.filter_mode or "pending").strip().lower()
+            if raw_filter in ("unprocessed", "observados", "observed"):
+                filter_mode = "observed"
+                target_pool = observed_avail
+            elif raw_filter in ("pending", "pendientes"):
+                filter_mode = "pending"
+                target_pool = pending_avail
+            else:
+                filter_mode = "all"
+                target_pool = total_avail
 
         to_process = min(req.limit, target_pool) if req.limit else target_pool
         state.reset_for_run(
@@ -1298,6 +1367,92 @@ async def clear_session_endpoint():
     """Limpia los registros acumulados y logs de la sesión activa en el servidor."""
     state.clear_session()
     return {"status": "CLEARED", "message": "Historial de registros de la sesión reiniciado correctamente."}
+
+
+# ── SCHEDULER DE EJECUCIÓN HORARIA DIARIA DESATENDIDA ────────────────────────
+def _on_scheduler_trigger(sched_cfg: SchedulerConfig):
+    """Callback invocado automáticamente por el SchedulerService cuando coincide la hora diaria."""
+    if state.is_running:
+        logger.warning("[SCHEDULER] Omitiendo disparo automático: Ya hay un pipeline activo en ejecución.")
+        state.add_log("[SCHEDULER] ⚠️ Aviso: Se omitió el disparo programado porque ya había un proceso activo en ejecución.")
+        return
+
+    state.add_log(f"[SCHEDULER] ⏰ Ejecutando normalización automática diaria programada ({sched_cfg.time_str})...")
+    req = StartPipelineRequest(
+        schema_name=sched_cfg.target_schema,
+        table_name=sched_cfg.target_table,
+        source_mode=sched_cfg.source_mode,
+        filter_mode=sched_cfg.filter_mode,
+        batch_size=sched_cfg.batch_size,
+        limit=sched_cfg.max_records,
+        require_ai=sched_cfg.require_ai,
+        num_workers=sched_cfg.num_workers,
+    )
+    state.active_schema = req.schema_name
+    state.active_table = req.table_name
+    state.num_workers = req.num_workers
+
+    worker = threading.Thread(
+        target=_run_pipeline_worker,
+        args=(req,),
+        name="ETLSchedulerWorkerThread",
+        daemon=True,
+    )
+    state.thread = worker
+    worker.start()
+
+
+scheduler_service = SchedulerService(on_trigger=_on_scheduler_trigger)
+
+
+class UpdateSchedulerRequest(BaseModel):
+    enabled: bool
+    time_str: Optional[str] = None
+    scheduled_time: Optional[str] = None
+    end_time_str: Optional[str] = None
+    num_workers: Optional[int] = 2
+    max_records: Optional[int] = None
+    batch_size: Optional[int] = 50
+    target_schema: Optional[str] = "public"
+    target_table: Optional[str] = "tb_direccion"
+    source_mode: Optional[str] = "central_tb_direccion"
+    id_col: Optional[str] = "dire_id"
+    addr_col: Optional[str] = "dire_nom_via"
+
+
+@app.get("/api/scheduler/config")
+async def get_scheduler_config_endpoint():
+    """Retorna la configuración actual del scheduler diario y cuenta regresiva."""
+    return scheduler_service.get_status_dict()
+
+
+@app.post("/api/scheduler/config")
+async def update_scheduler_config_endpoint(req: UpdateSchedulerRequest):
+    """Actualiza y persiste la configuración del scheduler diario desatendido."""
+    time_val = req.scheduled_time or req.time_str or "23:00"
+    updated = scheduler_service.update_settings(
+        enabled=req.enabled,
+        time_str=time_val,
+        num_workers=req.num_workers,
+        max_records=req.max_records,
+        batch_size=req.batch_size,
+        target_schema=req.target_schema,
+        target_table=req.target_table,
+        end_time_str=req.end_time_str,
+    )
+    return {
+        "status": "SAVED",
+        "message": f"Programación diaria {('activada: ' + updated.time_str + (' – ' + updated.end_time_str if updated.end_time_str else '')) if updated.enabled else 'desactivada'}.",
+        "config": scheduler_service.get_status_dict(),
+    }
+
+
+@app.post("/api/scheduler/trigger-now")
+async def trigger_scheduler_now_endpoint():
+    """Fuerza un disparo inmediato de prueba para la configuración programada."""
+    res = scheduler_service.trigger_now()
+    return res
+
 
 
 V2_EXPORT_HEADERS = [
@@ -1493,7 +1648,7 @@ def extract_v2_export_row(
     from src.transformers.catalog_matcher import CatalogMatcher
 
     # 1. ID Origen y 2. ID_Direccion (tb_direccion.dire_id)
-    id_val = r.get("id_licencia") if r.get("id_licencia") is not None else (r.get("id") or "")
+    id_val = r.get("id_licencia") if r.get("id_licencia") is not None else (r.get("dire_tabla_id") or r.get("id") or r.get("dire_id") or "")
     dire_id_val = r.get("dire_id") or ""
 
     # 3. Estado
@@ -1512,7 +1667,7 @@ def extract_v2_export_row(
                 estado = "PENDIENTE"
 
     # 4. Dirección Original
-    dir_orig = r.get("raw_text") or r.get("direccion") or r.get("emp_direccion") or ""
+    dir_orig = r.get("raw_text") or r.get("dire_valor_origen") or r.get("direccion") or r.get("emp_direccion") or ""
 
     # 5-13. Vías (Principal, Secundaria, Terciaria, Consolidado)
     raw_vias = r.get("vias") or []
@@ -1722,9 +1877,13 @@ def extract_v2_export_row(
     # 26. Método de Normalización
     metodo = r.get("metodo") or r.get("metodo_normalizacion") or "IA"
 
-    # 27. Fecha / Hora de Proceso
-    fecha_hora = r.get("time") or r.get("fecha_hora") or ""
-    if not fecha_hora or fecha_hora == "-":
+    # 27. Fecha / Hora de Proceso (alimentado por auditoría update_at o create_at)
+    raw_dt = r.get("update_at") or r.get("create_at") or r.get("time") or r.get("fecha_hora") or ""
+    if hasattr(raw_dt, "strftime"):
+        fecha_hora = raw_dt.strftime("%Y-%m-%d %H:%M:%S")
+    elif raw_dt and str(raw_dt).strip() not in ("", "-"):
+        fecha_hora = str(raw_dt).strip()
+    else:
         fecha_hora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     row = {
@@ -2079,37 +2238,72 @@ def fetch_db_records_for_export(
     db_svc: DatabaseService,
     schema: Optional[str] = None,
     table: Optional[str] = None,
-    scope: str = "processed",  # 'processed', 'observed', 'valid', 'all'
+    scope: str = "processed",  # 'processed', 'observed', 'valid', 'all', 'pending'
     id_col: Optional[str] = None,
     dir_col: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Consulta la tabla en PostgreSQL con resolución dinámica de esquemas, catálogos y nombres estándar."""
+    """Consulta la tabla en PostgreSQL/SQLite con resolución dinámica de esquemas,
+    catálogos, vinculación con tb_direccion y enriquecimiento relacional V2.
+    """
     from sqlalchemy import text as sa_text
     from src.transformers.catalog_matcher import CatalogMatcher
     from src.config.settings import get_settings
 
     settings = get_settings()
-    schema = (schema or state.active_schema or settings.db.schema).strip()
-    table = (table or state.active_table or settings.db.table).strip()
+
+    is_postgres = False
+    try:
+        if db_svc._engine and hasattr(db_svc._engine, "dialect"):
+            is_postgres = "postgresql" in str(db_svc._engine.dialect.name).lower()
+    except Exception:
+        is_postgres = False
+
+    cat_schema = "public" if is_postgres else ""
+
+    schema = (schema or state.active_schema or settings.db.schema or "public").strip()
+    table = (table or state.active_table or settings.db.table or "tb_direccion").strip()
+
+    if table == "tb_direccion" and is_postgres and not schema:
+        schema = cat_schema
 
     try:
-        CatalogMatcher.sync_with_db(db_svc, schema)
+        CatalogMatcher.sync_with_db(db_svc, schema if is_postgres else "public")
     except Exception as e:
         logger.debug("Aviso al sincronizar catálogos para exportación en '%s': %s", schema, e)
 
     with db_svc.get_session() as session:
-        # 1. Comprobar si la tabla existe en el esquema. Si no existe, buscar nombres estándar comunes.
-        def check_table_exists(t_name: str) -> bool:
-            return bool(session.execute(sa_text("""
-                SELECT COUNT(*) 
-                FROM information_schema.tables 
-                WHERE table_schema = :schema AND table_name = :table;
-            """), {"schema": schema, "table": t_name}).scalar())
+        def check_table_exists(t_name: str, t_schema: Optional[str] = None) -> bool:
+            t_sch = t_schema if t_schema is not None else schema
+            if is_postgres:
+                return bool(session.execute(sa_text("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.tables 
+                    WHERE table_schema = :schema AND table_name = :table;
+                """), {"schema": t_sch, "table": t_name}).scalar())
+            else:
+                return bool(session.execute(sa_text("""
+                    SELECT COUNT(*) 
+                    FROM sqlite_master 
+                    WHERE type = 'table' AND name = :table;
+                """), {"table": t_name}).scalar())
 
-        if not check_table_exists(table):
+        def cat_table_ref(t_name: str) -> str:
+            if is_postgres and cat_schema:
+                return f'"{cat_schema}"."{t_name}"'
+            return f'"{t_name}"'
+
+        def table_ref(t_name: str, t_sch: Optional[str] = None) -> str:
+            sch_to_use = t_sch if t_sch is not None else schema
+            if is_postgres and sch_to_use:
+                return f'"{sch_to_use}"."{t_name}"'
+            return f'"{t_name}"'
+
+        # 1. Comprobar si la tabla existe en el esquema. Si no, buscar candidatos
+        if not check_table_exists(table, schema):
             candidates = [
                 state.active_table,
                 settings.db.table,
+                "tb_direccion",
                 "direcciones_licencias",
                 "direcciones_actual",
                 f"{table}_actual",
@@ -2118,26 +2312,37 @@ def fetch_db_records_for_export(
             ]
             found = False
             for cand in candidates:
-                if cand and check_table_exists(cand):
+                if cand and check_table_exists(cand, schema):
                     logger.info("Tabla '%s' no existe en '%s'. Usando estándar detectado: '%s'", table, schema, cand)
                     table = cand
+                    found = True
+                    break
+                elif cand and is_postgres and check_table_exists(cand, cat_schema):
+                    logger.info("Tabla '%s' detectada en esquema central '%s'", cand, cat_schema)
+                    table = cand
+                    schema = cat_schema
                     found = True
                     break
             if not found:
                 raise ValueError(f"La tabla '{table}' no existe en el esquema '{schema}'.")
 
         # 2. Inspeccionar columnas existentes en la tabla seleccionada
-        col_rows = session.execute(sa_text("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_schema = :schema AND table_name = :table;
-        """), {"schema": schema, "table": table}).fetchall()
+        if is_postgres:
+            col_rows = session.execute(sa_text("""
+                SELECT column_name 
+                FROM information_schema.columns 
+                WHERE table_schema = :schema AND table_name = :table;
+            """), {"schema": schema, "table": table}).fetchall()
+        else:
+            col_rows = session.execute(sa_text(f"PRAGMA table_info({table_ref(table)});")).fetchall()
+            col_rows = [(r[1],) for r in col_rows]
+
         existing_cols = {r[0].lower() for r in col_rows}
         actual_cols_map = {r[0].lower(): r[0] for r in col_rows}
 
         # 3. Identificar columna ID estándar
         target_id_col = None
-        for candidate_id in [id_col, settings.db.id_col, "id_licencia", "id", "id_direccion", "codigo"]:
+        for candidate_id in [id_col, "dire_id", "dire_tabla_id", settings.db.id_col, "id_licencia", "id", "id_direccion", "codigo"]:
             if candidate_id and candidate_id.lower() in existing_cols:
                 target_id_col = actual_cols_map[candidate_id.lower()]
                 break
@@ -2146,7 +2351,7 @@ def fetch_db_records_for_export(
 
         # 4. Identificar columna Dirección estándar
         target_dir_col = None
-        for candidate_dir in [dir_col, settings.db.dir_col, "emp_direccion", "direccion", "dir", "raw_text", "texto_direccion"]:
+        for candidate_dir in [dir_col, "dire_valor_origen", settings.db.dir_col, "emp_direccion", "direccion", "dir", "raw_text", "texto_direccion"]:
             if candidate_dir and candidate_dir.lower() in existing_cols:
                 target_dir_col = actual_cols_map[candidate_dir.lower()]
                 break
@@ -2161,25 +2366,39 @@ def fetch_db_records_for_export(
 
         c_id_via       = get_col(settings.db.col_id_via, "id_via")
         c_num_via      = get_col(settings.db.col_num_via, "num_via")
-        c_id_zona      = get_col(settings.db.col_id_zona, "id_zona")
+        c_id_zona      = get_col(settings.db.col_id_zona, "zona_id") or get_col(None, "id_zona")
         c_manzana      = get_col(settings.db.col_manzana, "manzana")
         c_lote         = get_col(settings.db.col_lote, "lote")
         c_slote        = get_col(settings.db.col_slote, "slote")
-        c_referencia   = get_col(settings.db.col_referencia, "referencia")
-        c_es_procesado = get_col(settings.db.col_es_procesado, "es_procesado")
+        c_referencia   = get_col(settings.db.col_referencia, "dire_referencia") or get_col(None, "referencia")
+        c_es_procesado = get_col(settings.db.col_es_procesado, "dire_es_procesado") or get_col(None, "es_procesado")
         c_observacion  = get_col(settings.db.col_observacion, "observacion")
+        c_create_at    = get_col(None, "create_at")
+        c_update_at    = get_col(None, "update_at")
+
+        is_tb_direccion = (table.lower() == "tb_direccion")
+        has_central_tb = check_table_exists("tb_direccion", cat_schema)
+
+        join_central_td = False
+        c_dire_id = "dire_id" if "dire_id" in existing_cols else None
+
+        # Si es una tabla fuente sin columna de proceso, enlazar con central tb_direccion si existe
+        if not is_tb_direccion and not c_es_procesado and has_central_tb:
+            join_central_td = True
 
         # 6. Evaluar scope y filtro WHERE
         scope_lower = str(scope).lower().strip()
-        if c_es_procesado:
+        proc_field = 'td."dire_es_procesado"' if join_central_td else (f'd."{c_es_procesado}"' if c_es_procesado else None)
+
+        if proc_field:
             if scope_lower in ("observed", "observados"):
-                where_clause = f'd."{c_es_procesado}" IS FALSE'
+                where_clause = f'({proc_field} IS FALSE OR {proc_field} = 0)'
             elif scope_lower in ("valid", "validos", "normalizados"):
-                where_clause = f'd."{c_es_procesado}" IS TRUE'
+                where_clause = f'({proc_field} IS TRUE OR {proc_field} = 1)'
             elif scope_lower in ("pending", "pendientes"):
-                where_clause = f'd."{c_es_procesado}" IS NULL'
+                where_clause = f'{proc_field} IS NULL'
             elif scope_lower in ("processed", "procesados"):
-                where_clause = f'd."{c_es_procesado}" IS NOT NULL'
+                where_clause = f'{proc_field} IS NOT NULL'
             else:
                 where_clause = "TRUE"
         else:
@@ -2187,106 +2406,106 @@ def fetch_db_records_for_export(
                 return []
             where_clause = "TRUE"
 
-        # 7. Inspeccionar tablas maestras en el esquema para resolver JOINs de forma estándar
-        vias_table = settings.db.table_vias
-        zonas_table = settings.db.table_zonas
-        tipo_via_table = settings.db.table_tipo_via
-        tipo_zona_table = settings.db.table_tipo_zona
-
-        has_vias = bool(c_id_via and check_table_exists(vias_table))
-        has_zonas = bool(c_id_zona and check_table_exists(zonas_table))
-        has_tipo_via = check_table_exists(tipo_via_table)
-        has_tipo_zona = check_table_exists(tipo_zona_table)
-
-        # Determinar columnas exactas en vias y zonas si existen
-        vias_cols = set()
-        if has_vias:
-            v_col_rows = session.execute(sa_text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_schema = :schema AND table_name = :table;
-            """), {"schema": schema, "table": vias_table}).fetchall()
-            vias_cols = {r[0].lower() for r in v_col_rows}
-
-        zonas_cols = set()
-        if has_zonas:
-            z_col_rows = session.execute(sa_text("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_schema = :schema AND table_name = :table;
-            """), {"schema": schema, "table": zonas_table}).fetchall()
-            zonas_cols = {r[0].lower() for r in z_col_rows}
-
-        c_dire_id = "dire_id" if "dire_id" in existing_cols else None
-
+        # 7. Construcción de SELECT y JOINs
         select_fields = [
             f'd."{target_id_col}" AS id_licencia',
             f'd."{target_dir_col}" AS raw_text' if target_dir_col else "NULL AS raw_text",
-            f'd."{c_dire_id}" AS dire_id' if c_dire_id else "NULL AS dire_id",
-            f'd."{c_id_via}" AS id_via' if c_id_via else "NULL AS id_via",
-            f'd."{c_num_via}" AS num_via' if c_num_via else "NULL AS num_via",
-            f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
-            f'd."{c_manzana}" AS manzana' if c_manzana else "NULL AS manzana",
-            f'd."{c_lote}" AS lote' if c_lote else "NULL AS lote",
-            f'd."{c_slote}" AS slote' if c_slote else "NULL AS slote",
-            f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
-            f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
         ]
 
         join_clauses = []
 
-        # Enriquecimiento Vías
-        if has_vias and "id_via" in vias_cols:
-            nom_via_expr = 'v."nom_via"' if "nom_via" in vias_cols else "NULL"
-            select_fields.append(f"{nom_via_expr} AS nom_via")
-            if "id_tipo_via" in vias_cols:
+        if is_tb_direccion:
+            select_fields.extend([
+                f'd."{target_id_col}" AS dire_id',
+                'd."dire_tabla_id" AS dire_tabla_id' if "dire_tabla_id" in existing_cols else "NULL AS dire_tabla_id",
+                f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
+                f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
+                f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
+                'd."create_at" AS create_at' if "create_at" in existing_cols else "NULL AS create_at",
+                'd."update_at" AS update_at' if "update_at" in existing_cols else "NULL AS update_at",
+                "NULL AS id_via", "NULL AS num_via", "NULL AS manzana", "NULL AS lote", "NULL AS slote",
+                "NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name",
+                "NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"
+            ])
+        elif join_central_td:
+            td_table = cat_table_ref("tb_direccion")
+            td_join_cond = (
+                f'd."{c_dire_id}" = td."dire_id"'
+                if c_dire_id
+                else f'(td.dire_esquema = \'{schema}\' AND td.dire_tabla = \'{table}\' AND td.dire_tabla_id = d."{target_id_col}")'
+            )
+            select_fields.extend([
+                'td."dire_id" AS dire_id',
+                f'd."{target_id_col}" AS dire_tabla_id',
+                'td."zona_id" AS id_zona',
+                'td."dire_referencia" AS referencia',
+                'td."dire_es_procesado" AS es_procesado',
+                'td."create_at" AS create_at',
+                'td."update_at" AS update_at',
+                "NULL AS id_via", "NULL AS num_via", "NULL AS manzana", "NULL AS lote", "NULL AS slote",
+                "NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name",
+                "NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"
+            ])
+            join_clauses.append(f'LEFT JOIN {td_table} td ON {td_join_cond}')
+        else:
+            select_fields.extend([
+                f'd."{c_dire_id}" AS dire_id' if c_dire_id else "NULL AS dire_id",
+                "NULL AS dire_tabla_id",
+                f'd."{c_id_via}" AS id_via' if c_id_via else "NULL AS id_via",
+                f'd."{c_num_via}" AS num_via' if c_num_via else "NULL AS num_via",
+                f'd."{c_id_zona}" AS id_zona' if c_id_zona else "NULL AS id_zona",
+                f'd."{c_manzana}" AS manzana' if c_manzana else "NULL AS manzana",
+                f'd."{c_lote}" AS lote' if c_lote else "NULL AS lote",
+                f'd."{c_slote}" AS slote' if c_slote else "NULL AS slote",
+                f'd."{c_referencia}" AS referencia' if c_referencia else "NULL AS referencia",
+                f'd."{c_es_procesado}" AS es_procesado' if c_es_procesado else "NULL AS es_procesado",
+                f'd."{c_create_at}" AS create_at' if c_create_at else "NULL AS create_at",
+                f'd."{c_update_at}" AS update_at' if c_update_at else "NULL AS update_at",
+            ])
+
+            # Enriquecimiento V1 tradicional para tablas fuente planas con catálogos en el mismo esquema
+            vias_table = settings.db.table_vias
+            zonas_table = settings.db.table_zonas
+            tipo_via_table = settings.db.table_tipo_via
+            tipo_zona_table = settings.db.table_tipo_zona
+
+            has_vias = bool(c_id_via and check_table_exists(vias_table, schema))
+            has_zonas = bool(c_id_zona and check_table_exists(zonas_table, schema))
+            has_tipo_via = check_table_exists(tipo_via_table, schema)
+            has_tipo_zona = check_table_exists(tipo_zona_table, schema)
+
+            if has_vias:
+                select_fields.append('v."nom_via" AS nom_via')
                 select_fields.append('v."id_tipo_via" AS id_tipo_via')
                 if has_tipo_via:
                     select_fields.append('tv."nombre_tipo_via" AS tipo_via_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{tipo_via_table}" tv ON v."id_tipo_via" = tv."id_tipo_via"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(vias_table)} v ON d."{c_id_via}" = v."id_via"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(tipo_via_table)} tv ON v."id_tipo_via" = tv."id_tipo_via"')
                 else:
                     select_fields.append('NULL AS tipo_via_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
-            elif "tipo_via" in vias_cols:
-                select_fields.append('v."tipo_via" AS id_tipo_via')
-                select_fields.append('NULL AS tipo_via_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(vias_table)} v ON d."{c_id_via}" = v."id_via"')
             else:
-                select_fields.append('NULL AS id_tipo_via')
-                select_fields.append('NULL AS tipo_via_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{vias_table}" v ON d."{c_id_via}" = v."id_via"')
-        else:
-            select_fields.extend(["NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name"])
+                select_fields.extend(["NULL AS nom_via", "NULL AS id_tipo_via", "NULL AS tipo_via_name"])
 
-        # Enriquecimiento Zonas
-        if has_zonas and "id_zona" in zonas_cols:
-            nom_zona_expr = 'z."nom_zona"' if "nom_zona" in zonas_cols else "NULL"
-            select_fields.append(f"{nom_zona_expr} AS nom_zona")
-            if "id_tipo_zona" in zonas_cols:
+            if has_zonas:
+                select_fields.append('z."nom_zona" AS nom_zona')
                 select_fields.append('z."id_tipo_zona" AS id_tipo_zona')
                 if has_tipo_zona:
                     select_fields.append('tz."nombre_tipo_zona" AS tipo_zona_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{tipo_zona_table}" tz ON z."id_tipo_zona" = tz."id_tipo_zona"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(zonas_table)} z ON d."{c_id_zona}" = z."id_zona"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(tipo_zona_table)} tz ON z."id_tipo_zona" = tz."id_tipo_zona"')
                 else:
                     select_fields.append('NULL AS tipo_zona_name')
-                    join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
-            elif "tipo_zona" in zonas_cols:
-                select_fields.append('z."tipo_zona" AS id_tipo_zona')
-                select_fields.append('NULL AS tipo_zona_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
+                    join_clauses.append(f'LEFT JOIN {table_ref(zonas_table)} z ON d."{c_id_zona}" = z."id_zona"')
             else:
-                select_fields.append('NULL AS id_tipo_zona')
-                select_fields.append('NULL AS tipo_zona_name')
-                join_clauses.append(f'LEFT JOIN "{schema}"."{zonas_table}" z ON d."{c_id_zona}" = z."id_zona"')
-        else:
-            select_fields.extend(["NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"])
+                select_fields.extend(["NULL AS nom_zona", "NULL AS id_tipo_zona", "NULL AS tipo_zona_name"])
 
         fields_sql = ",\n            ".join(select_fields)
         joins_sql = "\n        ".join(join_clauses)
         query_sql = f"""
             SELECT 
                 {fields_sql}
-            FROM "{schema}"."{table}" d
+            FROM {table_ref(table)} d
             {joins_sql}
             WHERE {where_clause}
             ORDER BY d."{target_id_col}" ASC;
@@ -2311,20 +2530,24 @@ def fetch_db_records_for_export(
                 tipo_zona_name = CatalogMatcher.get_zona_name(id_tipo_zona)
 
             es_proc = r.get("es_procesado")
-            if es_proc is True:
+            if es_proc is True or es_proc == 1:
                 estado = "NORMALIZADO"
                 metodo = "Catastro Oficial"
-            elif es_proc is False:
+            elif es_proc is False or es_proc == 0:
                 estado = "OBSERVADO"
                 metodo = "Evaluado (Observado)"
             else:
                 estado = "PENDIENTE"
                 metodo = "Sin Procesar"
 
+            c_dt = r.get("update_at") or r.get("create_at")
+            time_str = c_dt.strftime("%Y-%m-%d %H:%M:%S") if hasattr(c_dt, "strftime") else (str(c_dt) if c_dt else "-")
+
             records.append({
                 "id_licencia": r.get("id_licencia"),
                 "raw_text": r.get("raw_text") or "",
                 "dire_id": r.get("dire_id"),
+                "dire_tabla_id": r.get("dire_tabla_id"),
                 "id_via": r.get("id_via"),
                 "nom_via": r.get("nom_via") or "",
                 "tipo_via": id_tipo_via,
@@ -2342,22 +2565,24 @@ def fetch_db_records_for_export(
                 "vias": [],
                 "componentes": [],
                 "modulos": [],
-                "es_procesado": bool(es_proc) if es_proc is not None else False,
+                "create_at": r.get("create_at"),
+                "update_at": r.get("update_at"),
+                "es_procesado": bool(es_proc) if es_proc is not None else None,
                 "estado": estado,
                 "metodo": metodo,
                 "success": True,
-                "time": "-",
+                "time": time_str,
             })
 
-        # Si existen dire_ids vinculados a la arquitectura relacional V2, enriquecer con tablas hijas
+        # Si existen dire_ids vinculados a la arquitectura relacional V2, enriquecer desde cat_schema
         dire_ids = [r["dire_id"] for r in records if r.get("dire_id") is not None]
-        if dire_ids and check_table_exists("tb_direccion"):
+        if dire_ids and check_table_exists("tb_direccion", cat_schema):
             unique_ids = list(set(int(did) for did in dire_ids))
             chunks = [unique_ids[i:i + 1000] for i in range(0, len(unique_ids), 1000)]
 
             # 1. Enriquecer Vías (soporte multi-vía / esquinas)
             vias_by_dire = {}
-            if check_table_exists("tb_direccion_via") and check_table_exists("tb_via"):
+            if check_table_exists("tb_direccion_via", cat_schema) and check_table_exists("tb_via", cat_schema):
                 for chunk in chunks:
                     id_list_str = ", ".join(str(did) for did in chunk)
                     dv_sql = f"""
@@ -2365,9 +2590,9 @@ def fetch_db_records_for_export(
                             dv.dire_id, dv.via_id, dv.divi_numero, dv.divi_orden,
                             v.via_nombre, v.tivi_id,
                             tv.tivi_nombre, tv.tivi_abreviatura
-                        FROM "{schema}"."tb_direccion_via" dv
-                        JOIN "{schema}"."tb_via" v ON dv.via_id = v.via_id
-                        LEFT JOIN "{schema}"."tb_tipo_via" tv ON v.tivi_id = tv.tivi_id
+                        FROM {cat_table_ref("tb_direccion_via")} dv
+                        JOIN {cat_table_ref("tb_via")} v ON dv.via_id = v.via_id
+                        LEFT JOIN {cat_table_ref("tb_tipo_via")} tv ON v.tivi_id = tv.tivi_id
                         WHERE dv.dire_id IN ({id_list_str})
                         ORDER BY dv.dire_id, dv.divi_orden ASC;
                     """
@@ -2384,17 +2609,17 @@ def fetch_db_records_for_export(
                         }
                         vias_by_dire.setdefault(did, []).append(v_item)
 
-            # 2. Enriquecer Componentes Catastrales (Mz, Lt, Piso, etc.)
+            # 2. Enriquecer Componentes Catastrales (Mz, Lt, Piso, etc.) usando diti_valor
             comp_by_dire = {}
-            if check_table_exists("tb_contenido_componente_direccion") and check_table_exists("tb_componente_direccion"):
+            if check_table_exists("tb_contenido_componente_direccion", cat_schema) and check_table_exists("tb_componente_direccion", cat_schema):
                 for chunk in chunks:
                     id_list_str = ", ".join(str(did) for did in chunk)
                     cd_sql = f"""
                         SELECT 
-                            cd.dire_id, cd.codi_id, cd.diti_nombre,
+                            cd.dire_id, cd.codi_id, cd.diti_valor,
                             c.codi_nombre, c.codi_es_urbano
-                        FROM "{schema}"."tb_contenido_componente_direccion" cd
-                        JOIN "{schema}"."tb_componente_direccion" c ON cd.codi_id = c.codi_id
+                        FROM {cat_table_ref("tb_contenido_componente_direccion")} cd
+                        JOIN {cat_table_ref("tb_componente_direccion")} c ON cd.codi_id = c.codi_id
                         WHERE cd.dire_id IN ({id_list_str})
                         ORDER BY cd.dire_id, cd.codi_id ASC;
                     """
@@ -2402,23 +2627,24 @@ def fetch_db_records_for_export(
                         did = row[0]
                         c_item = {
                             "codi_id": row[1],
+                            "diti_valor": row[2] or "",
                             "diti_nombre": row[2] or "",
                             "codi_nombre": row[3] or "",
                             "codi_es_urbano": row[4],
                         }
                         comp_by_dire.setdefault(did, []).append(c_item)
 
-            # 3. Enriquecer Módulos Inmobiliarios (Interior, Dpto, Puerta, Stand, etc.)
+            # 3. Enriquecer Módulos Inmobiliarios
             mod_by_dire = {}
-            if check_table_exists("tb_direccion_tipo_modulo") and check_table_exists("tb_tipo_modulo"):
+            if check_table_exists("tb_direccion_tipo_modulo", cat_schema) and check_table_exists("tb_tipo_modulo", cat_schema):
                 for chunk in chunks:
                     id_list_str = ", ".join(str(did) for did in chunk)
                     dm_sql = f"""
                         SELECT 
                             dm.dire_id, dm.timo_id, dm.ditm_nombre,
                             m.timo_nombre
-                        FROM "{schema}"."tb_direccion_tipo_modulo" dm
-                        JOIN "{schema}"."tb_tipo_modulo" m ON dm.timo_id = m.timo_id
+                        FROM {cat_table_ref("tb_direccion_tipo_modulo")} dm
+                        JOIN {cat_table_ref("tb_tipo_modulo")} m ON dm.timo_id = m.timo_id
                         WHERE dm.dire_id IN ({id_list_str})
                         ORDER BY dm.dire_id, dm.timo_id ASC;
                     """
@@ -2431,19 +2657,20 @@ def fetch_db_records_for_export(
                         }
                         mod_by_dire.setdefault(did, []).append(m_item)
 
-            # 4. Enriquecer Zona oficial y Referencia desde tb_direccion si existen
+            # 4. Enriquecer Zona oficial, Referencia y Auditoría desde tb_direccion
             dir_meta = {}
-            if check_table_exists("tb_direccion"):
+            if check_table_exists("tb_direccion", cat_schema):
                 for chunk in chunks:
                     id_list_str = ", ".join(str(did) for did in chunk)
                     dir_sql = f"""
                         SELECT 
                             d.dire_id, d.zona_id, d.dire_referencia,
                             z.zona_nombre, z.tizo_id,
-                            tz.tizo_nombre, tz.tizo_abreviatura
-                        FROM "{schema}"."tb_direccion" d
-                        LEFT JOIN "{schema}"."tb_zona" z ON d.zona_id = z.zona_id
-                        LEFT JOIN "{schema}"."tb_tipo_zona" tz ON z.tizo_id = tz.tizo_id
+                            tz.tizo_nombre, tz.tizo_abreviatura,
+                            d.create_at, d.update_at
+                        FROM {cat_table_ref("tb_direccion")} d
+                        LEFT JOIN {cat_table_ref("tb_zona")} z ON d.zona_id = z.zona_id
+                        LEFT JOIN {cat_table_ref("tb_tipo_zona")} tz ON z.tizo_id = tz.tizo_id
                         WHERE d.dire_id IN ({id_list_str});
                     """
                     for row in session.execute(sa_text(dir_sql)).fetchall():
@@ -2454,6 +2681,8 @@ def fetch_db_records_for_export(
                             "tizo_id": row[4],
                             "tipo_zona_name": row[5] or "",
                             "tizo_abreviatura": row[6] or "",
+                            "create_at": row[7],
+                            "update_at": row[8],
                         }
 
             # Asignar a cada registro
@@ -2474,6 +2703,10 @@ def fetch_db_records_for_export(
                             rec["nom_zona"] = meta["zona_nombre"]
                             rec["tipo_zona"] = meta["tizo_id"]
                             rec["tipo_zona_name"] = meta["tipo_zona_name"]
+                        if meta.get("create_at") and not rec.get("create_at"):
+                            rec["create_at"] = meta["create_at"]
+                        if meta.get("update_at") and not rec.get("update_at"):
+                            rec["update_at"] = meta["update_at"]
 
                     if rec["vias"]:
                         v0 = rec["vias"][0]
@@ -2486,18 +2719,18 @@ def fetch_db_records_for_export(
 
                     for c in rec["componentes"]:
                         c_name = (c.get("codi_nombre") or "").upper()
+                        c_val = str(c.get("diti_valor") or c.get("diti_nombre") or "").strip()
                         if "MANZANA" in c_name and not rec.get("manzana"):
-                            rec["manzana"] = c["diti_nombre"]
+                            rec["manzana"] = c_val
                         elif "LOTE" in c_name and "SUBLOTE" not in c_name and not rec.get("lote"):
-                            rec["lote"] = c["diti_nombre"]
+                            rec["lote"] = c_val
                         elif "SUBLOTE" in c_name and not rec.get("slote"):
                             sub_pat_load = r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT|SIN\s+SUBLOTE|SIN\s+SUB\s*LOTE|NO|N/A|NA|NONE|NULL|-|\.)$"
-                            c_val_slt = str(c["diti_nombre"] or "").strip()
-                            clean_c_slt = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val_slt, flags=re.IGNORECASE).strip(" -:,.")
-                            if clean_c_slt and not re.match(sub_pat_load, c_val_slt, re.I) and not re.match(sub_pat_load, clean_c_slt, re.I):
+                            clean_c_slt = re.sub(r"^(?:SUB\s*(?:LOTE|LT\.?)|SLT\.?|SLOTE|S/L|S/LT)\s*", "", c_val, flags=re.IGNORECASE).strip(" -:,.")
+                            if clean_c_slt and not re.match(sub_pat_load, c_val, re.I) and not re.match(sub_pat_load, clean_c_slt, re.I):
                                 rec["slote"] = clean_c_slt
                         elif "PISO" in c_name and not rec.get("piso"):
-                            rec["piso"] = c["diti_nombre"]
+                            rec["piso"] = c_val
 
     return records
 

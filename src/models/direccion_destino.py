@@ -53,6 +53,59 @@ class DireccionDestino(BaseModel):
         default=None,
         description="Marca de tiempo en que el ETL procesó el registro",
     )
+    usua_id: Optional[int] = Field(
+        default=None,
+        description="Identificador del usuario que registró o modificó la dirección",
+    )
+    usua_nombre: Optional[str] = Field(
+        default=None,
+        max_length=200,
+        description="Nombre o login del usuario responsable",
+    )
+    create_at: Optional[datetime] = Field(
+        default=None,
+        description="Fecha y hora de creación de la dirección en el sistema",
+    )
+    update_at: Optional[datetime] = Field(
+        default=None,
+        description="Fecha y hora de última modificación o normalización",
+    )
+    created_at: Optional[datetime] = Field(
+        default=None,
+        description="Compatibilidad legacy con created_at",
+    )
+    updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Compatibilidad legacy con updated_at",
+    )
+    resa_created_at: Optional[datetime] = Field(
+        default=None,
+        description="Compatibilidad legacy con resa_created_at",
+    )
+    resa_updated_at: Optional[datetime] = Field(
+        default=None,
+        description="Compatibilidad legacy con resa_updated_at",
+    )
+    audit_user_pc: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Nombre de usuario del SO cliente/auditoría",
+    )
+    audit_nombre_pc: Optional[str] = Field(
+        default=None,
+        max_length=100,
+        description="Nombre o hostname de la estación cliente",
+    )
+    audit_ip: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="Dirección IP de la estación que ejecutó la operación",
+    )
+    audit_mac_address: Optional[str] = Field(
+        default=None,
+        max_length=50,
+        description="Dirección MAC física de la estación cliente",
+    )
 
     # Relación de Vías (soporta 1 vía o múltiples en esquina/intersección)
     # Cada elemento es un dict: {"via_id": int, "divi_numero": str, "divi_orden": int, "via_nombre": str, "tipo_via": int}

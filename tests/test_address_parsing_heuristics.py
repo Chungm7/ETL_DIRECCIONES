@@ -7,6 +7,7 @@ from src.models.direccion_origen import DireccionOrigen
 from src.models.llm_schemas import OllamaAddressExtraction
 from src.transformers.text_cleaner import TextCleaner
 from src.transformers.ai_parser import AIAddressParser
+from src.catalogs.catalog_manager import CatalogManager
 
 
 class TestAddressParsingHeuristics(unittest.TestCase):
@@ -33,7 +34,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.assertEqual(destino.id_licencia, 1)
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2905)  # JOSE BALTA
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2905))  # JOSE BALTA
         self.assertIn("882", destino.num_via)
         self.assertIsNone(destino.slote)
         self.assertTrue(any(m.get("timo_nombre") == "INTERIOR" and m.get("ditm_nombre") == "I" for m in destino.modulos))
@@ -51,7 +52,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.assertEqual(destino.id_licencia, 2)
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2855)  # AV. FITZCARRAL
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2855))  # AV. FITZCARRAL
         self.assertIn("S/N", destino.num_via)
         self.assertIn("AEREOPUERTO", destino.referencia)
 
@@ -84,8 +85,8 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2905)    # JOSE BALTA
-        self.assertEqual(destino.id_zona, 1)    # SANTA VICTORIA
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2905))    # JOSE BALTA
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(1))    # SANTA VICTORIA
         self.assertEqual(destino.num_via, "520")
         self.assertEqual(destino.referencia, "FRENTE AL PARQUE PRINCIPAL")
 
@@ -101,7 +102,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.assertEqual(destino.id_licencia, 10)
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2882)    # AV. 9 DE OCTUBRE
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2882))    # AV. 9 DE OCTUBRE
         self.assertEqual(destino.num_via, "129")  # Debe ser 129, NUNCA 9
         self.assertIsNone(destino.observacion)
 
@@ -118,8 +119,8 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         self.assertEqual(destino.id_licencia, 20)
         self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.num_via, "450")
-        self.assertEqual(destino.id_via, 2862)    # FELIPE SANTIAGO SALAVERRY
-        self.assertEqual(destino.id_zona, 1)    # SANTA VICTORIA
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2862))    # FELIPE SANTIAGO SALAVERRY
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(1))    # SANTA VICTORIA
         self.assertIsNone(destino.observacion)
 
     def test_parse_reference_with_ai_extraction_valid(self):
@@ -143,8 +144,8 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.assertTrue(destino.es_procesado)
         self.assertEqual(destino.referencia, "CERCA AL SENATI")
-        self.assertEqual(destino.id_via, 2905)
-        self.assertEqual(destino.id_zona, 18)
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2905))
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(18))
 
     def test_parse_remigio_silva_generic_maps_to_remigio_b_silva(self):
         """Verifica que 'URB REMIGIO SILVA MZ A LT 12' se homologue a REMIGIO B. SILVA (ID 92)."""
@@ -158,7 +159,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_zona, 92)  # REMIGIO B. SILVA
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(92))  # REMIGIO B. SILVA
         self.assertEqual(destino.nom_zona, "REMIGIO B. SILVA")
         self.assertEqual(destino.manzana, "A")
         self.assertEqual(destino.lote, "12")
@@ -176,7 +177,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_zona, 90)  # REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(90))  # REMIGIO B. SILVA SUBPROGRAMA II PRIMERA ETAPA
         self.assertIn("PRIMERA ETAPA", destino.nom_zona)
         self.assertEqual(destino.manzana, "B")
         self.assertEqual(destino.lote, "4")
@@ -188,7 +189,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.mock_ollama.parse_address_with_ai.return_value = None
         self.mock_ollama.disambiguate_candidate.return_value = OllamaCandidateDisambiguation(
-            id_seleccionado=94,
+            id_seleccionado=CatalogManager.map_legacy_zona_id(94),
             nombre_oficial="REMIGIO B. SILVA II ETAPA",
             motivo="La dirección se refiere a la Segunda Etapa de Remigio B. Silva.",
         )
@@ -200,7 +201,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_zona, 94)
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(94))
         self.assertEqual(destino.nom_zona, "REMIGIO B. SILVA II ETAPA")
         self.assertIsNone(destino.observacion)
 
@@ -228,8 +229,8 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2910)  # AV. LAS AMERICAS
-        self.assertEqual(destino.id_zona, 136)  # A.H. SAN NICOLÁS
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2910))  # AV. LAS AMERICAS
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(136))  # A.H. SAN NICOLÁS
         self.assertEqual(destino.num_via, "705")
         self.assertIsNone(destino.observacion)
 
@@ -244,7 +245,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 2913)   # AV. LUIS GONZALES
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(2913))   # AV. LUIS GONZALES
         self.assertEqual(destino.num_via, "839")  # Limpio sin 00 iniciales
         self.assertTrue(any(c["codi_nombre"] == "PISO" for c in destino.componentes))
         self.assertEqual(destino.piso, "2")
@@ -263,7 +264,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
 
         self.assertTrue(destino.es_procesado)
         self.assertIsNone(destino.id_via)
-        self.assertEqual(destino.id_zona, 298)  # A.H. SAN JUAN DE DIOS
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(298))  # A.H. SAN JUAN DE DIOS
         self.assertEqual(destino.manzana, "E")
         self.assertEqual(destino.lote, "23")
         self.assertIsNone(destino.observacion)
@@ -276,10 +277,10 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 780)  # ORIENTE
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(780))  # ORIENTE
         self.assertEqual(destino.nom_via, "ORIENTE")
         self.assertEqual(destino.num_via, "261")
-        self.assertEqual(destino.id_zona, 444)  # SAN JUAN
+        self.assertEqual(destino.id_zona, CatalogManager.map_legacy_zona_id(444))  # SAN JUAN
         self.assertEqual(destino.nom_zona, "SAN JUAN")
 
     def test_parse_chiclayo_torres_paz_processed_with_exact_street(self):
@@ -293,7 +294,7 @@ class TestAddressParsingHeuristics(unittest.TestCase):
         destino = self.parser.parse(record)
 
         self.assertTrue(destino.es_procesado)
-        self.assertEqual(destino.id_via, 874)  # TORRES PAZ
+        self.assertEqual(destino.id_via, CatalogManager.map_legacy_via_id(874))  # TORRES PAZ
         self.assertEqual(destino.nom_via, "TORRES PAZ")
         self.assertEqual(destino.num_via, "651")
         self.assertTrue(any(c["codi_nombre"] == "PISO" for c in destino.componentes))

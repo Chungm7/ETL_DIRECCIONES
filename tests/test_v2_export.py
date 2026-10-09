@@ -376,3 +376,143 @@ def test_api_export_db_json_format(client, sample_v2_records):
         assert data["metadata"]["version"] == "2.0"
         assert len(data["direcciones"]) == 3
         assert data["direcciones"][0]["zona"]["nombre_zona"] == "SANTA VICTORIA"
+
+
+def test_fetch_db_records_for_export_central_tb_direccion():
+    """Verifica que fetch_db_records_for_export consulte tb_direccion y enriquezca con tablas hijas V2 sin fecha_proceso."""
+    from src.services.db_service import DatabaseService
+    from sqlalchemy import create_engine, text as sa_text
+    from sqlalchemy.orm import sessionmaker
+
+    db_svc = DatabaseService()
+    engine = create_engine("sqlite:///:memory:")
+    db_svc._engine = engine
+    db_svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+    with db_svc.get_session() as s:
+        # Crear DDLs en SQLite sin fecha_proceso y con create_at, update_at
+        s.execute(sa_text("""
+            CREATE TABLE tb_direccion (
+                dire_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dire_esquema TEXT,
+                dire_tabla TEXT,
+                dire_tabla_id TEXT,
+                dire_valor_origen TEXT,
+                dire_es_procesado BOOLEAN,
+                dire_metodo TEXT,
+                dire_observacion TEXT,
+                zona_id INTEGER,
+                dire_referencia TEXT,
+                create_at DATETIME,
+                update_at DATETIME
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_tipo_via (
+                tivi_id INTEGER PRIMARY KEY,
+                tivi_nombre TEXT,
+                tivi_abreviatura TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_via (
+                via_id INTEGER PRIMARY KEY,
+                tivi_id INTEGER,
+                via_nombre TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_direccion_via (
+                divi_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dire_id INTEGER,
+                via_id INTEGER,
+                divi_numero TEXT,
+                divi_orden INTEGER
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_componente_direccion (
+                codi_id INTEGER PRIMARY KEY,
+                codi_nombre TEXT,
+                codi_es_urbano BOOLEAN
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_contenido_componente_direccion (
+                diti_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                dire_id INTEGER,
+                codi_id INTEGER,
+                diti_valor TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_tipo_zona (
+                tizo_id INTEGER PRIMARY KEY,
+                tizo_nombre TEXT,
+                tizo_abreviatura TEXT
+            );
+        """))
+        s.execute(sa_text("""
+            CREATE TABLE tb_zona (
+                zona_id INTEGER PRIMARY KEY,
+                tizo_id INTEGER,
+                zona_nombre TEXT
+            );
+        """))
+
+        # Poblar catálogos
+        s.execute(sa_text("INSERT INTO tb_tipo_via VALUES (1, 'AVENIDA', 'AV.')"))
+        s.execute(sa_text("INSERT INTO tb_via VALUES (10, 1, 'BALTA')"))
+        s.execute(sa_text("INSERT INTO tb_componente_direccion VALUES (1, 'MANZANA', 1)"))
+        s.execute(sa_text("INSERT INTO tb_componente_direccion VALUES (2, 'LOTE', 1)"))
+        s.execute(sa_text("INSERT INTO tb_tipo_zona VALUES (1, 'URBANIZACION', 'URB.')"))
+        s.execute(sa_text("INSERT INTO tb_zona VALUES (5, 1, 'CENTRO')"))
+
+        # Insertar dirección procesada
+        s.execute(sa_text("""
+            INSERT INTO tb_direccion (
+                dire_id, dire_esquema, dire_tabla, dire_tabla_id,
+                dire_valor_origen, dire_es_procesado, dire_metodo,
+                zona_id, dire_referencia, create_at, update_at
+            ) VALUES (
+                100, 'sc_fuente', 'tb_origen', '1',
+                'AV BALTA 250 MZ A LT 2', 1, 'IA',
+                5, 'FRENTE AL PARQUE', '2026-10-09 10:00:00', '2026-10-09 10:05:00'
+            )
+        """))
+        s.execute(sa_text("INSERT INTO tb_direccion_via VALUES (1, 100, 10, '250', 1)"))
+        s.execute(sa_text("INSERT INTO tb_contenido_componente_direccion VALUES (1, 100, 1, 'A')"))
+        s.execute(sa_text("INSERT INTO tb_contenido_componente_direccion VALUES (2, 100, 2, '2')"))
+        s.commit()
+
+    records = fetch_db_records_for_export(
+        db_svc=db_svc,
+        schema="public",
+        table="tb_direccion",
+        scope="all",
+        id_col="dire_id",
+        dir_col="dire_valor_origen",
+    )
+
+    assert len(records) == 1
+    r = records[0]
+    assert r["dire_id"] == 100
+    assert r["raw_text"] == "AV BALTA 250 MZ A LT 2"
+    assert r["es_procesado"] is True
+    assert r["nom_via"] == "BALTA"
+    assert r["tipo_via_name"] == "AVENIDA"
+    assert r["num_via"] == "250"
+    assert r["manzana"] == "A"
+    assert r["lote"] == "2"
+    assert r["nom_zona"] == "CENTRO"
+    assert r["referencia"] == "FRENTE AL PARQUE"
+    assert r["update_at"] == "2026-10-09 10:05:00"
+
+    # Verificar que extract_v2_export_row no arroja errores y mapea Fecha_Hora_Proceso desde update_at
+    row_exported = extract_v2_export_row(r)
+    assert row_exported["ID"] == 100
+    assert row_exported["ID_Direccion"] == 100
+    assert row_exported["Via_Principal_Nombre"] == "BALTA"
+    assert row_exported["Fecha_Hora_Proceso"] == "2026-10-09 10:05:00"
+    assert "fecha_proceso" not in r
+

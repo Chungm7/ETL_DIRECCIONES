@@ -1,7 +1,7 @@
 """Extractor dinámico desde PostgreSQL con soporte de esquemas y columnas configurables."""
 
 import logging
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.extractors.base_extractor import BaseExtractor
 from src.models.direccion_origen import DireccionOrigen
@@ -42,6 +42,19 @@ class DatabaseExtractor(BaseExtractor):
         self.col_observacion: Optional[str] = None
         self.col_dire_id: Optional[str] = None
         self._columns_inspected = False
+
+    @property
+    def _tb_direccion_ref(self) -> str:
+        """Retorna la referencia calificada de tb_direccion segura para SQLite y PostgreSQL."""
+        is_sqlite = False
+        try:
+            if self.db._engine and hasattr(self.db._engine, "dialect"):
+                is_sqlite = (self.db._engine.dialect.name == "sqlite")
+        except Exception:
+            pass
+        if is_sqlite or not self.target_catalog_schema or self.target_catalog_schema.lower() in ("", "main"):
+            return '"tb_direccion"'
+        return f'"{self.target_catalog_schema}"."tb_direccion"'
 
     def _inspect_columns(self) -> None:
         """Inspecciona dinámicamente las columnas de la tabla para alinear nombres y filtros."""
@@ -103,8 +116,8 @@ class DatabaseExtractor(BaseExtractor):
         """Retorna las cláusulas SQL para pendientes, válidos y observados/rechazados según semántica tri-state."""
         if self.source_mode == "central_tb_direccion":
             cond_pending = '"dire_es_procesado" IS NULL'
-            cond_valid = '"dire_es_procesado" IS TRUE'
-            cond_observed = '"dire_es_procesado" = FALSE'
+            cond_valid = '("dire_es_procesado" IS TRUE OR "dire_es_procesado" = 1)'
+            cond_observed = '("dire_es_procesado" = FALSE OR "dire_es_procesado" = 0)'
             return cond_pending, cond_valid, cond_observed
 
         self._inspect_columns()
@@ -115,18 +128,46 @@ class DatabaseExtractor(BaseExtractor):
 
         return cond_pending, cond_valid, cond_observed
 
+    def _get_central_origin_condition(self) -> Tuple[str, Dict[str, Any]]:
+        """Determina la condición de procedencia (dire_esquema / dire_tabla) en public.tb_direccion.
+        Si se apunta a tb_direccion globalmente o no se especifica una tabla emisora concreta,
+        retorna ('', {}) para procesar todo el catastro central sin filtrar por origen.
+        """
+        schema_str = (self.schema or "").strip().lower()
+        table_str = (self.table or "").strip().lower()
+        target_cat = (self.target_catalog_schema or "public").strip().lower()
+
+        is_schema_global = not schema_str or schema_str in ("*", "todos", "all", "public", target_cat)
+        is_table_global = not table_str or table_str in ("*", "todas", "all", "tb_direccion")
+
+        if is_schema_global and is_table_global:
+            # Procesar todo tb_direccion globalmente
+            return "", {}
+
+        if not is_schema_global and is_table_global:
+            # Filtrar por un esquema de procedencia completo
+            return '"dire_esquema" = :schema', {"schema": self.schema}
+
+        # Filtrar por esquema y tabla de procedencia específicos
+        return '"dire_esquema" = :schema AND "dire_tabla" = :table', {
+            "schema": self.schema,
+            "table": self.table,
+        }
+
     def get_total_records(self) -> int:
         """Obtiene la cantidad total de registros en la tabla emisora o en tb_direccion."""
         if not SQLALCHEMY_AVAILABLE or not self.db._engine:
-            logger.warning("Base de datos no inicializada. Retornando 0 registros.")
+            logger.warning("Base de datos no inicialiAzada. Retornando 0 registros.")
             return 0
 
         if self.source_mode == "central_tb_direccion":
+            origin_cond, origin_params = self._get_central_origin_condition()
+            where_sql = f"WHERE {origin_cond}" if origin_cond else ""
             query = text(f"""
-                SELECT COUNT(*) FROM "{self.target_catalog_schema}"."tb_direccion"
-                WHERE "dire_esquema" = :schema AND "dire_tabla" = :table;
+                SELECT COUNT(*) FROM {self._tb_direccion_ref}
+                {where_sql};
             """)
-            params = {"schema": self.schema, "table": self.table}
+            params = origin_params
         else:
             query = text(f'SELECT COUNT(*) FROM "{self.schema}"."{self.table}";')
             params = {}
@@ -149,16 +190,18 @@ class DatabaseExtractor(BaseExtractor):
         cond_pending, cond_valid, cond_observed = self._build_status_conditions()
 
         if self.source_mode == "central_tb_direccion":
+            origin_cond, origin_params = self._get_central_origin_condition()
+            where_sql = f"WHERE {origin_cond}" if origin_cond else ""
             query = text(f"""
                 SELECT 
                     COUNT(*) AS total,
                     COUNT(*) FILTER (WHERE {cond_pending}) AS pendientes,
                     COUNT(*) FILTER (WHERE {cond_valid}) AS validos,
                     COUNT(*) FILTER (WHERE {cond_observed}) AS observados
-                FROM "{self.target_catalog_schema}"."tb_direccion"
-                WHERE "dire_esquema" = :schema AND "dire_tabla" = :table;
+                FROM {self._tb_direccion_ref}
+                {where_sql};
             """)
-            params = {"schema": self.schema, "table": self.table}
+            params = origin_params
         else:
             query = text(f"""
                 SELECT 
@@ -210,16 +253,19 @@ class DatabaseExtractor(BaseExtractor):
         params: Dict[str, Any] = {"limit": limit}
 
         if self.source_mode == "central_tb_direccion":
-            conditions.append('"dire_esquema" = :schema AND "dire_tabla" = :table')
-            params["schema"] = self.schema
-            params["table"] = self.table
-
-        if filter_mode == "pending":
+            origin_cond, origin_params = self._get_central_origin_condition()
+            if origin_cond:
+                conditions.append(origin_cond)
+                params.update(origin_params)
+            # En modo central tb_direccion, la normalización automatizada aplica estrictamente a registros pendientes (IS NULL)
             conditions.append(cond_pending)
-        elif filter_mode == "observed":
-            conditions.append(cond_observed)
-        elif filter_mode == "valid":
-            conditions.append(cond_valid)
+        else:
+            if filter_mode == "pending":
+                conditions.append(cond_pending)
+            elif filter_mode == "observed":
+                conditions.append(cond_observed)
+            elif filter_mode == "valid":
+                conditions.append(cond_valid)
 
         id_field = "dire_id" if self.source_mode == "central_tb_direccion" else self.id_col
 
@@ -251,7 +297,7 @@ class DatabaseExtractor(BaseExtractor):
                     "dire_esquema",
                     "dire_tabla",
                     "dire_es_procesado"
-                FROM "{self.target_catalog_schema}"."tb_direccion"
+                FROM {self._tb_direccion_ref}
                 {where_clause}
                 ORDER BY "dire_id" ASC
                 LIMIT :limit {offset_clause}
@@ -325,6 +371,12 @@ class DatabaseExtractor(BaseExtractor):
         lock_clause = "FOR UPDATE SKIP LOCKED" if is_postgresql else ""
 
         if self.source_mode == "central_tb_direccion":
+            origin_cond, origin_params = self._get_central_origin_condition()
+            conditions = [base_condition]
+            params = dict(origin_params)
+            if origin_cond:
+                conditions.append(origin_cond)
+            where_sql = f"WHERE {' AND '.join(conditions)}"
             query = text(f"""
                 SELECT 
                     "dire_id" AS id_val,
@@ -333,13 +385,12 @@ class DatabaseExtractor(BaseExtractor):
                     "dire_esquema",
                     "dire_tabla",
                     "dire_es_procesado"
-                FROM "{self.target_catalog_schema}"."tb_direccion"
-                WHERE "dire_esquema" = :schema AND "dire_tabla" = :table AND {base_condition}
+                FROM {self._tb_direccion_ref}
+                {where_sql}
                 ORDER BY "dire_id" ASC
                 LIMIT 1
                 {lock_clause};
             """)
-            params = {"schema": self.schema, "table": self.table}
         else:
             query = text(f"""
                 SELECT "{self.id_col}" AS id_val, "{self.dir_col}" AS dir_val

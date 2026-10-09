@@ -85,6 +85,7 @@ class ETLPipeline:
         self._metrics_lock = threading.Lock()
         self._index_lock = threading.Lock()
         self._current_index = 0
+        self._environment_prepared = False
 
         # Mapeo dinámico de configuración de base de datos
         db_settings = getattr(self.db, "settings", None) or settings.db
@@ -127,6 +128,8 @@ class ETLPipeline:
         2. Sincroniza dinámicamente CatalogMatcher con los IDs reales de este esquema.
         3. Verifica y agrega las 8 columnas normalizadas in-place en la tabla actual conservando sus IDs.
         """
+        if self._environment_prepared:
+            return
         # Paso 0: Verificación de salud y respuesta en vivo del modelo IA
         ollama_svc = None
         if hasattr(self.transformer, "ai_parser") and self.transformer.ai_parser:
@@ -172,6 +175,7 @@ class ETLPipeline:
             else:
                 print(msg)
             sys.stdout.flush()
+            self._environment_prepared = True
             return
 
         self.db.ensure_v2_tables_exist(schema=self.schema)
@@ -184,6 +188,7 @@ class ETLPipeline:
         else:
             print(f"[CONFIG] BD: Esquema '{self.schema}', Tabla '{self.table}' lista (vinculación V2 lista)")
         sys.stdout.flush()
+        self._environment_prepared = True
 
     def _log_record_progress(
         self,
@@ -633,8 +638,12 @@ class ETLPipeline:
                             try:
                                 work_queue.put(rec, timeout=0.2)
                                 enqueued += 1
-                                if hasattr(rec, "id_licencia") and rec.id_licencia is not None:
-                                    last_seen_id = rec.id_licencia
+                                if self.source_mode == "central_tb_direccion":
+                                    current_rec_id = getattr(rec, "dire_id", None) or getattr(rec, "id_licencia", None)
+                                else:
+                                    current_rec_id = getattr(rec, "id_licencia", None)
+                                if current_rec_id is not None:
+                                    last_seen_id = current_rec_id
                                 break
                             except queue.Full:
                                 continue

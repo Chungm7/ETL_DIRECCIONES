@@ -89,7 +89,8 @@ class TestDecoupledDatabaseOperations:
                     dire_tabla_id INTEGER,
                     dire_valor_origen VARCHAR(500),
                     dire_es_procesado BOOLEAN,
-                    fecha_proceso TIMESTAMP
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP
                 );
             """))
             session.execute(text("""
@@ -203,6 +204,65 @@ class TestDecoupledDatabaseOperations:
         assert pending_batch[0].emp_direccion == "AV. BALTA 100"
         assert pending_batch[0].dire_id == 1
 
+    def test_extractor_central_tb_direccion_global_mode(self, db_svc):
+        """Verifica que al seleccionar tb_direccion global (sin filtrar por tabla específica)
+        DatabaseExtractor consulte y extraiga la totalidad de registros en tb_direccion.
+        """
+        with db_svc.get_session() as session:
+            session.execute(text("DELETE FROM tb_direccion;"))
+            session.execute(text("""
+                INSERT INTO tb_direccion (dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_estado) VALUES
+                ('licencias', 'tb_licencia', 101, 'AV. BALTA 100', NULL, 'ACT'),
+                ('licencias', 'tb_licencia', 102, 'CA. SAN JOSE 200', 1, 'ACT'),
+                ('licencias', 'tb_licencia', 103, 'JR. COLON 300', 0, 'ACT'),
+                ('rentas', 'tb_predio', 501, 'CALLE 7 DE ENERO 400', NULL, 'ACT');
+            """))
+
+        extractor_global = DatabaseExtractor(
+            db_service=db_svc,
+            schema="public",
+            table="tb_direccion",
+            source_mode="central_tb_direccion",
+            target_catalog_schema="main",
+        )
+
+        counts = extractor_global.get_status_counts()
+        assert counts["total"] == 4
+        assert counts["pendientes"] == 2
+        assert counts["validos"] == 1
+        assert counts["observados"] == 1
+        assert extractor_global.get_total_records() == 4
+
+        pending_batch = extractor_global.extract_batch(filter_mode="pending", limit=10)
+        assert len(pending_batch) == 2
+        schemas = {r.dire_esquema for r in pending_batch}
+        assert schemas == {"licencias", "rentas"}
+
+        with db_svc.get_session() as session:
+            next_rec = extractor_global.fetch_next_free_record(session, filter_mode="pending")
+            assert next_rec is not None
+            assert next_rec.dire_valor_origen == "AV. BALTA 100"
+
+    def test_get_central_tb_direccion_stats(self, db_svc):
+        """Verifica que get_central_tb_direccion_stats retorne métricas agregadas globales."""
+        with db_svc.get_session() as session:
+            session.execute(text("DELETE FROM tb_direccion;"))
+            session.execute(text("""
+                INSERT INTO tb_direccion (dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_estado) VALUES
+                ('licencias', 'tb_licencia', 1, 'DIR 1', NULL, 'ACT'),
+                ('licencias', 'tb_licencia', 2, 'DIR 2', 1, 'ACT'),
+                ('rentas', 'tb_predio', 10, 'DIR 10', NULL, 'ACT');
+            """))
+
+        with patch.object(db_svc, "table_exists", return_value=True), patch.object(db_svc, "ensure_tb_direccion_columns"):
+            stats = db_svc.get_central_tb_direccion_stats(catalog_schema="main")
+            assert stats["has_records"] is True
+            assert stats["total"] == 3
+            assert stats["pendientes"] == 2
+            assert stats["normalizados"] == 1
+            assert stats["rechazados"] == 0
+            assert stats["sources_count"] == 2
+
     def test_loader_central_tb_direccion_mode(self, db_svc):
         """Verifica que DatabaseLoader en modo central_tb_direccion actualice tb_direccion y agregue vías/módulos."""
         with db_svc.get_session() as session:
@@ -236,14 +296,14 @@ class TestDecoupledDatabaseOperations:
         with db_svc.get_session() as session:
             # Comprobar actualización en tb_direccion
             row = session.execute(text("""
-                SELECT dire_id, zona_id, dire_referencia, dire_es_procesado, fecha_proceso
+                SELECT dire_id, zona_id, dire_referencia, dire_es_procesado, update_at
                 FROM tb_direccion WHERE dire_id = 1;
             """)).fetchone()
             assert row[0] == 1
             assert row[1] == 5
             assert row[2] == "FRENTE AL PARQUE"
             assert row[3] == 1  # TRUE
-            assert row[4] is not None  # fecha_proceso registrada
+            assert row[4] is not None  # update_at registrada
 
             # Comprobar inserción en tb_direccion_via
             via_row = session.execute(text("SELECT via_id, divi_numero FROM tb_direccion_via WHERE dire_id = 1")).fetchone()
@@ -417,4 +477,338 @@ class TestDecoupledDatabaseOperations:
         res_fast = svc.ensure_v2_tables_exist()
         assert res_fast["status"] == "ALL_TABLES_READY"
 
+    def test_audit_columns_added_to_existing_tb_direccion_without_data_loss(self):
+        """Valida que si tb_direccion ya existía con datos pero sin columnas de auditoría,
+        ensure_tb_direccion_exists añade las 8 columnas sin perjudicar ni borrar ningún dato existente."""
+        svc = DatabaseService()
+        engine = create_engine("sqlite:///:memory:")
+        svc._engine = engine
+        from sqlalchemy.orm import sessionmaker
+        svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
+        # 1. Crear tb_direccion en estado antiguo (sin las 8 columnas de auditoría)
+        with svc.get_session() as session:
+            session.execute(text("""
+                CREATE TABLE tb_direccion (
+                    dire_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    zona_id INTEGER,
+                    dire_referencia TEXT,
+                    dire_estado VARCHAR(3) DEFAULT 'ACT',
+                    dire_esquema VARCHAR(500),
+                    dire_tabla VARCHAR(500),
+                    dire_tabla_id INTEGER,
+                    dire_valor_origen VARCHAR(500),
+                    dire_es_procesado BOOLEAN,
+                    fecha_proceso TIMESTAMP
+                );
+            """))
+            # 2. Insertar registros existentes
+            session.execute(text("""
+                INSERT INTO tb_direccion (dire_id, dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_estado)
+                VALUES 
+                    (1, 'licencias', 'tb_licencia', 101, 'AV. BALTA 100', NULL, 'ACT'),
+                    (2, 'rentas', 'tb_predios', 202, 'CALLE SAN JOSE 200', TRUE, 'ACT'),
+                    (3, 'catastro', 'tb_lotes', 303, 'JR. ELIAS AGUIRRE 300', FALSE, 'ACT');
+            """))
+
+        # 3. Ejecutar ensure_tb_direccion_exists
+        res = svc.ensure_tb_direccion_exists()
+        assert res is True
+
+        # 4. Verificar que las 8 columnas de auditoría ahora existen (con create_at y update_at)
+        cols = {c.lower() for c in svc.get_table_columns("tb_direccion")}
+        expected_audit_cols = {
+            "usua_id", "usua_nombre", "create_at", "update_at",
+            "audit_user_pc", "audit_nombre_pc", "audit_ip", "audit_mac_address"
+        }
+        for audit_col in expected_audit_cols:
+            assert audit_col in cols, f"Columna de auditoría '{audit_col}' debe existir en tb_direccion"
+        assert "fecha_proceso" not in cols, "Columna fecha_proceso debe haber sido eliminada de tb_direccion"
+
+        # 5. Comprobar que los datos preexistentes están 100% intactos
+        with svc.get_session() as session:
+            rows = session.execute(text("SELECT dire_id, dire_esquema, dire_tabla_id, dire_valor_origen FROM tb_direccion ORDER BY dire_id")).fetchall()
+            assert len(rows) == 3
+            assert rows[0] == (1, "licencias", 101, "AV. BALTA 100")
+            assert rows[1] == (2, "rentas", 202, "CALLE SAN JOSE 200")
+            assert rows[2] == (3, "catastro", 303, "JR. ELIAS AGUIRRE 300")
+
+    def test_loader_central_tb_direccion_updates_audit_updated_at(self):
+        """Valida que DatabaseLoader actualice updated_at al normalizar un registro en tb_direccion."""
+        svc = DatabaseService()
+        engine = create_engine("sqlite:///:memory:")
+        svc._engine = engine
+        from sqlalchemy.orm import sessionmaker
+        svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+        # Crear estructura con ensure_v2_tables_exist
+        svc.ensure_v2_tables_exist()
+
+        # Insertar registro inicial pendiente
+        with svc.get_session() as session:
+            session.execute(text("""
+                INSERT INTO tb_direccion (dire_id, dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_estado)
+                VALUES (50, 'licencias', 'tb_licencia', 5050, 'AV. BALTA 550', NULL, 'ACT');
+            """))
+
+        loader = DatabaseLoader(
+            db_service=svc,
+            schema="licencias",
+            table="tb_licencia",
+            source_mode="central_tb_direccion",
+            target_catalog_schema="",
+        )
+
+        record = DireccionDestino(
+            id_licencia=5050,
+            dire_id=50,
+            zona_id=1,
+            dire_referencia="FRENTE A BANCO DE LA NACION",
+            dire_estado="ACT",
+            es_procesado=True,
+            vias=[{"via_id": 1, "divi_numero": "550", "divi_orden": 1}],
+        )
+
+        loaded_count = loader.load_batch([record])
+        assert loaded_count == 1
+
+        with svc.get_session() as session:
+            row = session.execute(text("""
+                SELECT dire_id, dire_es_procesado, dire_referencia, update_at 
+                FROM tb_direccion WHERE dire_id = 50
+            """)).fetchone()
+            assert row[0] == 50
+            assert bool(row[1]) is True
+            assert row[2] == "FRENTE A BANCO DE LA NACION"
+            assert row[3] is not None, "update_at debe actualizarse al normalizar"
+
+    def test_consolidate_catalog_duplicates_merges_san_lucas(self):
+        """Valida que registros duplicados de vías (como Pasaje San Lucas) se consoliden en 1 solo
+        y que cualquier FK en tb_direccion_via se reasigne al ID canónico de forma transparente.
+        """
+        engine = create_engine("sqlite:///:memory:")
+        svc = DatabaseService()
+        svc._engine = engine
+        from sqlalchemy.orm import sessionmaker
+        svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+        # Crear estructura base
+        svc.ensure_v2_tables_exist()
+
+        with svc.get_session() as session:
+            # Simular inserción de duplicados históricos de San Lucas
+            # 723: Calle San Lucas (tivi_id=2)
+            # 1095: Pasaje San Lucas (tivi_id=4)
+            # 1269: Pasaje San Lucas (tivi_id=4) DUPLICADO
+            session.execute(text("""
+                INSERT OR REPLACE INTO tb_via (via_id, tivi_id, via_nombre, via_estado) VALUES
+                (723, 2, 'SAN LUCAS', 'A'),
+                (1095, 4, 'SAN LUCAS', 'A'),
+                (1269, 4, 'SAN LUCAS', 'A');
+            """))
+
+            # Crear una dirección en tb_direccion y asociarla al pasaje duplicado 1269
+            session.execute(text("""
+                INSERT OR REPLACE INTO tb_direccion (dire_id, dire_valor_origen, dire_es_procesado, dire_estado)
+                VALUES (1001, 'PSJ. SAN LUCAS 140', 1, 'ACT');
+            """))
+            session.execute(text("""
+                INSERT OR REPLACE INTO tb_direccion_via (divi_id, dire_id, via_id, divi_numero, divi_orden)
+                VALUES (9001, 1001, 1269, '140', 1);
+            """))
+
+        # Ejecutar consolidación
+        res = svc.consolidate_catalog_duplicates()
+        assert res["vias_consolidated"] >= 1 or res["direccion_via_fks_updated"] >= 1
+
+        with svc.get_session() as session:
+            # Verificar que de Pasaje San Lucas solo quede 1 registro
+            pasajes_sl = session.execute(text("""
+                SELECT via_id, tivi_id, via_nombre FROM tb_via
+                WHERE via_nombre = 'SAN LUCAS' AND tivi_id = 4;
+            """)).fetchall()
+            assert len(pasajes_sl) == 1, f"Debe quedar exactamente 1 pasaje San Lucas, pero hay {len(pasajes_sl)}"
+
+            canonical_pasaje_id = pasajes_sl[0][0]
+
+            # Verificar que Calle San Lucas sigue existiendo (1 registro)
+            calles_sl = session.execute(text("""
+                SELECT via_id, tivi_id, via_nombre FROM tb_via
+                WHERE via_nombre = 'SAN LUCAS' AND tivi_id = 2;
+            """)).fetchall()
+            assert len(calles_sl) == 1, f"Debe quedar exactamente 1 calle San Lucas, pero hay {len(calles_sl)}"
+
+            # Verificar que la FK en tb_direccion_via fue reasignada al pasaje canónico
+            dv_row = session.execute(text("""
+                SELECT via_id FROM tb_direccion_via WHERE dire_id = 1001;
+            """)).fetchone()
+            assert dv_row is not None
+            assert dv_row[0] == canonical_pasaje_id, f"FK debe ser {canonical_pasaje_id}, pero fue {dv_row[0]}"
+
+    def test_ensure_tb_direccion_creates_audit_columns(self, db_svc):
+        """Verifica que ensure_tb_direccion_exists cree y conserve las columnas de auditoría create_at y update_at."""
+        assert db_svc.ensure_tb_direccion_exists() is True
+
+        with db_svc.get_session() as session:
+            rows = session.execute(text("PRAGMA table_info(tb_direccion);")).fetchall()
+            col_names = {r[1].lower() for r in rows}
+            assert "usua_id" in col_names
+            assert "usua_nombre" in col_names
+            assert "create_at" in col_names
+            assert "update_at" in col_names
+            assert "audit_user_pc" in col_names
+            assert "audit_nombre_pc" in col_names
+            assert "audit_ip" in col_names
+            assert "audit_mac_address" in col_names
+
+    def test_ensure_tb_direccion_renames_legacy_resa_columns(self):
+        """Verifica que si tb_direccion tenía resa_created_at y resa_updated_at, se renombre a create_at y update_at."""
+        svc = DatabaseService()
+        engine = create_engine("sqlite:///:memory:")
+        svc._engine = engine
+        from sqlalchemy.orm import sessionmaker
+        svc._session_factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+        with svc.get_session() as session:
+            session.execute(text("""
+                CREATE TABLE tb_direccion (
+                    dire_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    resa_created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    resa_updated_at TIMESTAMP
+                );
+            """))
+
+        assert svc.ensure_tb_direccion_exists() is True
+
+        with svc.get_session() as session:
+            rows = session.execute(text("PRAGMA table_info(tb_direccion);")).fetchall()
+            col_names = {r[1].lower() for r in rows}
+            assert "create_at" in col_names
+            assert "update_at" in col_names
+            assert "resa_created_at" not in col_names
+            assert "resa_updated_at" not in col_names
+
+    def test_central_tb_direccion_keyset_pagination_uses_dire_id(self, db_svc):
+        """Verifica que la paginación keyset en central_tb_direccion use dire_id secuencial aunque dire_tabla_id sea un número grande."""
+        db_svc.ensure_tb_direccion_exists()
+
+        with db_svc.get_session() as session:
+            # Insertar registros donde dire_tabla_id es 50000+ pero dire_id es 1..3
+            for i in range(1, 4):
+                session.execute(text(f"""
+                    INSERT INTO tb_direccion (dire_id, dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado)
+                    VALUES ({i}, 'licencias', 'direcciones', {50000 + i}, 'CALLE SAN JOSE {100 * i}', NULL);
+                """))
+
+        extractor = DatabaseExtractor(
+            db_service=db_svc,
+            schema="licencias",
+            table="direcciones",
+            source_mode="central_tb_direccion",
+        )
+
+        # Batch 1 (limit=1)
+        batch1 = extractor.extract_batch(limit=1, filter_mode="pending", after_id=None)
+        assert len(batch1) == 1
+        rec1 = batch1[0]
+        assert rec1.dire_id == 1
+        assert rec1.id_licencia == 50001
+
+        # En la siguiente iteración, con el fix, after_id debe ser rec1.dire_id (1), NO rec1.id_licencia (50001)
+        batch2 = extractor.extract_batch(limit=1, filter_mode="pending", after_id=rec1.dire_id)
+        assert len(batch2) == 1
+        assert batch2[0].dire_id == 2
+
+
+class TestEnsureCatalogsAuditColumns:
+    """Verifica que ensure_catalogs_audit_columns() agrega las 8 columnas de auditoría
+    a las 6 tablas maestras de catálogos de forma idempotente y sin romper el flujo."""
+
+    CATALOG_TABLES = [
+        "tb_tipo_via",
+        "tb_via",
+        "tb_tipo_zona",
+        "tb_zona",
+        "tb_componente_direccion",
+        "tb_tipo_modulo",
+    ]
+    AUDIT_COLUMNS = [
+        "usua_id",
+        "usua_nombre",
+        "create_at",
+        "update_at",
+        "audit_user_pc",
+        "audit_nombre_pc",
+        "audit_ip",
+        "audit_mac_address",
+    ]
+
+    def _get_db_svc(self):
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from src.services.db_service import DatabaseService
+        svc = DatabaseService()
+        engine = create_engine("sqlite:///:memory:")
+        svc._engine = engine
+        svc._session_factory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        return svc
+
+    def test_ensure_catalogs_audit_columns_adds_all_8_columns(self):
+        """Tras crear las tablas con ensure_v2_tables_exist, todas las tablas
+        maestras deben tener las 8 columnas de auditoría."""
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_v2_tables_exist()
+
+        with db_svc.get_session() as session:
+            for table in self.CATALOG_TABLES:
+                existing_cols = {
+                    r[1] for r in session.execute(
+                        text(f"PRAGMA table_info({table});")
+                    ).fetchall()
+                }
+                for col in self.AUDIT_COLUMNS:
+                    assert col in existing_cols, (
+                        f"Columna de auditoría '{col}' faltante en {table} "
+                        f"tras ensure_v2_tables_exist(). Columnas presentes: {sorted(existing_cols)}"
+                    )
+
+    def test_ensure_catalogs_audit_columns_is_idempotent(self):
+        """Llamar ensure_catalogs_audit_columns() dos veces no debe lanzar excepciones
+        ni alterar datos de catálogos ya sembrados."""
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_v2_tables_exist()
+
+        # Primera llamada
+        db_svc.ensure_catalogs_audit_columns()
+        # Segunda llamada — debe ser silenciosa
+        db_svc.ensure_catalogs_audit_columns()
+
+        # Datos de catálogos intactos
+        with db_svc.get_session() as session:
+            count = session.execute(text("SELECT COUNT(*) FROM tb_tipo_via;")).scalar() or 0
+        assert count > 0, "tb_tipo_via debe conservar sus registros sembrados"
+
+    def test_catalog_inserts_still_work_after_audit_columns(self):
+        """Las sentencias INSERT existentes (sin columnas de auditoría) deben funcionar
+        correctamente tras agregar las columnas de auditoría (todas son NULLable)."""
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_v2_tables_exist()
+
+        with db_svc.get_session() as session:
+            # Insertar en tb_tipo_modulo sin columnas de auditoría (como hace el seed existente)
+            session.execute(text(
+                "INSERT OR IGNORE INTO tb_tipo_modulo (timo_id, timo_nombre, timo_abreviatura, timo_estado) "
+                "VALUES (999, 'TEST_MODULO', 'TEST', 'ACT');"
+            ))
+            row = session.execute(text(
+                "SELECT timo_id, create_at FROM tb_tipo_modulo WHERE timo_id = 999;"
+            )).fetchone()
+            assert row is not None, "INSERT sin columnas de auditoría debe funcionar"
+            # create_at debe tener valor por DEFAULT CURRENT_TIMESTAMP (puede ser None en SQLite sin trigger)
+            # Solo verificamos que no haya error al leer la columna
+            assert "create_at" in [
+                r[1] for r in session.execute(text("PRAGMA table_info(tb_tipo_modulo);")).fetchall()
+            ]

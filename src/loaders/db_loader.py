@@ -130,6 +130,16 @@ class DatabaseLoader(BaseLoader):
         """Persistencia sobre public.tb_direccion para el flujo desacoplado.
         No modifica la tabla fuente emisora pues ya está enlazada por FK.
         """
+        is_sqlite = False
+        try:
+            if self.db._engine and hasattr(self.db._engine, "dialect"):
+                is_sqlite = (self.db._engine.dialect.name == "sqlite")
+        except Exception:
+            pass
+
+        cat_schema = self.target_catalog_schema or ""
+        pfx = "" if (is_sqlite or not cat_schema or cat_schema.lower() in ("", "main")) else f'"{cat_schema}".'
+
         try:
             with self.db.get_session() as session:
                 for rec in records:
@@ -138,26 +148,42 @@ class DatabaseLoader(BaseLoader):
 
                     if rec.es_procesado:
                         # 1. Actualizar tb_direccion como normalizado exitoso
-                        upd_dir_sql = text(f"""
-                            UPDATE "{self.target_catalog_schema}"."tb_direccion" SET
-                                zona_id = :zona_id,
-                                dire_referencia = :dire_referencia,
-                                dire_estado = :dire_estado,
-                                dire_es_procesado = TRUE,
-                                fecha_proceso = CURRENT_TIMESTAMP
-                            WHERE dire_id = :dire_id;
-                        """)
-                        session.execute(upd_dir_sql, {
-                            "zona_id": rec.zona_id,
-                            "dire_referencia": rec.dire_referencia,
-                            "dire_estado": clean_estado,
-                            "dire_id": dire_id,
-                        })
+                        try:
+                            with session.begin_nested():
+                                session.execute(text(f"""
+                                    UPDATE {pfx}"tb_direccion" SET
+                                        zona_id = :zona_id,
+                                        dire_referencia = :dire_referencia,
+                                        dire_estado = :dire_estado,
+                                        dire_es_procesado = TRUE,
+                                        update_at = CURRENT_TIMESTAMP
+                                    WHERE dire_id = :dire_id;
+                                """), {
+                                    "zona_id": rec.zona_id,
+                                    "dire_referencia": rec.dire_referencia,
+                                    "dire_estado": clean_estado,
+                                    "dire_id": dire_id,
+                                })
+                        except Exception:
+                            session.execute(text(f"""
+                                    UPDATE {pfx}"tb_direccion" SET
+                                        zona_id = :zona_id,
+                                        dire_referencia = :dire_referencia,
+                                        dire_estado = :dire_estado,
+                                        dire_es_procesado = TRUE,
+                                        update_at = CURRENT_TIMESTAMP
+                                    WHERE dire_id = :dire_id;
+                            """), {
+                                "zona_id": rec.zona_id,
+                                "dire_referencia": rec.dire_referencia,
+                                "dire_estado": clean_estado,
+                                "dire_id": dire_id,
+                            })
 
                         # 2. Insertar vías asociadas
                         if rec.vias:
                             ins_via_sql = text(f"""
-                                INSERT INTO "{self.target_catalog_schema}"."tb_direccion_via" (
+                                INSERT INTO {pfx}"tb_direccion_via" (
                                     dire_id, via_id, divi_numero, divi_cuadra, divi_orden, divi_es_principal, divi_estado
                                 ) VALUES (
                                     :dire_id, :via_id, :divi_numero, :divi_cuadra, :divi_orden, :divi_es_principal, :divi_estado
@@ -190,7 +216,7 @@ class DatabaseLoader(BaseLoader):
                                         try:
                                             with session.begin_nested():
                                                 session.execute(text(f"""
-                                                    INSERT INTO "{self.target_catalog_schema}"."tb_direccion_via" (
+                                                    INSERT INTO {pfx}"tb_direccion_via" (
                                                         dire_id, via_id, divi_numero, divi_estado
                                                     ) VALUES (
                                                         :dire_id, :via_id, :divi_numero, :divi_estado
@@ -204,12 +230,12 @@ class DatabaseLoader(BaseLoader):
                                                     "divi_estado": "ACT",
                                                 })
                                         except Exception as ex_fb:
-                                            logger.debug("Aviso al insertar vía con fallback en central: %s", ex_fb)
+                                             logger.debug("Aviso al insertar vía con fallback en central: %s", ex_fb)
 
                         # 3. Insertar componentes catastrales
                         if rec.componentes:
                             ins_comp_sql = text(f"""
-                                INSERT INTO "{self.target_catalog_schema}"."tb_contenido_componente_direccion" (
+                                INSERT INTO {pfx}"tb_contenido_componente_direccion" (
                                     dire_id, codi_id, diti_valor, diti_estado
                                 ) VALUES (
                                     :dire_id, :codi_id, :diti_valor, :diti_estado
@@ -236,7 +262,7 @@ class DatabaseLoader(BaseLoader):
                                         try:
                                             with session.begin_nested():
                                                 session.execute(text(f"""
-                                                    INSERT INTO "{self.target_catalog_schema}"."tb_contenido_componente_direccion" (
+                                                    INSERT INTO {pfx}"tb_contenido_componente_direccion" (
                                                         dire_id, codi_id, diti_nombre, diti_estado
                                                     ) VALUES (
                                                         :dire_id, :codi_id, :diti_nombre, :diti_estado
@@ -255,7 +281,7 @@ class DatabaseLoader(BaseLoader):
                         # 4. Insertar módulos inmobiliarios
                         if rec.modulos:
                             ins_mod_sql = text(f"""
-                                INSERT INTO "{self.target_catalog_schema}"."tb_direccion_tipo_modulo" (
+                                INSERT INTO {pfx}"tb_direccion_tipo_modulo" (
                                     dire_id, timo_id, ditm_nombre, ditm_estado
                                 ) VALUES (
                                     :dire_id, :timo_id, :ditm_nombre, :ditm_estado
@@ -298,16 +324,26 @@ class DatabaseLoader(BaseLoader):
                                         else:
                                             logger.debug("Aviso al insertar modulo inmobiliario en central: %s", ex_mod)
                     else:
-                        # Rechazado / Incoherente: dire_es_procesado = FALSE, fecha_proceso = NOW(), sin componentes
-                        upd_dir_sql = text(f"""
-                            UPDATE "{self.target_catalog_schema}"."tb_direccion" SET
-                                zona_id = NULL,
-                                dire_referencia = NULL,
-                                dire_es_procesado = FALSE,
-                                fecha_proceso = CURRENT_TIMESTAMP
-                            WHERE dire_id = :dire_id;
-                        """)
-                        session.execute(upd_dir_sql, {"dire_id": dire_id})
+                        # Rechazado / Incoherente: dire_es_procesado = FALSE, update_at = NOW(), sin componentes
+                        try:
+                            with session.begin_nested():
+                                session.execute(text(f"""
+                                    UPDATE {pfx}"tb_direccion" SET
+                                        zona_id = NULL,
+                                        dire_referencia = NULL,
+                                        dire_es_procesado = FALSE,
+                                        update_at = CURRENT_TIMESTAMP
+                                    WHERE dire_id = :dire_id;
+                                """), {"dire_id": dire_id})
+                        except Exception:
+                            session.execute(text(f"""
+                                UPDATE {pfx}"tb_direccion" SET
+                                    zona_id = NULL,
+                                    dire_referencia = NULL,
+                                    dire_es_procesado = FALSE,
+                                    update_at = CURRENT_TIMESTAMP
+                                WHERE dire_id = :dire_id;
+                            """), {"dire_id": dire_id})
 
             logger.debug(
                 "Lote de %d registros normalizados persistido directamente en %s.tb_direccion",

@@ -1,8 +1,10 @@
 """Servicio de conexión, inspección de esquemas y ejecución DDL/DML con PostgreSQL."""
 
 import logging
+import re
+import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 from datetime import datetime
 from contextlib import contextmanager
 
@@ -26,6 +28,7 @@ class DatabaseService:
         self.url = self.settings.url
         self._engine = None
         self._session_factory = None
+        self._v2_verified_schemas: Set[str] = set()
 
         if SQLALCHEMY_AVAILABLE:
             self._init_engine()
@@ -410,6 +413,13 @@ class DatabaseService:
             # Sincronizar tablas maestras terciarias vias y zonas
             physical_results = self.ensure_vias_and_zonas_tables_exist(schema=target_schema)
             results.update(physical_results)
+
+            # Asegurar columnas de auditoría en tablas maestras (idempotente)
+            try:
+                self.ensure_catalogs_audit_columns(target_schema)
+            except Exception as e_audit:
+                logger.debug("Aviso al verificar columnas de auditoría en %s: %s", target_schema, e_audit)
+
 
             logger.info(
                 "Sincronización estándar de catálogos en '%s': %s (existían %d, remapeados %d, agregados %d, total %d), %s (existían %d, remapeados %d, agregados %d, total %d)",
@@ -1094,7 +1104,35 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_tabla_id BIGINT;
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_valor_origen VARCHAR(500);
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_es_procesado BOOLEAN;
-                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS fecha_proceso TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_direccion" DROP COLUMN IF EXISTS fecha_proceso;
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'resa_created_at') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'create_at') THEN
+                    ALTER TABLE "{target_schema}"."tb_direccion" RENAME COLUMN resa_created_at TO create_at;
+                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'resa_create_at') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'create_at') THEN
+                    ALTER TABLE "{target_schema}"."tb_direccion" RENAME COLUMN resa_create_at TO create_at;
+                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'created_at') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'create_at') THEN
+                    ALTER TABLE "{target_schema}"."tb_direccion" RENAME COLUMN created_at TO create_at;
+                END IF;
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'resa_updated_at') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'update_at') THEN
+                    ALTER TABLE "{target_schema}"."tb_direccion" RENAME COLUMN resa_updated_at TO update_at;
+                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'resa_update_at') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'update_at') THEN
+                    ALTER TABLE "{target_schema}"."tb_direccion" RENAME COLUMN resa_update_at TO update_at;
+                ELSIF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'updated_at') 
+                   AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion' AND column_name = 'update_at') THEN
+                    ALTER TABLE "{target_schema}"."tb_direccion" RENAME COLUMN updated_at TO update_at;
+                END IF;
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_direccion" ALTER COLUMN dire_referencia TYPE TEXT;
                 ALTER TABLE "{target_schema}"."tb_direccion" ALTER COLUMN dire_estado TYPE VARCHAR(3);
             END IF;
@@ -1203,6 +1241,10 @@ class DatabaseService:
             "tb_direccion_tipo_modulo"
         ]
 
+        if target_schema in self._v2_verified_schemas:
+            results["status"] = "ALL_TABLES_READY"
+            return results
+
         # 1. Comprobar qué tablas existen actualmente en el esquema objetivo
         existing_tables = set()
         try:
@@ -1219,16 +1261,22 @@ class DatabaseService:
         except Exception as ex_list:
             logger.debug("Aviso al consultar tablas existentes en %s: %s", target_schema, ex_list)
 
-        # 2. Fast-Path: Si ya existen las 10 tablas y los catálogos tienen datos sembrados, retornar en < 5ms
+        # 2. Fast-Path: Si ya existen las 10 tablas y los catálogos consolidados están al día, retornar rápido
         missing = [t for t in tables_to_check if t.lower() not in existing_tables]
         if not missing:
             try:
                 with self.get_session() as session:
                     t_via = f'"{target_schema}"."tb_tipo_via"' if is_postgres else '"tb_tipo_via"'
+                    v_via = f'"{target_schema}"."tb_via"' if is_postgres else '"tb_via"'
                     tv_c = session.execute(text(f"SELECT COUNT(*) FROM {t_via};")).scalar() or 0
-                    if tv_c >= 12:
+                    v_c = session.execute(text(f"SELECT COUNT(*) FROM {v_via};")).scalar() or 0
+
+                    phys_vias_count = len(CatalogManager.get_official_physical_vias_tuples())
+                    if tv_c >= 12 and v_c == phys_vias_count:
+                        self.ensure_tb_direccion_exists(target_schema)
                         if is_postgres:
                             self.adapt_legacy_catalog_columns(target_schema)
+                        self._v2_verified_schemas.add(target_schema)
                         results["status"] = "ALL_TABLES_READY"
                         return results
             except Exception:
@@ -1242,6 +1290,14 @@ class DatabaseService:
                     tivi_nombre         VARCHAR(100) NOT NULL,
                     tivi_abreviatura    VARCHAR(20),
                     tivi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tivi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_tipo_via PRIMARY KEY (tivi_id),
                     CONSTRAINT uq_tb_tipo_via_nombre UNIQUE (tivi_nombre)
                 );
@@ -1252,6 +1308,14 @@ class DatabaseService:
                     tizo_nombre         VARCHAR(100) NOT NULL,
                     tizo_abreviatura    VARCHAR(20),
                     tizo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tizo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_tipo_zona PRIMARY KEY (tizo_id),
                     CONSTRAINT uq_tb_tipo_zona_nombre UNIQUE (tizo_nombre)
                 );
@@ -1262,6 +1326,14 @@ class DatabaseService:
                     tivi_id             BIGINT NOT NULL,
                     via_nombre          VARCHAR(250) NOT NULL,
                     via_estado          VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (via_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_via PRIMARY KEY (via_id),
                     CONSTRAINT fk_tb_via_tipo_via FOREIGN KEY (tivi_id) REFERENCES "{target_schema}"."tb_tipo_via"(tivi_id) ON UPDATE CASCADE ON DELETE RESTRICT
                 );
@@ -1274,6 +1346,14 @@ class DatabaseService:
                     tizo_id             BIGINT NOT NULL,
                     zona_nombre         VARCHAR(250) NOT NULL,
                     zona_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (zona_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_zona PRIMARY KEY (zona_id),
                     CONSTRAINT fk_tb_zona_tipo_zona FOREIGN KEY (tizo_id) REFERENCES "{target_schema}"."tb_tipo_zona"(tizo_id) ON UPDATE CASCADE ON DELETE RESTRICT
                 );
@@ -1291,7 +1371,14 @@ class DatabaseService:
                     dire_tabla_id       BIGINT,
                     dire_valor_origen   VARCHAR(500),
                     dire_es_procesado   BOOLEAN,
-                    fecha_proceso       TIMESTAMP,
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_direccion PRIMARY KEY (dire_id),
                     CONSTRAINT fk_tb_direccion_zona FOREIGN KEY (zona_id) REFERENCES "{target_schema}"."tb_zona"(zona_id) ON UPDATE CASCADE ON DELETE SET NULL
                 );
@@ -1324,6 +1411,14 @@ class DatabaseService:
                     codi_abreviatura    VARCHAR(20),
                     codi_es_urbano      BOOLEAN DEFAULT TRUE,
                     codi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (codi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_componente_direccion PRIMARY KEY (codi_id),
                     CONSTRAINT uq_tb_componente_direccion_nombre UNIQUE (codi_nombre)
                 );
@@ -1348,6 +1443,14 @@ class DatabaseService:
                     timo_nombre         VARCHAR(100) NOT NULL,
                     timo_abreviatura    VARCHAR(20),
                     timo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (timo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_tipo_modulo PRIMARY KEY (timo_id),
                     CONSTRAINT uq_tb_tipo_modulo_nombre UNIQUE (timo_nombre)
                 );
@@ -1373,7 +1476,15 @@ class DatabaseService:
                     tivi_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tivi_nombre VARCHAR(100) NOT NULL UNIQUE,
                     tivi_abreviatura VARCHAR(20),
-                    tivi_estado VARCHAR(3) DEFAULT 'ACT'
+                    tivi_estado VARCHAR(3) DEFAULT 'ACT',
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_tipo_zona": """
@@ -1381,7 +1492,15 @@ class DatabaseService:
                     tizo_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tizo_nombre VARCHAR(100) NOT NULL UNIQUE,
                     tizo_abreviatura VARCHAR(20),
-                    tizo_estado VARCHAR(3) DEFAULT 'ACT'
+                    tizo_estado VARCHAR(3) DEFAULT 'ACT',
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_via": """
@@ -1389,7 +1508,15 @@ class DatabaseService:
                     via_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tivi_id INTEGER NOT NULL,
                     via_nombre VARCHAR(250) NOT NULL,
-                    via_estado VARCHAR(3) DEFAULT 'ACT'
+                    via_estado VARCHAR(3) DEFAULT 'ACT',
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_zona": """
@@ -1397,7 +1524,15 @@ class DatabaseService:
                     zona_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tizo_id INTEGER NOT NULL,
                     zona_nombre VARCHAR(250) NOT NULL,
-                    zona_estado VARCHAR(3) DEFAULT 'ACT'
+                    zona_estado VARCHAR(3) DEFAULT 'ACT',
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_direccion": """
@@ -1411,7 +1546,14 @@ class DatabaseService:
                     dire_tabla_id INTEGER,
                     dire_valor_origen VARCHAR(500),
                     dire_es_procesado BOOLEAN,
-                    fecha_proceso TIMESTAMP
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_direccion_via": """
@@ -1433,7 +1575,15 @@ class DatabaseService:
                     codi_nombre VARCHAR(100) NOT NULL UNIQUE,
                     codi_abreviatura VARCHAR(20),
                     codi_es_urbano BOOLEAN DEFAULT 1,
-                    codi_estado VARCHAR(3) DEFAULT 'ACT'
+                    codi_estado VARCHAR(3) DEFAULT 'ACT',
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_contenido_componente_direccion": """
@@ -1451,7 +1601,15 @@ class DatabaseService:
                     timo_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timo_nombre VARCHAR(100) NOT NULL UNIQUE,
                     timo_abreviatura VARCHAR(20),
-                    timo_estado VARCHAR(3) DEFAULT 'ACT'
+                    timo_estado VARCHAR(3) DEFAULT 'ACT',
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50)
                 );
             """,
             "tb_direccion_tipo_modulo": """
@@ -1531,11 +1689,11 @@ class DatabaseService:
                         """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
                     results["seeded_tables"]["tb_tipo_zona"] = len(zonas_tipos)
 
-                # 8.3. tb_via (2,935 vías oficiales de Chiclayo)
+                # 8.3. tb_via (2,211 vías oficiales de Chiclayo consolidadas)
                 phys_vias = CatalogManager.get_official_physical_vias_tuples()
                 v_tbl = f'"{target_schema}"."tb_via"' if is_postgres else '"tb_via"'
                 via_count = session.execute(text(f"SELECT COUNT(*) FROM {v_tbl};")).scalar() or 0
-                if via_count < len(phys_vias):
+                if via_count != len(phys_vias):
                     chunk_size = 400
                     for i in range(0, len(phys_vias), chunk_size):
                         chunk = phys_vias[i:i + chunk_size]
@@ -1548,17 +1706,17 @@ class DatabaseService:
                             """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
                         else:
                             session.execute(text("""
-                                INSERT OR IGNORE INTO tb_via (via_id, tivi_id, via_nombre, via_estado)
+                                INSERT OR REPLACE INTO tb_via (via_id, tivi_id, via_nombre, via_estado)
                                 VALUES (:via_id, :tivi_id, :via_nombre, 'A');
                             """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
                     results["seeded_tables"]["tb_via"] = len(phys_vias)
                     logger.info("Catálogo maestro sembrado en %s: %d vías oficiales de Chiclayo", target_schema, len(phys_vias))
 
-                # 8.4. tb_zona (460 zonas oficiales de Chiclayo)
+                # 8.4. tb_zona (452 zonas oficiales de Chiclayo consolidadas)
                 phys_zonas = CatalogManager.get_official_physical_zonas_tuples()
                 z_tbl = f'"{target_schema}"."tb_zona"' if is_postgres else '"tb_zona"'
                 zona_count = session.execute(text(f"SELECT COUNT(*) FROM {z_tbl};")).scalar() or 0
-                if zona_count < len(phys_zonas):
+                if zona_count != len(phys_zonas):
                     chunk_size = 200
                     for i in range(0, len(phys_zonas), chunk_size):
                         chunk = phys_zonas[i:i + chunk_size]
@@ -1571,7 +1729,7 @@ class DatabaseService:
                             """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
                         else:
                             session.execute(text("""
-                                INSERT OR IGNORE INTO tb_zona (zona_id, tizo_id, zona_nombre, zona_estado)
+                                INSERT OR REPLACE INTO tb_zona (zona_id, tizo_id, zona_nombre, zona_estado)
                                 VALUES (:zona_id, :tizo_id, :zona_nombre, 'A');
                             """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
                     results["seeded_tables"]["tb_zona"] = len(phys_zonas)
@@ -1644,7 +1802,14 @@ class DatabaseService:
                                 d.dire_tabla_id,
                                 d.dire_valor_origen,
                                 d.dire_es_procesado,
-                                d.fecha_proceso,
+                                d.usua_id,
+                                d.usua_nombre,
+                                d.create_at,
+                                d.update_at,
+                                d.audit_user_pc,
+                                d.audit_nombre_pc,
+                                d.audit_ip,
+                                d.audit_mac_address,
                                 z.zona_nombre AS zona_oficial,
                                 tz.tizo_nombre AS tipo_zona_oficial,
                                 tz.tizo_abreviatura AS abrev_tipo_zona,
@@ -1679,17 +1844,332 @@ class DatabaseService:
         except Exception as e:
             logger.error("Error al verificar/sembrar datos semilla V2 en %s: %s", target_schema, e)
 
+        # Asegurar columnas de auditoría en tablas maestras de catálogos (idempotente)
+        try:
+            self.ensure_catalogs_audit_columns(target_schema)
+        except Exception as e_audit:
+            logger.debug("Aviso al verificar columnas de auditoría en catálogos de %s: %s", target_schema, e_audit)
+
+        # Asegurar consolidación de duplicados y reasignación de FKs
+        self.consolidate_catalog_duplicates(target_schema)
+        self._v2_verified_schemas.add(target_schema)
+
+        return results
+
+    def ensure_catalogs_audit_columns(self, schema: Optional[str] = None) -> None:
+        """Garantiza que las 6 tablas maestras de catálogos contengan las 8 columnas
+        de auditoría estándar. Operación completamente idempotente usando ADD COLUMN IF NOT EXISTS.
+        Compatible con PostgreSQL (esquema calificado) y SQLite (sin esquema).
+
+        Tablas afectadas:
+            tb_tipo_via, tb_via, tb_tipo_zona, tb_zona,
+            tb_componente_direccion, tb_tipo_modulo
+        """
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return
+
+        is_postgres = (self._engine.dialect.name == "postgresql")
+        target_schema = schema or self.settings.schema
+
+        # Definición de columnas de auditoría: (nombre, tipo_postgres, tipo_sqlite, default)
+        AUDIT_COLUMNS = [
+            ("usua_id",           "BIGINT",                                    "INTEGER",      None),
+            ("usua_nombre",       "VARCHAR(200)",                              "VARCHAR(200)", None),
+            ("create_at",         "TIMESTAMP WITHOUT TIME ZONE",               "TIMESTAMP",    "CURRENT_TIMESTAMP"),
+            ("update_at",         "TIMESTAMP WITHOUT TIME ZONE",               "TIMESTAMP",    None),
+            ("audit_user_pc",     "VARCHAR(100)",                              "VARCHAR(100)", None),
+            ("audit_nombre_pc",   "VARCHAR(100)",                              "VARCHAR(100)", None),
+            ("audit_ip",          "VARCHAR(50)",                               "VARCHAR(50)",  None),
+            ("audit_mac_address", "VARCHAR(50)",                               "VARCHAR(50)",  None),
+        ]
+
+        # Tablas maestras a verificar
+        CATALOG_TABLES = [
+            "tb_tipo_via",
+            "tb_via",
+            "tb_tipo_zona",
+            "tb_zona",
+            "tb_componente_direccion",
+            "tb_tipo_modulo",
+        ]
+
+        try:
+            with self.get_session() as session:
+                for table in CATALOG_TABLES:
+                    # Verificar que la tabla existe antes de intentar alterar
+                    if is_postgres:
+                        tbl_exists = session.execute(text("""
+                            SELECT COUNT(*) FROM information_schema.tables
+                            WHERE table_schema = :schema AND table_name = :table;
+                        """), {"schema": target_schema, "table": table}).scalar() or 0
+                    else:
+                        tbl_exists = session.execute(text(
+                            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=:table;"
+                        ), {"table": table}).scalar() or 0
+
+                    if not tbl_exists:
+                        logger.debug("Tabla %s no existe en %s, se omite verificación de auditoría.", table, target_schema)
+                        continue
+
+                    # Obtener columnas existentes
+                    if is_postgres:
+                        existing_cols = {
+                            r[0] for r in session.execute(text("""
+                                SELECT column_name FROM information_schema.columns
+                                WHERE table_schema = :schema AND table_name = :table;
+                            """), {"schema": target_schema, "table": table}).fetchall()
+                        }
+                    else:
+                        existing_cols = {
+                            r[1] for r in session.execute(text(f"PRAGMA table_info({table});")).fetchall()
+                        }
+
+                    # Agregar únicamente las columnas de auditoría faltantes
+                    for col_name, pg_type, sq_type, default in AUDIT_COLUMNS:
+                        if col_name in existing_cols:
+                            continue
+                        col_type = pg_type if is_postgres else sq_type
+                        default_clause = f" DEFAULT {default}" if default else ""
+                        if is_postgres:
+                            alter_sql = (
+                                f'ALTER TABLE "{target_schema}"."{table}" '
+                                f'ADD COLUMN IF NOT EXISTS "{col_name}" {col_type}{default_clause};'
+                            )
+                        else:
+                            alter_sql = (
+                                f'ALTER TABLE "{table}" '
+                                f'ADD COLUMN IF NOT EXISTS "{col_name}" {col_type}{default_clause};'
+                            )
+                        try:
+                            session.execute(text(alter_sql))
+                            logger.info(
+                                "Columna de auditoría '%s' agregada a %s.%s.",
+                                col_name, target_schema, table,
+                            )
+                        except Exception as e_col:
+                            logger.debug(
+                                "Aviso al agregar columna '%s' en %s.%s: %s",
+                                col_name, target_schema, table, e_col,
+                            )
+
+        except Exception as e:
+            logger.error("Error en ensure_catalogs_audit_columns para esquema %s: %s", target_schema, e)
+            raise
+
+    def consolidate_catalog_duplicates(self, target_schema: str = "public") -> Dict[str, Any]:
+        """Detecta, consolida y reordena registros duplicados de vías y zonas en la base de datos,
+        reasignando de forma transparente cualquier clave foránea existente en tb_direccion_via y tb_direccion.
+        Garantiza que vías repetidas con el mismo tipo y nombre (ej. Pasaje 'SAN LUCAS') se consoliden en 1 solo registro canónico.
+        """
+        results = {
+            "vias_consolidated": 0,
+            "zonas_consolidated": 0,
+            "direccion_via_fks_updated": 0,
+            "direccion_fks_updated": 0,
+        }
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return results
+
+        from src.catalogs.catalog_manager import CatalogManager
+
+        is_postgres = (self._engine.dialect.name == "postgresql")
+        v_tbl = f'"{target_schema}"."tb_via"' if is_postgres else '"tb_via"'
+        z_tbl = f'"{target_schema}"."tb_zona"' if is_postgres else '"tb_zona"'
+        dv_tbl = f'"{target_schema}"."tb_direccion_via"' if is_postgres else '"tb_direccion_via"'
+        d_tbl = f'"{target_schema}"."tb_direccion"' if is_postgres else '"tb_direccion"'
+
+        has_vias = self.table_exists("tb_via", target_schema)
+        has_zonas = self.table_exists("tb_zona", target_schema)
+        has_dir_vias = self.table_exists("tb_direccion_via", target_schema)
+        has_dirs = self.table_exists("tb_direccion", target_schema)
+
+        if not has_vias and not has_zonas:
+            return results
+
+        vias_map = CatalogManager.get_vias_id_migration_map()
+        zonas_map = CatalogManager.get_zonas_id_migration_map()
+
+        def _clean_str(s: Optional[str]) -> str:
+            if not s:
+                return ""
+            nfkd = unicodedata.normalize("NFKD", s)
+            no_acc = "".join(c for c in nfkd if not unicodedata.combining(c))
+            return re.sub(r"\s+", " ", no_acc).strip().upper()
+
+        with self.get_session() as session:
+            # 1. Consolidar VÍAS
+            if has_vias:
+                # 1.1 Reasignar FKs en tb_direccion_via según el mapa de migración
+                if has_dir_vias and vias_map:
+                    for old_id, new_id in vias_map.items():
+                        if old_id != new_id:
+                            try:
+                                session.execute(text(f"""
+                                    DELETE FROM {dv_tbl}
+                                    WHERE via_id = :old_id
+                                      AND dire_id IN (SELECT dire_id FROM {dv_tbl} WHERE via_id = :new_id);
+                                """), {"old_id": old_id, "new_id": new_id})
+                                upd_res = session.execute(text(f"""
+                                    UPDATE {dv_tbl}
+                                    SET via_id = :new_id
+                                    WHERE via_id = :old_id;
+                                """), {"old_id": old_id, "new_id": new_id})
+                                results["direccion_via_fks_updated"] += (upd_res.rowcount or 0)
+                            except Exception as e:
+                                logger.debug("Aviso al reasignar tb_direccion_via %s -> %s: %s", old_id, new_id, e)
+
+                # 1.2 Detectar y consolidar duplicados residuales en tb_via
+                try:
+                    v_rows = session.execute(text(f"SELECT via_id, tivi_id, via_nombre FROM {v_tbl} ORDER BY via_id;")).fetchall()
+                    via_groups = {}
+                    for row in v_rows:
+                        v_id = int(row.via_id)
+                        tivi = int(row.tivi_id) if row.tivi_id is not None else 0
+                        v_clean = _clean_str(row.via_nombre)
+                        v_key = (tivi, v_clean)
+                        if v_key not in via_groups:
+                            via_groups[v_key] = []
+                        via_groups[v_key].append(v_id)
+
+                    for v_key, ids in via_groups.items():
+                        if len(ids) > 1:
+                            canonical_id = ids[0]
+                            for cid in ids:
+                                if cid in vias_map.values():
+                                    canonical_id = cid
+                                    break
+                            dup_ids = [x for x in ids if x != canonical_id]
+                            if has_dir_vias and dup_ids:
+                                for dup_id in dup_ids:
+                                    try:
+                                        session.execute(text(f"""
+                                            DELETE FROM {dv_tbl}
+                                            WHERE via_id = :dup_id
+                                              AND dire_id IN (SELECT dire_id FROM {dv_tbl} WHERE via_id = :can_id);
+                                        """), {"dup_id": dup_id, "can_id": canonical_id})
+                                        session.execute(text(f"""
+                                            UPDATE {dv_tbl} SET via_id = :can_id WHERE via_id = :dup_id;
+                                        """), {"dup_id": dup_id, "can_id": canonical_id})
+                                    except Exception as e:
+                                        logger.debug("Aviso al reasignar duplicado de vía %s -> %s: %s", dup_id, canonical_id, e)
+
+                            for dup_id in dup_ids:
+                                try:
+                                    session.execute(text(f"DELETE FROM {v_tbl} WHERE via_id = :dup_id;"), {"dup_id": dup_id})
+                                    results["vias_consolidated"] += 1
+                                except Exception as e:
+                                    logger.debug("Aviso al borrar vía duplicada %s: %s", dup_id, e)
+                except Exception as ex_v:
+                    logger.debug("Aviso al depurar duplicados en tb_via: %s", ex_v)
+
+                # 1.3 Eliminar IDs huérfanos que exceden el catálogo nuevo y que ya fueron migrados
+                max_official_via = max((v[0] for v in CatalogManager.get_official_physical_vias_tuples()), default=2211)
+                try:
+                    if has_dir_vias:
+                        session.execute(text(f"""
+                            DELETE FROM {v_tbl}
+                            WHERE via_id > :max_id
+                              AND via_id NOT IN (SELECT via_id FROM {dv_tbl} WHERE via_id IS NOT NULL);
+                        """), {"max_id": max_official_via})
+                    else:
+                        session.execute(text(f"DELETE FROM {v_tbl} WHERE via_id > :max_id;"), {"max_id": max_official_via})
+                except Exception:
+                    pass
+
+            # 2. Consolidar ZONAS
+            if has_zonas:
+                # 2.1 Reasignar FKs en tb_direccion según mapa de migración
+                if has_dirs and zonas_map:
+                    for old_id, new_id in zonas_map.items():
+                        if old_id != new_id:
+                            try:
+                                upd_res = session.execute(text(f"""
+                                    UPDATE {d_tbl}
+                                    SET zona_id = :new_id
+                                    WHERE zona_id = :old_id;
+                                """), {"old_id": old_id, "new_id": new_id})
+                                results["direccion_fks_updated"] += (upd_res.rowcount or 0)
+                            except Exception as e:
+                                logger.debug("Aviso al reasignar tb_direccion zona %s -> %s: %s", old_id, new_id, e)
+
+                # 2.2 Detectar y consolidar duplicados residuales en tb_zona
+                try:
+                    z_rows = session.execute(text(f"SELECT zona_id, tizo_id, zona_nombre FROM {z_tbl} ORDER BY zona_id;")).fetchall()
+                    zona_groups = {}
+                    for row in z_rows:
+                        z_id = int(row.zona_id)
+                        tizo = int(row.tizo_id) if row.tizo_id is not None else 0
+                        z_clean = _clean_str(row.zona_nombre)
+                        z_key = (tizo, z_clean)
+                        if z_key not in zona_groups:
+                            zona_groups[z_key] = []
+                        zona_groups[z_key].append(z_id)
+
+                    for z_key, ids in zona_groups.items():
+                        if len(ids) > 1:
+                            canonical_id = ids[0]
+                            for cid in ids:
+                                if cid in zonas_map.values():
+                                    canonical_id = cid
+                                    break
+                            dup_ids = [x for x in ids if x != canonical_id]
+                            if has_dirs and dup_ids:
+                                for dup_id in dup_ids:
+                                    try:
+                                        session.execute(text(f"""
+                                            UPDATE {d_tbl} SET zona_id = :can_id WHERE zona_id = :dup_id;
+                                        """), {"dup_id": dup_id, "can_id": canonical_id})
+                                    except Exception as e:
+                                        logger.debug("Aviso al reasignar duplicado de zona %s -> %s: %s", dup_id, canonical_id, e)
+
+                            for dup_id in dup_ids:
+                                try:
+                                    session.execute(text(f"DELETE FROM {z_tbl} WHERE zona_id = :dup_id;"), {"dup_id": dup_id})
+                                    results["zonas_consolidated"] += 1
+                                except Exception as e:
+                                    logger.debug("Aviso al borrar zona duplicada %s: %s", dup_id, e)
+                except Exception as ex_z:
+                    logger.debug("Aviso al depurar duplicados en tb_zona: %s", ex_z)
+
+                # 2.3 Eliminar IDs huérfanos que exceden el catálogo nuevo y que ya fueron migrados
+                max_official_zona = max((z[0] for z in CatalogManager.get_official_physical_zonas_tuples()), default=452)
+                try:
+                    if has_dirs:
+                        session.execute(text(f"""
+                            DELETE FROM {z_tbl}
+                            WHERE zona_id > :max_id
+                              AND zona_id NOT IN (SELECT zona_id FROM {d_tbl} WHERE zona_id IS NOT NULL);
+                        """), {"max_id": max_official_zona})
+                    else:
+                        session.execute(text(f"DELETE FROM {z_tbl} WHERE zona_id > :max_id;"), {"max_id": max_official_zona})
+                except Exception:
+                    pass
+
+            # 3. Ajustar secuencias seriales en PostgreSQL
+            if is_postgres:
+                try:
+                    session.execute(text(f"""
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_via"', 'via_id'), COALESCE(MAX(via_id), 1)) FROM {v_tbl};
+                        SELECT setval(pg_get_serial_sequence('"{target_schema}"."tb_zona"', 'zona_id'), COALESCE(MAX(zona_id), 1)) FROM {z_tbl};
+                    """))
+                except Exception:
+                    pass
+
         return results
 
     def seed_v2_catalogs(self, schema: Optional[str] = None, force: bool = False) -> Dict[str, Any]:
         """Importa y siembra forzosamente la totalidad de los catálogos oficiales V2
-        (2,935 vías oficiales, 460 zonas oficiales, 12 tipos de vía y 28 tipos de zona).
+        (2,211 vías oficiales consolidadas, 452 zonas oficiales consolidadas, 12 tipos de vía y 28 tipos de zona).
         """
         from src.catalogs.catalog_manager import CatalogManager
 
         target_schema = schema or self.settings.schema
         self.ensure_v2_tables_exist(target_schema)
 
+        # Consolidar duplicados previos y reasignar FKs
+        self.consolidate_catalog_duplicates(target_schema)
+
+        is_postgres = (self._engine.dialect.name == "postgresql") if self._engine else False
         res: Dict[str, Any] = {"schema": target_schema, "status": "OK"}
         with self.get_session() as session:
             phys_vias = CatalogManager.get_official_physical_vias_tuples()
@@ -1698,47 +2178,81 @@ class DatabaseService:
             zonas_tipos = CatalogManager.get_official_zonas_tuples()
 
             # Forzar importación completa de tb_tipo_via
-            session.execute(text(f"""
-                INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
-                VALUES (:id, :nombre, :abrev, 'A')
-                ON CONFLICT (tivi_id) DO UPDATE
-                SET tivi_nombre = EXCLUDED.tivi_nombre, tivi_abreviatura = EXCLUDED.tivi_abreviatura;
-            """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
+            if is_postgres:
+                session.execute(text(f"""
+                    INSERT INTO "{target_schema}"."tb_tipo_via" (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
+                    VALUES (:id, :nombre, :abrev, 'A')
+                    ON CONFLICT (tivi_id) DO UPDATE
+                    SET tivi_nombre = EXCLUDED.tivi_nombre, tivi_abreviatura = EXCLUDED.tivi_abreviatura;
+                """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
+            else:
+                session.execute(text("""
+                    INSERT OR REPLACE INTO tb_tipo_via (tivi_id, tivi_nombre, tivi_abreviatura, tivi_estado)
+                    VALUES (:id, :nombre, :abrev, 'A');
+                """), [{"id": v[0], "nombre": v[1], "abrev": v[2]} for v in vias_tipos])
 
             # Forzar importación completa de tb_tipo_zona
-            session.execute(text(f"""
-                INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
-                VALUES (:id, :nombre, :abrev, 'A')
-                ON CONFLICT (tizo_id) DO UPDATE
-                SET tizo_nombre = EXCLUDED.tizo_nombre, tizo_abreviatura = EXCLUDED.tizo_abreviatura;
-            """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
+            if is_postgres:
+                session.execute(text(f"""
+                    INSERT INTO "{target_schema}"."tb_tipo_zona" (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
+                    VALUES (:id, :nombre, :abrev, 'A')
+                    ON CONFLICT (tizo_id) DO UPDATE
+                    SET tizo_nombre = EXCLUDED.tizo_nombre, tizo_abreviatura = EXCLUDED.tizo_abreviatura;
+                """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
+            else:
+                session.execute(text("""
+                    INSERT OR REPLACE INTO tb_tipo_zona (tizo_id, tizo_nombre, tizo_abreviatura, tizo_estado)
+                    VALUES (:id, :nombre, :abrev, 'A');
+                """), [{"id": z[0], "nombre": z[1], "abrev": z[2]} for z in zonas_tipos])
 
             # Forzar importación completa de tb_via
             chunk_size = 400
             for i in range(0, len(phys_vias), chunk_size):
                 chunk = phys_vias[i:i + chunk_size]
-                session.execute(text(f"""
-                    INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
-                    VALUES (:via_id, :tivi_id, :via_nombre, 'A')
-                    ON CONFLICT (via_id) DO UPDATE
-                    SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'A';
-                """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
+                if is_postgres:
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_via" (via_id, tivi_id, via_nombre, via_estado)
+                        VALUES (:via_id, :tivi_id, :via_nombre, 'A')
+                        ON CONFLICT (via_id) DO UPDATE
+                        SET via_nombre = EXCLUDED.via_nombre, tivi_id = EXCLUDED.tivi_id, via_estado = 'A';
+                    """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
+                else:
+                    session.execute(text("""
+                        INSERT OR REPLACE INTO tb_via (via_id, tivi_id, via_nombre, via_estado)
+                        VALUES (:via_id, :tivi_id, :via_nombre, 'A');
+                    """), [{"via_id": v[0], "tivi_id": v[1], "via_nombre": v[2]} for v in chunk])
 
             # Forzar importación completa de tb_zona
             chunk_size = 200
             for i in range(0, len(phys_zonas), chunk_size):
                 chunk = phys_zonas[i:i + chunk_size]
-                session.execute(text(f"""
-                    INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
-                    VALUES (:zona_id, :tizo_id, :zona_nombre, 'A')
-                    ON CONFLICT (zona_id) DO UPDATE
-                    SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'A';
-                """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
+                if is_postgres:
+                    session.execute(text(f"""
+                        INSERT INTO "{target_schema}"."tb_zona" (zona_id, tizo_id, zona_nombre, zona_estado)
+                        VALUES (:zona_id, :tizo_id, :zona_nombre, 'A')
+                        ON CONFLICT (zona_id) DO UPDATE
+                        SET zona_nombre = EXCLUDED.zona_nombre, tizo_id = EXCLUDED.tizo_id, zona_estado = 'A';
+                    """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
+                else:
+                    session.execute(text("""
+                        INSERT OR REPLACE INTO tb_zona (zona_id, tizo_id, zona_nombre, zona_estado)
+                        VALUES (:zona_id, :tizo_id, :zona_nombre, 'A');
+                    """), [{"zona_id": z[0], "tizo_id": z[1], "zona_nombre": z[2]} for z in chunk])
 
-            res["tb_tipo_via_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_via";')).scalar() or 0
-            res["tb_tipo_zona_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_tipo_zona";')).scalar() or 0
-            res["tb_via_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_via";')).scalar() or 0
-            res["tb_zona_count"] = session.execute(text(f'SELECT COUNT(*) FROM "{target_schema}"."tb_zona";')).scalar() or 0
+            v_tbl = f'"{target_schema}"."tb_via"' if is_postgres else '"tb_via"'
+            z_tbl = f'"{target_schema}"."tb_zona"' if is_postgres else '"tb_zona"'
+            tv_tbl = f'"{target_schema}"."tb_tipo_via"' if is_postgres else '"tb_tipo_via"'
+            tz_tbl = f'"{target_schema}"."tb_tipo_zona"' if is_postgres else '"tb_tipo_zona"'
+
+            res["tb_tipo_via_count"] = session.execute(text(f"SELECT COUNT(*) FROM {tv_tbl};")).scalar() or 0
+            res["tb_tipo_zona_count"] = session.execute(text(f"SELECT COUNT(*) FROM {tz_tbl};")).scalar() or 0
+            res["tb_via_count"] = session.execute(text(f"SELECT COUNT(*) FROM {v_tbl};")).scalar() or 0
+            res["tb_zona_count"] = session.execute(text(f"SELECT COUNT(*) FROM {z_tbl};")).scalar() or 0
+
+        # Limpiar cualquier ID residual post-inserción
+        self.consolidate_catalog_duplicates(target_schema)
+
+        return res
 
     def ensure_tb_direccion_exists(self, target_schema: Optional[str] = "public") -> bool:
         """Asegura de manera autónoma y aislada la existencia de tb_direccion en el esquema objetivo
@@ -1750,8 +2264,11 @@ class DatabaseService:
 
         schema = target_schema or "public"
         is_postgres = False
+        is_sqlite = False
         try:
-            is_postgres = (self._engine.dialect.name == "postgresql")
+            dialect_name = self._engine.dialect.name if self._engine else ""
+            is_postgres = (dialect_name == "postgresql")
+            is_sqlite = (dialect_name == "sqlite")
         except Exception:
             pass
 
@@ -1766,13 +2283,20 @@ class DatabaseService:
                         dire_id             BIGSERIAL NOT NULL,
                         zona_id             BIGINT,
                         dire_referencia     TEXT,
-                        dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                        dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT',
                         dire_esquema        VARCHAR(500),
                         dire_tabla          VARCHAR(500),
                         dire_tabla_id       BIGINT,
                         dire_valor_origen   VARCHAR(500),
                         dire_es_procesado   BOOLEAN,
-                        fecha_proceso       TIMESTAMP,
+                        usua_id             BIGINT,
+                        usua_nombre         VARCHAR(200),
+                        create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        update_at           TIMESTAMP WITHOUT TIME ZONE,
+                        audit_user_pc       VARCHAR(100),
+                        audit_nombre_pc     VARCHAR(100),
+                        audit_ip            VARCHAR(50),
+                        audit_mac_address   VARCHAR(50),
                         CONSTRAINT pk_tb_direccion PRIMARY KEY (dire_id)
                     );
                     """
@@ -1788,12 +2312,73 @@ class DatabaseService:
                         dire_tabla_id       INTEGER,
                         dire_valor_origen   VARCHAR(500),
                         dire_es_procesado   BOOLEAN,
-                        fecha_proceso       TIMESTAMP
+                        usua_id             INTEGER,
+                        usua_nombre         VARCHAR(200),
+                        create_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        update_at           TIMESTAMP,
+                        audit_user_pc       VARCHAR(100),
+                        audit_nombre_pc     VARCHAR(100),
+                        audit_ip            VARCHAR(50),
+                        audit_mac_address   VARCHAR(50)
                     );
                     """
                 session.execute(text(create_table_sql))
 
-                # 2. Asegurar todas las columnas necesarias si la tabla ya existía previamente
+                # 2. Consultar columnas que ya existen físicamente en tb_direccion para evitar fallos DDL
+                existing_cols = set()
+                if is_postgres:
+                    col_rows = session.execute(text("""
+                        SELECT LOWER(column_name) 
+                        FROM information_schema.columns 
+                        WHERE table_schema = :schema AND table_name = 'tb_direccion';
+                    """), {"schema": schema}).fetchall()
+                    existing_cols = {r[0] for r in col_rows}
+                elif is_sqlite:
+                    col_rows = session.execute(text(f"PRAGMA table_info({target_tbl});")).fetchall()
+                    existing_cols = {r[1].lower() for r in col_rows}
+
+                # 2.1. Renombrar columnas legacy si existían (resa_created_at/created_at -> create_at, resa_updated_at/updated_at -> update_at)
+                for old_name in ("resa_created_at", "resa_create_at", "created_at"):
+                    if old_name in existing_cols and "create_at" not in existing_cols:
+                        try:
+                            if is_postgres:
+                                with session.begin_nested():
+                                    session.execute(text(f'ALTER TABLE {target_tbl} RENAME COLUMN "{old_name}" TO "create_at";'))
+                            else:
+                                session.execute(text(f'ALTER TABLE {target_tbl} RENAME COLUMN "{old_name}" TO "create_at";'))
+                            existing_cols.remove(old_name)
+                            existing_cols.add("create_at")
+                            break
+                        except Exception as ex_ren:
+                            logger.debug("Aviso al renombrar %s a create_at en %s: %s", old_name, target_tbl, ex_ren)
+
+                for old_name in ("resa_updated_at", "resa_update_at", "updated_at"):
+                    if old_name in existing_cols and "update_at" not in existing_cols:
+                        try:
+                            if is_postgres:
+                                with session.begin_nested():
+                                    session.execute(text(f'ALTER TABLE {target_tbl} RENAME COLUMN "{old_name}" TO "update_at";'))
+                            else:
+                                session.execute(text(f'ALTER TABLE {target_tbl} RENAME COLUMN "{old_name}" TO "update_at";'))
+                            existing_cols.remove(old_name)
+                            existing_cols.add("update_at")
+                            break
+                        except Exception as ex_ren:
+                            logger.debug("Aviso al renombrar %s a update_at en %s: %s", old_name, target_tbl, ex_ren)
+
+                # 2.2. Eliminar de manera segura la columna redundante fecha_proceso si existe
+                if "fecha_proceso" in existing_cols:
+                    try:
+                        if is_postgres:
+                            with session.begin_nested():
+                                session.execute(text(f'ALTER TABLE {target_tbl} DROP COLUMN IF EXISTS "fecha_proceso";'))
+                        else:
+                            session.execute(text(f'ALTER TABLE {target_tbl} DROP COLUMN "fecha_proceso";'))
+                        existing_cols.remove("fecha_proceso")
+                    except Exception as ex_drop:
+                        logger.debug("Aviso al eliminar columna redundante fecha_proceso en %s: %s", target_tbl, ex_drop)
+
+                # 3. Definición de columnas requeridas a nivel de negocio y auditoría
                 cols_to_add = [
                     ("zona_id", "BIGINT" if is_postgres else "INTEGER"),
                     ("dire_referencia", "TEXT"),
@@ -1803,45 +2388,43 @@ class DatabaseService:
                     ("dire_tabla_id", "BIGINT" if is_postgres else "INTEGER"),
                     ("dire_valor_origen", "VARCHAR(500)"),
                     ("dire_es_procesado", "BOOLEAN"),
-                    ("fecha_proceso", "TIMESTAMP"),
+                    ("usua_id", "BIGINT" if is_postgres else "INTEGER"),
+                    ("usua_nombre", "VARCHAR(200)"),
+                    ("create_at", "TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP" if is_postgres else "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+                    ("update_at", "TIMESTAMP WITHOUT TIME ZONE" if is_postgres else "TIMESTAMP"),
+                    ("audit_user_pc", "VARCHAR(100)"),
+                    ("audit_nombre_pc", "VARCHAR(100)"),
+                    ("audit_ip", "VARCHAR(50)"),
+                    ("audit_mac_address", "VARCHAR(50)"),
                 ]
+
+                # Agregar ÚNICAMENTE columnas que no existan
                 for col_name, col_type in cols_to_add:
-                    try:
-                        session.execute(text(f"""
-                            ALTER TABLE {target_tbl}
-                            ADD COLUMN IF NOT EXISTS "{col_name}" {col_type};
-                        """))
-                    except Exception:
+                    if col_name.lower() not in existing_cols:
                         try:
-                            session.execute(text(f"""
-                                ALTER TABLE {target_tbl}
-                                ADD COLUMN "{col_name}" {col_type};
-                            """))
-                        except Exception:
-                            pass
+                            if is_postgres:
+                                with session.begin_nested():
+                                    session.execute(text(f'ALTER TABLE {target_tbl} ADD COLUMN "{col_name}" {col_type};'))
+                            else:
+                                clean_t = col_type.split("DEFAULT")[0].strip() if "DEFAULT" in col_type else col_type
+                                session.execute(text(f'ALTER TABLE {target_tbl} ADD COLUMN "{col_name}" {clean_t};'))
+                            existing_cols.add(col_name.lower())
+                        except Exception as ex_col:
+                            logger.debug("Aviso al agregar columna %s en %s: %s", col_name, target_tbl, ex_col)
 
-                # 3. En PostgreSQL: asegurar que dire_estado sea VARCHAR(3) y crear índices
+                # 4. Crear índices de manera segura sin colisionar
                 if is_postgres:
-                    try:
-                        session.execute(text(f"""
-                            ALTER TABLE {target_tbl}
-                            ALTER COLUMN dire_estado TYPE VARCHAR(3);
-                        """))
-                    except Exception as ex_col:
-                        logger.debug("Aviso al asegurar VARCHAR(3) en %s.dire_estado: %s", target_tbl, ex_col)
-
-                    session.execute(text(f"""
-                        CREATE INDEX IF NOT EXISTS idx_tb_direccion_proc
-                        ON {target_tbl} (dire_esquema, dire_tabla, dire_es_procesado);
-                    """))
-                    session.execute(text(f"""
-                        CREATE INDEX IF NOT EXISTS idx_tb_direccion_origen_lookup
-                        ON {target_tbl} (dire_esquema, dire_tabla, dire_tabla_id);
-                    """))
-                    session.execute(text(f"""
-                        CREATE INDEX IF NOT EXISTS idx_tb_direccion_zona
-                        ON {target_tbl} (zona_id);
-                    """))
+                    idx_stmts = [
+                        f'CREATE INDEX IF NOT EXISTS idx_tb_direccion_proc ON {target_tbl} (dire_esquema, dire_tabla, dire_es_procesado);',
+                        f'CREATE INDEX IF NOT EXISTS idx_tb_direccion_origen_lookup ON {target_tbl} (dire_esquema, dire_tabla, dire_tabla_id);',
+                        f'CREATE INDEX IF NOT EXISTS idx_tb_direccion_zona ON {target_tbl} (zona_id);',
+                    ]
+                    for idx_sql in idx_stmts:
+                        try:
+                            with session.begin_nested():
+                                session.execute(text(idx_sql))
+                        except Exception as ex_idx:
+                            logger.debug("Aviso al crear índice en %s: %s", target_tbl, ex_idx)
 
                     # Si existe tb_zona en el mismo esquema, vincular FK condicionalmente
                     try:
@@ -1964,7 +2547,7 @@ class DatabaseService:
                         )
                         INSERT INTO {target_dir_ref} (
                             dire_esquema, dire_tabla, dire_tabla_id,
-                            dire_valor_origen, dire_es_procesado, dire_estado, fecha_proceso
+                            dire_valor_origen, dire_es_procesado, dire_estado, update_at
                         )
                         SELECT
                             :esq,
@@ -2021,9 +2604,9 @@ class DatabaseService:
                             session.execute(text(f"""
                                 INSERT INTO {target_dir_ref} (
                                     dire_esquema, dire_tabla, dire_tabla_id,
-                                    dire_valor_origen, dire_es_procesado, dire_estado, fecha_proceso
+                                    dire_valor_origen, dire_es_procesado, dire_estado, update_at
                                 ) VALUES (
-                                    :esq, :tab, :tab_id, :val_orig, :es_proc, 'ACT', :f_proc
+                                    :esq, :tab, :tab_id, :val_orig, :es_proc, 'ACT', :up_at
                                 );
                             """), {
                                 "esq": source_schema or "public",
@@ -2031,7 +2614,7 @@ class DatabaseService:
                                 "tab_id": id_val,
                                 "val_orig": None if is_empty else addr_val[:500],
                                 "es_proc": False if is_empty else None,
-                                "f_proc": datetime.now() if is_empty else None,
+                                "up_at": datetime.now() if is_empty else None,
                             })
                             migrated_count += 1
 
@@ -2095,16 +2678,15 @@ class DatabaseService:
 
         sql = text(f"""
             SELECT 
-                dire_esquema,
-                dire_tabla,
+                COALESCE(NULLIF(dire_esquema, ''), 'public') AS dire_esquema,
+                COALESCE(NULLIF(dire_tabla, ''), 'tb_direccion') AS dire_tabla,
                 COUNT(*) AS total,
                 COUNT(*) FILTER (WHERE dire_es_procesado IS NULL) AS pendientes,
                 COUNT(*) FILTER (WHERE dire_es_procesado IS TRUE) AS normalizados,
                 COUNT(*) FILTER (WHERE dire_es_procesado IS FALSE) AS rechazados,
-                MAX(fecha_proceso) AS ultima_fecha
+                MAX(COALESCE(update_at, create_at)) AS ultima_fecha
             FROM "{catalog_schema}"."tb_direccion"
-            WHERE dire_esquema IS NOT NULL AND dire_tabla IS NOT NULL
-            GROUP BY dire_esquema, dire_tabla
+            GROUP BY COALESCE(NULLIF(dire_esquema, ''), 'public'), COALESCE(NULLIF(dire_tabla, ''), 'tb_direccion')
             ORDER BY dire_esquema, dire_tabla;
         """)
         try:
@@ -2112,7 +2694,7 @@ class DatabaseService:
                 rows = session.execute(sql).fetchall()
                 results = []
                 for r in rows:
-                    last_dt = r[6].isoformat() if r[6] else None
+                    last_dt = r[6].isoformat() if hasattr(r[6], "isoformat") else (str(r[6]) if r[6] else None)
                     results.append({
                         "dire_esquema": r[0],
                         "dire_tabla": r[1],
@@ -2126,6 +2708,51 @@ class DatabaseService:
         except Exception as e:
             logger.debug("Aviso al consultar fuentes ingestadas en %s.tb_direccion: %s", catalog_schema, e)
             return []
+
+    def get_central_tb_direccion_stats(self, catalog_schema: str = "public") -> Dict[str, Any]:
+        """Retorna los conteos globales consolidados de public.tb_direccion."""
+        default_stats = {
+            "total": 0,
+            "pendientes": 0,
+            "normalizados": 0,
+            "rechazados": 0,
+            "has_records": False,
+            "sources_count": 0,
+        }
+        if not SQLALCHEMY_AVAILABLE or not self._engine:
+            return default_stats
+
+        if not self.table_exists("tb_direccion", catalog_schema):
+            return default_stats
+
+        self.ensure_tb_direccion_columns(catalog_schema)
+
+        sql = text(f"""
+            SELECT 
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS NULL) AS pendientes,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS TRUE OR dire_es_procesado = 1) AS normalizados,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS FALSE OR dire_es_procesado = 0) AS rechazados,
+                COUNT(DISTINCT (COALESCE(NULLIF(dire_esquema, ''), 'public') || '::' || COALESCE(NULLIF(dire_tabla, ''), 'tb_direccion'))) AS sources_count
+            FROM "{catalog_schema}"."tb_direccion";
+        """)
+        try:
+            with self.get_session() as session:
+                row = session.execute(sql).fetchone()
+                if row:
+                    tot = int(row.total or 0)
+                    return {
+                        "total": tot,
+                        "pendientes": int(row.pendientes or 0),
+                        "normalizados": int(row.normalizados or 0),
+                        "rechazados": int(row.rechazados or 0),
+                        "has_records": (tot > 0),
+                        "sources_count": int(row.sources_count or 0),
+                    }
+        except Exception as e:
+            logger.debug("Aviso al consultar estadísticas globales de %s.tb_direccion: %s", catalog_schema, e)
+
+        return default_stats
 
     def execute_sql_file(self, file_path: str, target_schema: Optional[str] = None) -> bool:
         """Ejecuta un script SQL en la base de datos, configurando el search_path si se provee."""

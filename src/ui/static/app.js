@@ -153,6 +153,10 @@ function syncNumWorkers(val) {
 function tryGoStep(n) {
   if (n === 5) {
     if (!wiz.schema || !wiz.table || wiz.source_mode !== 'central_tb_direccion' || n > wiz.maxStepUnlocked) {
+      if (wiz.centralStats && (wiz.centralStats.has_records || wiz.centralStats.total > 0)) {
+        resumeAllCentral();
+        return;
+      }
       showModalAlert(
         'Normalización con IA Bloqueada',
         'Para ingresar a la Normalización con IA (Paso 5), primero debe:\n1. Migrar e ingestar una tabla a public.tb_direccion, o\n2. Seleccionar una fuente en la lista de Reanudación del Paso 4.',
@@ -160,6 +164,10 @@ function tryGoStep(n) {
       );
       return;
     }
+  }
+  if (n === 4 && (!wiz.table || !wiz.schema) && wiz.centralStats && (wiz.centralStats.has_records || wiz.centralStats.total > 0)) {
+    goToResumeMode();
+    return;
   }
   if (n <= wiz.maxStepUnlocked) {
     goStep(n);
@@ -278,6 +286,27 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+function formatDateTime(val) {
+  if (!val) return '—';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) {
+      return String(val).replace('T', ' ').slice(0, 19);
+    }
+    return d.toLocaleString('es-PE', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+  } catch {
+    return String(val).replace('T', ' ').slice(0, 19);
+  }
 }
 
 function isCleanSublote(sl) {
@@ -476,6 +505,10 @@ async function verifyDBConnection() {
     // Desbloquear tab 3 (Esquema)
     const tab3 = document.getElementById('tab3');
     if (tab3) tab3.classList.remove('locked');
+
+    if (data.central_stats) {
+      updateCentralResumeUI(data.central_stats, data.ingested_sources);
+    }
 
     showDiag(
       'diagDB',
@@ -919,9 +952,9 @@ async function executeConfirmedMigration() {
     // Abrir modal de resultado
     document.getElementById('modalMigrationResultOverlay').classList.remove('hidden');
 
-    // Refrescar tablas y fuentes en background
-    await previewTable();
-    await loadIngestedSources();
+    // Refrescar tablas y fuentes en background sin bloquear la UI
+    previewTable().catch(err => console.debug("previewTable bg err:", err));
+    loadIngestedSources().catch(err => console.debug("loadIngestedSources bg err:", err));
 
   } catch (e) {
     progressOverlay.classList.add('hidden');
@@ -940,15 +973,18 @@ function migrateAnotherTable() {
   switchWorkflowMode('migrate');
 }
 
-function resumeFromJustMigrated() {
+function goToResumeWorkflow() {
   document.getElementById('modalMigrationResultOverlay')?.classList.add('hidden');
-  const targetSchema = pendingMigrationConfig?.schema_name || wiz.schema;
-  const targetTable  = pendingMigrationConfig?.table_name || wiz.table;
-  if (targetSchema && targetTable) {
-    resumeFromCentralSource(targetSchema, targetTable);
-  } else {
-    showModalAlert('Selección Requerida', 'Seleccione una tabla antes de pasar a la normalización.', 'warning');
-  }
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
+  goStep(4);
+  switchWorkflowMode('resume');
+  loadIngestedSources();
+}
+
+function resumeFromJustMigrated() {
+  goToResumeWorkflow();
 }
 
 async function migrateSourceTable() {
@@ -962,8 +998,11 @@ async function loadIngestedSources() {
   try {
     const res = await fetch('/api/ingested-sources');
     const data = await res.json();
+    if (data.stats) {
+      updateCentralResumeUI(data.stats, data.sources);
+    }
     if (!data.success || !data.sources || data.sources.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:var(--slate-400); padding:16px;">No hay tablas ingestadas en tb_direccion todavía. Seleccione una tabla arriba para migrarla.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--slate-400); padding:16px;">No hay tablas ingestadas en tb_direccion todavía. Seleccione una tabla arriba para migrarla.</td></tr>`;
       return;
     }
 
@@ -978,7 +1017,6 @@ async function loadIngestedSources() {
         <td><span class="badge" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe;">${(s.pendientes || 0).toLocaleString()}</span></td>
         <td><span class="badge badge-valid">${(s.normalizados || 0).toLocaleString()}</span></td>
         <td><span class="badge badge-observed">${(s.rechazados || 0).toLocaleString()}</span></td>
-        <td style="font-size:11.5px; color:var(--slate-500);">${s.ultima_fecha ? formatDateTime(s.ultima_fecha) : '—'}</td>
         <td style="text-align:right;">
           <button class="btn ${isPending ? 'btn-green' : 'btn-ghost'}" style="padding:4px 10px; font-size:11.5px;" onclick="resumeFromCentralSource('${escapeHtml(s.dire_esquema)}', '${escapeHtml(s.dire_tabla)}')">
             <span>${isPending ? 'Reanudar' : 'Ver / Reprocesar'}</span>
@@ -988,7 +1026,41 @@ async function loadIngestedSources() {
       tbody.appendChild(tr);
     });
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#dc2626; padding:12px;">Error al cargar fuentes ingestadas: ${escapeHtml(e.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#dc2626; padding:12px;">Error al cargar fuentes ingestadas: ${escapeHtml(e.message)}</td></tr>`;
+  }
+}
+
+function updateCentralResumeUI(stats, sources) {
+  if (!stats) return;
+  wiz.centralStats = stats;
+  if (sources) wiz.ingestedSources = sources;
+
+  const total = stats.total || 0;
+  const pendientes = stats.pendientes || 0;
+  const hasData = Boolean(stats.has_records || total > 0);
+
+  const lblTotal = document.getElementById('lblCentralTotal');
+  const lblPending = document.getElementById('lblCentralPending');
+  const btnPending = document.getElementById('btnLblCentralPending');
+  const lblStep3Pending = document.getElementById('lblStep3CentralPending');
+  const btnResumeAll = document.getElementById('btnLblResumeAll');
+
+  if (lblTotal) lblTotal.textContent = total.toLocaleString();
+  if (lblPending) lblPending.textContent = pendientes.toLocaleString();
+  if (btnPending) btnPending.textContent = pendientes.toLocaleString();
+  if (lblStep3Pending) lblStep3Pending.textContent = pendientes.toLocaleString();
+  if (btnResumeAll) btnResumeAll.textContent = pendientes.toLocaleString();
+
+  const cardStep2 = document.getElementById('cardCentralDirectResume');
+  if (cardStep2) cardStep2.classList.toggle('hidden', !hasData);
+
+  const bannerStep3 = document.getElementById('bannerStep3CentralResume');
+  if (bannerStep3) bannerStep3.classList.toggle('hidden', !hasData || pendientes === 0);
+
+  if (hasData) {
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+    document.getElementById('tab4')?.classList.remove('locked');
+    document.getElementById('tab5')?.classList.remove('locked');
   }
 }
 
@@ -1012,11 +1084,55 @@ function resumeFromCentralSource(schema, table) {
   syncNumWorkers(wiz.num_workers || 4);
 
   wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
   const tab5 = document.getElementById('tab5');
   if (tab5) tab5.classList.remove('locked');
 
   goStep(5);
   initStep5();
+}
+
+function resumeAllCentral() {
+  wiz.schema = 'public';
+  wiz.table  = 'tb_direccion';
+  wiz.id_col = 'dire_id';
+  wiz.addr_col = 'dire_valor_origen';
+  wiz.source_mode = 'central_tb_direccion';
+
+  const elSchema = document.getElementById('summSchema');
+  const elTable  = document.getElementById('summTable');
+  const elId     = document.getElementById('summId');
+  const elAddr   = document.getElementById('summAddr');
+
+  if (elSchema) elSchema.textContent = 'public';
+  if (elTable)  elTable.textContent  = 'tb_direccion (Todo el Catastro Central)';
+  if (elId)     elId.textContent     = 'dire_id';
+  if (elAddr)   elAddr.textContent   = 'dire_valor_origen (tb_direccion)';
+
+  const elAiModel = document.getElementById('summAiModel');
+  if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model || 'Ollama'}`;
+  const elAiHost = document.getElementById('summAiHost');
+  if (elAiHost) elAiHost.textContent = `http://${wiz.ai_host}:${wiz.ai_port}`;
+
+  syncNumWorkers(wiz.num_workers || 4);
+
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
+  const tab5 = document.getElementById('tab5');
+  if (tab5) tab5.classList.remove('locked');
+
+  goStep(5);
+  initStep5();
+}
+
+function goToResumeMode() {
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+  const tab4 = document.getElementById('tab4');
+  if (tab4) tab4.classList.remove('locked');
+  goStep(4);
+  switchWorkflowMode('resume');
 }
 
 function confirmTable() {
@@ -1074,12 +1190,30 @@ async function initStep5() {
     if (data.active_schema && !wiz.schema) wiz.schema = data.active_schema;
     if (data.table_counts && !wiz.tableCounts) wiz.tableCounts = data.table_counts;
 
+    try {
+      const mode = wiz.source_mode || 'central_tb_direccion';
+      const cRes = await fetch(`/api/counts?schema=${encodeURIComponent(wiz.schema || 'public')}&table=${encodeURIComponent(wiz.table || 'tb_direccion')}&source_mode=${encodeURIComponent(mode)}`);
+      if (cRes.ok) {
+        const counts = await cRes.json();
+        wiz.tableCounts = counts;
+        const progressLabel = document.getElementById('progressLabel');
+        if (progressLabel && !data.is_running) {
+          const pend = counts.pendientes || 0;
+          const tot = counts.total || 0;
+          progressLabel.textContent = `${pend.toLocaleString()} pendientes de ${tot.toLocaleString()} en Catastro Central`;
+        }
+      }
+    } catch (_) {}
+
     if (data.recent_records && data.recent_records.length > 0 && wiz.allRecords.length === 0) {
       data.recent_records.forEach(r => addRecord(r, false));
       filterInspectorRecords();
     }
     if (data.stats) updateStats(data.stats);
   } catch (_) {}
+
+  // Cargar configuración de programación horaria diaria (Scheduler)
+  loadSchedulerConfig();
 
   if (!wiz.evtSource) connectSSE();
 }
@@ -1794,9 +1928,13 @@ async function openExportModal() {
   const overlay = document.getElementById('modalExportOverlay');
   if (!overlay) return;
 
+  const isCentral = (wiz.source_mode === 'central_tb_direccion' || wiz.table === 'tb_direccion');
+  const schema = (isCentral && wiz.table === 'tb_direccion') ? 'public' : (wiz.schema || 'public');
+  const table = (isCentral && wiz.table === 'tb_direccion') ? 'tb_direccion' : (wiz.table || 'tb_direccion');
+  const idCol = isCentral ? 'dire_id' : (wiz.id_col || null);
+  const addrCol = isCentral ? 'dire_valor_origen' : (wiz.addr_col || null);
+
   const tableLabel = document.getElementById('exportModalTable');
-  const schema = wiz.schema || 'public';
-  const table = wiz.table || 'direcciones_actual';
   if (tableLabel) tableLabel.textContent = `${schema}.${table}`;
 
   // Actualizar contador en vivo de registros en pantalla
@@ -1819,8 +1957,8 @@ async function openExportModal() {
       body: JSON.stringify({
         schema_name: schema,
         table_name: table,
-        id_col: wiz.id_col || null,
-        address_col: wiz.addr_col || null,
+        id_col: idCol,
+        address_col: addrCol,
       }),
     });
     if (res.ok) {
@@ -1901,9 +2039,12 @@ function renderExportModalCounts() {
 }
 
 async function executeExport(scope, format) {
-  const isDb = (currentExportDataSource === 'db') && Boolean(wiz.schema && wiz.table);
-  const schema = wiz.schema || 'public';
-  const table = wiz.table || 'direcciones_actual';
+  const isCentral = (wiz.source_mode === 'central_tb_direccion' || wiz.table === 'tb_direccion');
+  const schema = (isCentral && wiz.table === 'tb_direccion') ? 'public' : (wiz.schema || 'public');
+  const table = (isCentral && wiz.table === 'tb_direccion') ? 'tb_direccion' : (wiz.table || 'tb_direccion');
+  const idCol = isCentral ? 'dire_id' : (wiz.id_col || null);
+  const addrCol = isCentral ? 'dire_valor_origen' : (wiz.addr_col || null);
+  const isDb = (currentExportDataSource === 'db') && Boolean(schema && table);
 
   // Identificar botón clickeado para feedback visual (spinner)
   let btnId = '';
@@ -1935,8 +2076,8 @@ async function executeExport(scope, format) {
           table_name: table,
           scope: scope,
           format: format,
-          id_col: wiz.id_col || null,
-          dir_col: wiz.addr_col || null,
+          id_col: idCol,
+          dir_col: addrCol,
         }),
       });
 
@@ -2330,6 +2471,10 @@ async function checkInitialServerState() {
       if (btnGo3) btnGo3.disabled = false;
       document.getElementById('tab3')?.classList.remove('locked');
       showDiag('diagDB', 'ok', 'Conexión a Base de Datos Detectada', `Servidor PostgreSQL activo. ${wiz.availableSchemas.length} esquema(s) disponible(s).`);
+
+      if (data.central_catalog) {
+        updateCentralResumeUI(data.central_catalog);
+      }
     }
 
     // 4. Si hay sesión activa o completada, sincronizar con paso 5
@@ -2457,6 +2602,149 @@ function resetToNewSession() {
     }
   });
   goStep(1);
+}
+
+// ── Funciones de Programación Horaria Diaria (Scheduler) ───────────────────
+async function loadSchedulerConfig() {
+  try {
+    const res = await fetch('/api/scheduler/config');
+    if (!res.ok) return;
+    const cfg = await res.json();
+    updateSchedulerUI(cfg);
+  } catch (err) {
+    console.error('Error al cargar configuración de scheduler:', err);
+  }
+}
+
+function updateSchedulerUI(cfg) {
+  if (!cfg) return;
+  const data = cfg.config || cfg;
+  const chk = document.getElementById('chkSchedulerEnabled');
+  const inpTime = document.getElementById('inpSchedulerTime');
+  const inpEndTime = document.getElementById('inpSchedulerEndTime');
+  const inpWorkers = document.getElementById('inpSchedulerWorkers');
+  const badge = document.getElementById('schedulerBadgeStatus');
+  const countdown = document.getElementById('schedulerCountdownText');
+
+  const isEnabled = Boolean(data.enabled);
+  const timeVal = data.scheduled_time || data.time_str || '23:00';
+  const endTimeVal = data.end_time || data.end_time_str || '';
+  const nextRun = data.next_run || data.next_run_at;
+
+  if (chk) chk.checked = isEnabled;
+  if (inpTime) inpTime.value = timeVal;
+  if (inpEndTime) inpEndTime.value = endTimeVal;
+  if (inpWorkers && data.num_workers) inpWorkers.value = data.num_workers;
+
+  toggleSchedulerUI(isEnabled);
+
+  if (badge) {
+    if (isEnabled) {
+      badge.textContent = 'Programado Activo';
+      badge.style.background = '#dcfce7';
+      badge.style.color = '#166534';
+      badge.style.borderColor = '#86efac';
+    } else {
+      badge.textContent = 'Inactivo';
+      badge.style.background = '#f1f5f9';
+      badge.style.color = '#475569';
+      badge.style.borderColor = '#cbd5e1';
+    }
+  }
+
+  if (countdown) {
+    if (isEnabled && nextRun) {
+      const nextDate = new Date(nextRun);
+      const remaining = data.countdown_human ? ` (${data.countdown_human})` : '';
+      const endLabel = endTimeVal ? ` – ${endTimeVal} hrs` : '';
+      countdown.textContent = `Próxima ejecución: ${nextDate.toLocaleDateString()} a las ${timeVal}${endLabel}${remaining}`;
+    } else {
+      countdown.textContent = '';
+    }
+  }
+}
+
+function toggleSchedulerUI(enabled) {
+  const inpTime = document.getElementById('inpSchedulerTime');
+  const inpEndTime = document.getElementById('inpSchedulerEndTime');
+  const inpWorkers = document.getElementById('inpSchedulerWorkers');
+  const badge = document.getElementById('schedulerBadgeStatus');
+  if (inpTime) inpTime.disabled = !enabled;
+  if (inpEndTime) inpEndTime.disabled = !enabled;
+  if (inpWorkers) inpWorkers.disabled = !enabled;
+  if (badge && !enabled) {
+    badge.textContent = 'Inactivo';
+    badge.style.background = '#f1f5f9';
+    badge.style.color = '#475569';
+    badge.style.borderColor = '#cbd5e1';
+  }
+}
+
+async function saveSchedulerSettings() {
+  const chk = document.getElementById('chkSchedulerEnabled');
+  const inpTime = document.getElementById('inpSchedulerTime');
+  const inpWorkers = document.getElementById('inpSchedulerWorkers');
+  const btn = document.getElementById('btnSaveScheduler');
+
+  const enabled = chk ? chk.checked : false;
+  const scheduledTime = inpTime ? inpTime.value : '23:00';
+  const inpEndTime = document.getElementById('inpSchedulerEndTime');
+  const endTimeStr = inpEndTime && inpEndTime.value ? inpEndTime.value : null;
+  const numWorkers = inpWorkers ? parseInt(inpWorkers.value, 10) || 2 : 2;
+
+  const payload = {
+    enabled: enabled,
+    scheduled_time: scheduledTime,
+    end_time_str: endTimeStr,
+    num_workers: numWorkers,
+    target_schema: wiz.schema || 'public',
+    target_table: wiz.table || 'tb_direccion',
+    source_mode: wiz.source_mode || 'central_tb_direccion',
+    id_col: wiz.id_col || 'dire_id',
+    addr_col: wiz.addr_col || 'dire_nom_via'
+  };
+
+  try {
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/scheduler/config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      showModalAlert('Error en Programación', err.detail || 'No se pudo guardar la configuración', 'error');
+      return;
+    }
+    const updated = await res.json();
+    updateSchedulerUI(updated);
+    const rangeLabel = enabled ? 'Activada: ' + scheduledTime + ' hrs' + (endTimeStr ? ' – ' + endTimeStr + ' hrs' : '') : 'Desactivada';
+    showModalAlert('Horario Guardado', `Programación guardada exitosamente: ${rangeLabel}.`, 'success');
+  } catch (err) {
+    showModalAlert('Error de Conexión', 'No se pudo comunicar con el servidor para guardar la programación.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function triggerSchedulerNow() {
+  const btn = document.getElementById('btnTestTriggerScheduler');
+  try {
+    if (btn) btn.disabled = true;
+    const res = await fetch('/api/scheduler/trigger-now', {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showModalAlert('Aviso', data.detail || 'No se pudo disparar la ejecución', 'warning');
+      return;
+    }
+    showModalAlert('Ejecución Disparada', data.message || 'Se ha iniciado el proceso desatendido en segundo plano.', 'success');
+  } catch (err) {
+    showModalAlert('Error', 'No se pudo contactar al servidor para disparar la prueba.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 // ── Inicialización al Cargar ────────────────────────────────────────────────

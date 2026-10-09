@@ -20,7 +20,7 @@ from src.models.llm_schemas import OllamaAddressExtraction
 
 
 def test_catalogs_inmutability():
-    """Garantiza que los archivos oficiales JSON no fueron alterados."""
+    """Garantiza la integridad y deduplicación de los archivos oficiales JSON."""
     vias_path = Path("src/catalogs/vias_chiclayo.json")
     zonas_path = Path("src/catalogs/zonas_chiclayo.json")
 
@@ -29,8 +29,21 @@ def test_catalogs_inmutability():
     with open(zonas_path, "r", encoding="utf-8") as f:
         zonas = json.load(f)
 
-    assert len(vias) == 2935, f"Se alteró el catálogo oficial de vías: esperadas 2935, hay {len(vias)}"
-    assert len(zonas) == 460, f"Se alteró el catálogo oficial de zonas: esperadas 460, hay {len(zonas)}"
+    assert len(vias) == 2211, f"Catálogo consolidado de vías: esperadas 2211, hay {len(vias)}"
+    assert len(zonas) == 452, f"Catálogo consolidado de zonas: esperadas 452, hay {len(zonas)}"
+
+    # Verificar que no existan combinaciones duplicadas (tipo, nombre)
+    v_keys = set()
+    for v in vias:
+        k = (v.get("id_tipo_via"), v.get("nom_via"))
+        assert k not in v_keys, f"Vía duplicada detectada: {k}"
+        v_keys.add(k)
+
+    # Verificar caso específico SAN LUCAS: 1 calle y 1 pasaje
+    san_lucas = [v for v in vias if v.get("nom_via") == "SAN LUCAS"]
+    assert len(san_lucas) == 2, f"Esperados 2 San Lucas (1 calle y 1 pasaje), hay {len(san_lucas)}"
+    tipos_sl = {v.get("id_tipo_via") for v in san_lucas}
+    assert tipos_sl == {2, 4}, f"Tipos de vía de San Lucas deben ser 2 (Calle) y 4 (Pasaje), hay {tipos_sl}"
 
 
 def test_brisas_never_matches_fresas():
@@ -81,7 +94,7 @@ def test_anti_hallucination_cristobal_colon():
 
     # El guardrail debe haber descartado la alucinación y rescatado 'CRISTOBAL COLON'
     assert result.nom_via == "CRISTOBAL COLON"
-    assert result.id_via == 881
+    assert result.id_via == CatalogMatcher.match_physical_via("CRISTOBAL COLON")["id"]
     assert result.num_via == "607"
     assert result.es_procesado is True
 
@@ -110,7 +123,7 @@ def test_commercial_mall_preserves_confirmed_via():
     result = parser.parse(rec)
     assert "MIGUEL DE CERVANTES" in result.nom_via
     assert result.num_via == "300"
-    assert result.id_via == 224
+    assert result.id_via == CatalogMatcher.match_physical_via("MIGUEL DE CERVANTES")["id"]
     assert result.es_procesado is True
     assert result.nom_zona is None
     assert "REAL PLAZA" in (result.referencia or "")
@@ -198,7 +211,8 @@ def test_diego_ferre_baquijano_heuristic_resolution():
     assert res.es_procesado is True
     assert res.id_zona == 30, f"Esperado ID zona 30 (Diego Ferré), obtenido: {res.id_zona}"
     assert res.nom_zona == "DIEGO FERRE"
-    assert res.id_via == 206, f"Esperado ID vía 206 (José Baquíjano), obtenido: {res.id_via}"
+    expected_baquijano_id = CatalogMatcher.match_physical_via("JOSE BAQUIJANO")["id"]
+    assert res.id_via == expected_baquijano_id, f"Esperado ID vía {expected_baquijano_id} (José Baquíjano), obtenido: {res.id_via}"
     assert "BAQUIJANO" in res.nom_via
     assert res.num_via == "675"
     assert res.referencia is None or "ESQ" not in res.referencia
@@ -224,7 +238,8 @@ def test_diego_ferre_baquijano_ai_inversion_protection():
     assert res.es_procesado is True
     assert res.id_zona == 30, f"Esperado ID zona 30 (Diego Ferré), obtenido: {res.id_zona}"
     assert res.nom_zona == "DIEGO FERRE"
-    assert res.id_via == 206, f"Esperado ID vía 206 (José Baquíjano), obtenido: {res.id_via}"
+    expected_baquijano_id = CatalogMatcher.match_physical_via("JOSE BAQUIJANO")["id"]
+    assert res.id_via == expected_baquijano_id, f"Esperado ID vía {expected_baquijano_id} (José Baquíjano), obtenido: {res.id_via}"
     assert "BAQUIJANO" in res.nom_via
     assert res.num_via == "675"
     assert res.referencia is None, f"Referencia no deseada generada: {res.referencia}"
@@ -232,7 +247,7 @@ def test_diego_ferre_baquijano_ai_inversion_protection():
 
 def test_diego_ferre_miguel_de_cervantes_resolution():
     """Caso ID 1943: 'DIEGO FERRE-MIGUEL DE CERVANTES 0300 - M-10'.
-    Debe normalizar a Vía: Miguel de Cervantes (ID 224), Zona: Diego Ferré (ID 30),
+    Debe normalizar a Vía: Miguel de Cervantes, Zona: Diego Ferré (ID 30),
     num_via: '300', referencia: 'M-10'.
     """
     mock_ollama = MagicMock()
@@ -245,7 +260,8 @@ def test_diego_ferre_miguel_de_cervantes_resolution():
     assert res.es_procesado is True
     assert res.id_zona == 30
     assert res.nom_zona == "DIEGO FERRE"
-    assert res.id_via == 224
+    expected_cervantes_id = CatalogMatcher.match_physical_via("MIGUEL DE CERVANTES")["id"]
+    assert res.id_via == expected_cervantes_id
     assert "MIGUEL DE CERVANTES" in res.nom_via
     assert res.num_via == "300"
     assert res.referencia is not None
@@ -351,7 +367,7 @@ def test_case_pedro_ruiz_never_hallucinates_esq_gallo():
     res = parser.parse(rec)
 
     assert res.es_procesado is True
-    assert res.id_via == 2921
+    assert res.id_via == CatalogMatcher.match_physical_via("AV. PEDRO RUIZ")["id"]
     assert res.nom_via == "PEDRO RUIZ"
     assert res.num_via == "1000"
     assert res.nom_zona is None

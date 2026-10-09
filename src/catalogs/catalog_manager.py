@@ -20,6 +20,8 @@ VIAS_FILE = DEFAULT_CATALOGS_DIR / "tipos_via.json"
 ZONAS_FILE = DEFAULT_CATALOGS_DIR / "tipos_zona.json"
 VIAS_CHICLAYO_FILE = DEFAULT_CATALOGS_DIR / "vias_chiclayo.json"
 ZONAS_CHICLAYO_FILE = DEFAULT_CATALOGS_DIR / "zonas_chiclayo.json"
+VIAS_ID_MAP_FILE = DEFAULT_CATALOGS_DIR / "vias_id_map.json"
+ZONAS_ID_MAP_FILE = DEFAULT_CATALOGS_DIR / "zonas_id_map.json"
 
 
 def _remove_accents(text: str) -> str:
@@ -49,6 +51,8 @@ class CatalogManager:
     _physical_zonas_lookup_cache: Optional[Dict[str, Dict[str, Any]]] = None
     _physical_vias_by_id_cache: Optional[Dict[int, str]] = None
     _physical_zonas_by_id_cache: Optional[Dict[int, str]] = None
+    _vias_id_map_cache: Optional[Dict[int, int]] = None
+    _zonas_id_map_cache: Optional[Dict[int, int]] = None
 
     @classmethod
     def reload(cls) -> None:
@@ -62,6 +66,8 @@ class CatalogManager:
         cls._physical_zonas_lookup_cache = None
         cls._physical_vias_by_id_cache = None
         cls._physical_zonas_by_id_cache = None
+        cls._vias_id_map_cache = None
+        cls._zonas_id_map_cache = None
         # Notificar a CatalogMatcher para refrescar sus mapeos
         try:
             from src.transformers.catalog_matcher import CatalogMatcher
@@ -122,6 +128,36 @@ class CatalogManager:
             )
             for item in catalog
         ]
+
+    @classmethod
+    def get_vias_id_migration_map(cls) -> Dict[int, int]:
+        """Retorna el mapeo {old_id_via: new_canonical_id_via} para migración y consolidación."""
+        if cls._vias_id_map_cache is None:
+            raw_map = cls._load_json(VIAS_ID_MAP_FILE, default={})
+            cls._vias_id_map_cache = {int(k): int(v) for k, v in raw_map.items()}
+        return cls._vias_id_map_cache
+
+    @classmethod
+    def get_zonas_id_migration_map(cls) -> Dict[int, int]:
+        """Retorna el mapeo {old_id_zona: new_canonical_id_zona} para migración y consolidación."""
+        if cls._zonas_id_map_cache is None:
+            raw_map = cls._load_json(ZONAS_ID_MAP_FILE, default={})
+            cls._zonas_id_map_cache = {int(k): int(v) for k, v in raw_map.items()}
+        return cls._zonas_id_map_cache
+
+    @classmethod
+    def map_legacy_via_id(cls, old_id: Optional[int]) -> Optional[int]:
+        """Mapea un ID previo de vía al nuevo ID consecutivo oficial consolidado."""
+        if old_id is None:
+            return None
+        return cls.get_vias_id_migration_map().get(old_id, old_id)
+
+    @classmethod
+    def map_legacy_zona_id(cls, old_id: Optional[int]) -> Optional[int]:
+        """Mapea un ID previo de zona al nuevo ID consecutivo oficial consolidado."""
+        if old_id is None:
+            return None
+        return cls.get_zonas_id_migration_map().get(old_id, old_id)
 
     @classmethod
     def get_default_componentes_tuples(cls) -> List[Tuple[int, str, str, str]]:

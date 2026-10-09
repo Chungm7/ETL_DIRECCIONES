@@ -55,7 +55,7 @@ def test_chiclayo_suffix_never_assigns_cercado_de_chiclayo():
 
         # La zona nunca debe ser CERCADO DE CHICLAYO
         assert dest.nom_zona != "CERCADO DE CHICLAYO", f"Falso positivo en nom_zona para: {raw}"
-        assert dest.zona_id != 148, f"Falso positivo en zona_id para: {raw}"
+        assert dest.zona_id != CatalogManager.map_legacy_zona_id(148), f"Falso positivo en zona_id para: {raw}"
         # La dirección debe ser válida y normalizada con su vía y número
         assert dest.es_procesado is True, f"Debe normalizar vía para: {raw}"
         assert dest.nom_via is not None, f"Debe identificar vía para: {raw}"
@@ -77,7 +77,7 @@ def test_explicit_cercado_is_accepted():
         dest = parser.parse(rec)
 
         assert dest.nom_zona == "CERCADO DE CHICLAYO", f"Debe resolver CERCADO DE CHICLAYO para: {raw}"
-        assert dest.zona_id == 148, f"Debe asignar ID 148 para: {raw}"
+        assert dest.zona_id == CatalogManager.map_legacy_zona_id(148), f"Debe asignar ID 148 para: {raw}"
         assert dest.es_procesado is True, f"Debe ser procesado para: {raw}"
 
 
@@ -184,9 +184,9 @@ def test_salvador_allende_santa_rosa_normalizes_cleanly():
     assert dest.nom_via == "SALVADOR ALLENDE"
     assert dest.num_via == "321"
     assert dest.nom_zona == "SANTA ROSA DE LIMA"
-    assert dest.zona_id == 44
+    assert dest.zona_id == CatalogManager.map_legacy_zona_id(44)
     assert len(dest.vias) == 1
-    assert dest.vias[0]["via_id"] == 353
+    assert dest.vias[0]["via_id"] == CatalogManager.map_legacy_via_id(353)
     assert dest.observacion is None
 
 
@@ -205,7 +205,7 @@ def test_av_jose_leonardo_ortiz_chiclayo_is_not_external_district():
     assert dest.nom_via == "JOSÉ LEONARDO ORTIZ"
     assert dest.num_via == "118"
     assert len(dest.vias) == 1
-    assert dest.vias[0]["via_id"] == 2863
+    assert dest.vias[0]["via_id"] == CatalogManager.map_legacy_via_id(2863)
     assert dest.observacion is None
 
 

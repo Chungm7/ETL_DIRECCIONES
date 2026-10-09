@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "time_str": "04:15",
+  "max_records": null,
+  "num_workers": 3,
+  "batch_size": 40,
+  "target_schema": "public",
+  "target_table": "tb_direccion",
+  "source_mode": "central_tb_direccion",
+  "filter_mode": "pending",
+  "require_ai": true,
+  "last_run_at": "2026-10-09T13:56:55.340147",
+  "last_run_status": "RUNNING",
+  "last_run_message": "Disparo forzado/manual de prueba iniciado.",
+  "next_run_at": "2026-10-10T04:15:00",
+  "end_time_str": null
+}

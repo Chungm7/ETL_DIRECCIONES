@@ -1402,6 +1402,32 @@
       <!-- Tarjeta de Diagnóstico Interactivo de BD -->
       <div id="diagDB"></div>
 
+      <!-- Acceso Rápido Directo a Reanudación / Normalización Catastral en public.tb_direccion -->
+      <div id="cardCentralDirectResume" class="hidden" style="margin-top:16px; padding:16px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); box-shadow:var(--shadow-sm);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span class="badge badge-valid" style="font-size:11px;">⚡ CATASTRO CENTRAL DETECTADO</span>
+              <strong style="color:#166534; font-size:14px;">Datos ya migrados en public.tb_direccion</strong>
+            </div>
+            <p style="font-size:12.5px; color:#14532d; margin:6px 0 0 0;">
+              Se detectaron <strong id="lblCentralTotal">0</strong> registros migrados en el catastro central (<strong id="lblCentralPending">0</strong> pendientes de normalizar con IA).
+              Puede pasar a normalizar directamente sin tener que seleccionar esquema ni tabla origen.
+            </p>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <button class="btn btn-green" id="btnDirectNormalizeCentral" onclick="resumeAllCentral()" style="padding:7px 14px; font-weight:700;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>⚡ Normalizar Todo public.tb_direccion (<span id="btnLblCentralPending">0</span>)</span>
+            </button>
+            <button class="btn btn-action" onclick="goToResumeMode()" style="padding:7px 12px; font-size:12px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              <span>Ver Fuentes Ingestadas</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div style="margin-top:22px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
         <button class="btn btn-ghost" onclick="goStep(1)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -1433,6 +1459,21 @@
       <p style="font-size:13px; color:var(--slate-600); margin-bottom:16px;">
         Seleccione el esquema de PostgreSQL que contiene la tabla de direcciones a normalizar.
       </p>
+
+      <!-- Salto Rápido a Catastro Central en Paso 3 -->
+      <div id="bannerStep3CentralResume" class="hidden" style="margin-bottom:14px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div style="font-size:12.5px; color:#14532d;">
+          ⚡ Hay <strong id="lblStep3CentralPending">0</strong> registros pendientes en <code>public.tb_direccion</code>. Puede normalizarlos de inmediato.
+        </div>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-green" style="padding:4px 10px; font-size:11.5px; font-weight:700;" onclick="resumeAllCentral()">
+            <span>⚡ Normalizar Todo Ahora</span>
+          </button>
+          <button class="btn btn-action" style="padding:4px 10px; font-size:11.5px;" onclick="goToResumeMode()">
+            <span>Ver Fuentes</span>
+          </button>
+        </div>
+      </div>
 
       <div id="alertSchema"></div>
 
@@ -1591,8 +1632,8 @@
             </div>
             <div id="migrationStatusBanner" class="hidden" style="margin-top:12px; padding:10px 14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
               <span id="migrationStatusText" style="font-size:12.5px; color:#166534; font-weight:600;"></span>
-              <button class="btn btn-green" id="btnGoToNormalizeFromStep4" onclick="resumeFromJustMigrated()" style="padding:5px 12px; font-size:12px;">
-                <span>Pasar a Normalizar con IA (Paso 5)</span>
+              <button class="btn btn-green" id="btnGoToNormalizeFromStep4" onclick="goToResumeWorkflow()" style="padding:5px 12px; font-size:12px;">
+                <span>Ir a Reanudar Normalizaciones</span>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
               </button>
             </div>
@@ -1624,6 +1665,23 @@
               <span>Actualizar lista</span>
             </button>
           </div>
+
+          <!-- Caja de Acción Rápida: Normalización Global de Catastro Central -->
+          <div id="boxResumeAllCentral" style="margin-bottom:14px; padding:14px; background:#f0fdf4; border:1px solid #bbf7d0; border-radius:var(--radius); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+            <div>
+              <div style="font-weight:700; color:#166534; font-size:13.5px; display:flex; align-items:center; gap:6px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Normalización Global del Catastro Central (public.tb_direccion)</span>
+              </div>
+              <div style="font-size:12px; color:#14532d; margin-top:2px;">
+                Normalice con Inteligencia Artificial todas las direcciones pendientes en <code>public.tb_direccion</code> a máxima velocidad sin importar su procedencia.
+              </div>
+            </div>
+            <button class="btn btn-green" id="btnResumeAllCentral" onclick="resumeAllCentral()" style="padding:8px 16px; font-size:12.5px; font-weight:700;">
+              <span>⚡ Normalizar Todo public.tb_direccion (<span id="btnLblResumeAll">0</span> pendientes)</span>
+            </button>
+          </div>
+
           <div id="ingestedSourcesTableWrap" style="overflow-x:auto;">
             <table class="data-table" id="tblIngestedSources">
               <thead>
@@ -1634,12 +1692,11 @@
                   <th>Pendientes (Tri-State NULL)</th>
                   <th>Normalizados (TRUE)</th>
                   <th>Rechazados (FALSE)</th>
-                  <th>Último Proceso</th>
                   <th style="text-align:right;">Acción</th>
                 </tr>
               </thead>
               <tbody id="bodyIngestedSources">
-                <tr><td colspan="8" style="text-align:center; color:var(--slate-400);">Cargando fuentes ingestadas...</td></tr>
+                <tr><td colspan="7" style="text-align:center; color:var(--slate-400);">Cargando fuentes ingestadas...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1770,6 +1827,45 @@
           <div style="display:flex; align-items:center; gap:6px; margin-top:14px;">
             <input type="checkbox" id="inp_require_ai" checked style="width:16px; height:16px; cursor:pointer;" />
             <label for="inp_require_ai" style="font-size:12px; font-weight:700; color:var(--slate-700); cursor:pointer; margin:0; text-transform:none;">Requiere IA</label>
+          </div>
+        </div>
+
+        <!-- Franja de Programación Horaria Diaria (Fuera de Horario / Nocturno) -->
+        <div id="schedulerBox" style="margin-top:14px; padding:12px 16px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:var(--radius);">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="color:var(--mpch-navy);"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <strong style="color:var(--mpch-navy); font-size:13px;">Programación Automática Diaria (Fuera de Horario)</strong>
+              <span id="schedulerBadgeStatus" class="badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1;">Inactivo</span>
+            </div>
+            <div id="schedulerCountdownText" style="font-size:11.5px; color:#166534; font-weight:600;"></div>
+          </div>
+          <div style="font-size:11.5px; color:var(--slate-500); margin:4px 0 10px 0;">
+            Permite persistir un horario nocturno para que el servidor ejecute la normalización automáticamente cada día sin saturar la IA durante las horas de oficina compartidas con otros sistemas.
+          </div>
+          <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
+            <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
+              <input type="checkbox" id="chkSchedulerEnabled" onchange="toggleSchedulerUI(this.checked)" style="cursor:pointer;" />
+              <span>Activar ejecución diaria</span>
+            </label>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="inpSchedulerTime" style="font-size:12px; color:var(--slate-700); font-weight:600;">Hora de inicio:</label>
+              <input type="time" id="inpSchedulerTime" value="23:00" style="padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--slate-300);" />
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="inpSchedulerEndTime" style="font-size:12px; color:var(--slate-700); font-weight:600;" title="Hora máxima de operación. El proceso no iniciará después de esta hora.">Hora de fin:</label>
+              <input type="time" id="inpSchedulerEndTime" value="" placeholder="Sin límite" style="padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--slate-300);" />
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <label for="inpSchedulerWorkers" style="font-size:12px; color:var(--slate-700); font-weight:600;" title="Instancias paralelas de IA para la ejecución programada (se recomienda 2 para bajo consumo nocturno)">Instancias IA:</label>
+              <input type="number" id="inpSchedulerWorkers" value="2" min="1" max="8" style="width:55px; padding:4px 8px; font-size:12px; border-radius:4px; border:1px solid var(--slate-300);" />
+            </div>
+            <button class="btn btn-action" id="btnSaveScheduler" onclick="saveSchedulerSettings()" style="padding:4px 12px; font-size:12px;">
+              <span>Guardar Horario</span>
+            </button>
+            <button class="btn btn-ghost" id="btnTestTriggerScheduler" onclick="triggerSchedulerNow()" style="padding:4px 10px; font-size:11px; border-color:var(--slate-300);" title="Probar disparo inmediato en segundo plano">
+              <span>Probar Ahora</span>
+            </button>
           </div>
         </div>
 
@@ -2212,7 +2308,7 @@
         ¿Qué desea hacer a continuación?
       </div>
       <p style="font-size:12px; color:var(--slate-500); margin:0 0 16px 0;">
-        Puede pasar de inmediato a normalizar los registros de esta tabla con Inteligencia Artificial, o migrar otra tabla para seguir centralizando el catastro.
+        La migración se completó con éxito. Puede ir a Reanudar Normalizaciones para consultar las direcciones pendientes en Catastro Central y normalizarlas cuando lo desee, o migrar otra tabla.
       </p>
     </div>
     <div class="modal-footer" style="flex-wrap:wrap; justify-content:space-between; gap:10px;">
@@ -2220,9 +2316,9 @@
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
         <span>Migrar otra tabla</span>
       </button>
-      <button class="btn btn-green" id="btnGoNormalizeNow" onclick="resumeFromJustMigrated()">
-        <span>Normalizar esta tabla con IA ahora</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      <button class="btn btn-green" id="btnGoToResumeMode" onclick="goToResumeWorkflow()">
+        <span>Ir a Reanudar Normalizaciones</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
     </div>
   </div>

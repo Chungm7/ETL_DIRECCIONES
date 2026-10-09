@@ -27,6 +27,14 @@ Table tb_tipo_via {
   tivi_nombre varchar(100) [not null, unique, note: 'Nombre oficial (AVENIDA, CALLE, JIRON, PASAJE, PROLONGACION, etc.)']
   tivi_abreviatura varchar(20) [note: 'Abreviatura estandarizada (AV., CA., JR., PJ., PROL.)']
   tivi_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo, INA = Inactivo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el catálogo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   Note: 'Catálogo oficial de clasificación de vías urbanas según normativa MPCH.'
 }
@@ -36,6 +44,14 @@ Table tb_via {
   tivi_id bigint [not null, ref: > tb_tipo_via.tivi_id, note: 'Clasificación oficial de la vía']
   via_nombre varchar(250) [not null, note: 'Nombre propio de la vía sin prefijo de tipo (ej. JOSE BALTA, SAN JOSE, CRISTOBAL COLON)']
   via_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la vía']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   indexes {
     (via_nombre) [name: 'idx_tb_via_nombre']
@@ -50,6 +66,14 @@ Table tb_tipo_zona {
   tizo_nombre varchar(100) [not null, unique, note: 'Tipo de habilitación (URBANIZACION, PUEBLO JOVEN, ASOCIACION PRO VIVIENDA, UNIDAD VECINAL, etc.)']
   tizo_abreviatura varchar(20) [note: 'Abreviatura (URB., PP.JJ., ASOC., U.V.)']
   tizo_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el catálogo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   Note: 'Clasificación legal de habilitaciones urbanas reconocidas por la MPCH.'
 }
@@ -59,6 +83,14 @@ Table tb_zona {
   tizo_id bigint [not null, ref: > tb_tipo_zona.tizo_id, note: 'Tipo de habilitación urbana']
   zona_nombre varchar(250) [not null, note: 'Nombre de la habilitación sin prefijo (ej. SANTA VICTORIA, CAMPODONICO, FANNY ABANTO CALLE)']
   zona_estado varchar(3) [not null, default: 'ACT', note: 'Estado del registro: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la zona']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   indexes {
     (zona_nombre) [name: 'idx_tb_zona_nombre']
@@ -82,7 +114,14 @@ Table tb_direccion {
   dire_tabla_id bigint [note: 'Clave primaria del registro en la tabla de origen']
   dire_valor_origen varchar(500) [note: 'Texto crudo original de la dirección extraída de la fuente']
   dire_es_procesado boolean [note: 'Semántica Tri-State: NULL = Pendiente | TRUE = Normalizado 100% Certeza | FALSE = Rechazado / Incoherente']
-  fecha_proceso timestamp [note: 'Marca de tiempo en que el ETL procesó el registro']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la dirección']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación de la dirección en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación o normalización']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   indexes {
     (zona_id) [name: 'idx_tb_direccion_zona']
@@ -124,6 +163,14 @@ Table tb_componente_direccion {
   codi_nombre varchar(100) [not null, unique, note: 'Nombre del componente (MANZANA, LOTE, SUBLOTE, PISO, BLOCK, SECTOR, ETAPA)']
   codi_abreviatura varchar(20) [note: 'Abreviatura (MZ, LT, SLT, PIS, BLK, SEC, ETP)']
   codi_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el componente']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   Note: 'Catálogo de partes prediales y horizontales reconocidas.'
 }
@@ -151,6 +198,14 @@ Table tb_tipo_modulo {
   timo_nombre varchar(100) [not null, unique, note: 'Nombre oficial del módulo (INTERIOR, TIENDA, DEPARTAMENTO, STAND, OFICINA, PUESTO, KIOSKO, DEPOSITO, ALMACEN)']
   timo_abreviatura varchar(20) [note: 'Abreviatura estandarizada (INT, TDA, DPTO, STD, OF, PTO, KSK, DEP, ALM)']
   timo_estado varchar(3) [not null, default: 'ACT', note: 'Estado: ACT = Activo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el módulo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   Note: 'Catálogo maestro de unidades inmobiliarias internas de propiedad exclusiva.'
 }
