@@ -116,8 +116,8 @@ class DatabaseExtractor(BaseExtractor):
         """Retorna las cláusulas SQL para pendientes, válidos y observados/rechazados según semántica tri-state."""
         if self.source_mode == "central_tb_direccion":
             cond_pending = '"dire_es_procesado" IS NULL'
-            cond_valid = '("dire_es_procesado" IS TRUE OR "dire_es_procesado" = 1)'
-            cond_observed = '("dire_es_procesado" = FALSE OR "dire_es_procesado" = 0)'
+            cond_valid = '"dire_es_procesado" IS TRUE'
+            cond_observed = '"dire_es_procesado" IS FALSE'
             return cond_pending, cond_valid, cond_observed
 
         self._inspect_columns()

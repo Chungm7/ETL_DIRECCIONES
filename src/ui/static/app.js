@@ -1070,7 +1070,7 @@ async function loadIngestedSources() {
   try {
     const res = await fetch('/api/ingested-sources');
     const data = await res.json();
-    if (data.stats) {
+    if (data.stats || data.sources) {
       updateCentralResumeUI(data.stats, data.sources);
     }
     if (!data.success || !data.sources || data.sources.length === 0) {
@@ -1103,13 +1103,24 @@ async function loadIngestedSources() {
 }
 
 function updateCentralResumeUI(stats, sources) {
-  if (!stats) return;
+  if (!stats && (!sources || sources.length === 0)) return;
+  stats = stats || {};
   wiz.centralStats = stats;
   if (sources) wiz.ingestedSources = sources;
 
-  const total = stats.total || 0;
-  const pendientes = stats.pendientes || 0;
-  const hasData = Boolean(stats.has_records || total > 0);
+  let total = stats.total || 0;
+  let pendientes = stats.pendientes || 0;
+
+  // Consolidar conteos desde sources si stats.total es 0
+  if (total === 0 && sources && sources.length > 0) {
+    total = sources.reduce((acc, s) => acc + (s.total || 0), 0);
+    pendientes = sources.reduce((acc, s) => acc + (s.pendientes || 0), 0);
+    stats.total = total;
+    stats.pendientes = pendientes;
+    stats.has_records = total > 0;
+  }
+
+  const hasData = Boolean(stats.has_records || total > 0 || (sources && sources.some(s => (s.total || 0) > 0)));
 
   const lblTotal = document.getElementById('lblCentralTotal');
   const lblPending = document.getElementById('lblCentralPending');

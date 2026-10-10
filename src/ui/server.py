@@ -466,6 +466,21 @@ async def get_system_status():
     central_catalog = {"total": 0, "pendientes": 0, "normalizados": 0, "rechazados": 0, "has_records": False}
     try:
         central_catalog = db_svc.get_central_tb_direccion_stats("public")
+        if (not central_catalog.get("has_records") or central_catalog.get("total", 0) == 0):
+            sources = db_svc.get_ingested_sources_overview("public")
+            if sources:
+                tot = sum(s.get("total", 0) for s in sources)
+                pend = sum(s.get("pendientes", 0) for s in sources)
+                norm = sum(s.get("normalizados", 0) for s in sources)
+                rech = sum(s.get("rechazados", 0) for s in sources)
+                central_catalog = {
+                    "total": tot,
+                    "pendientes": pend,
+                    "normalizados": norm,
+                    "rechazados": rech,
+                    "has_records": tot > 0,
+                    "sources_count": len(sources),
+                }
     except Exception as e:
         logger.debug("Aviso al consultar estadísticas de central_catalog en /api/status: %s", e)
 
@@ -755,6 +770,19 @@ async def wizard_connect(req: ConnectRequest):
         try:
             ingested_sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
             central_stats = db_svc.get_central_tb_direccion_stats(catalog_schema="public")
+            if (not central_stats.get("has_records") or central_stats.get("total", 0) == 0) and ingested_sources:
+                tot = sum(s.get("total", 0) for s in ingested_sources)
+                pend = sum(s.get("pendientes", 0) for s in ingested_sources)
+                norm = sum(s.get("normalizados", 0) for s in ingested_sources)
+                rech = sum(s.get("rechazados", 0) for s in ingested_sources)
+                central_stats = {
+                    "total": tot,
+                    "pendientes": pend,
+                    "normalizados": norm,
+                    "rechazados": rech,
+                    "has_records": tot > 0,
+                    "sources_count": len(ingested_sources),
+                }
         except Exception as ex_ing:
             logger.debug("Aviso al consultar fuentes ingestadas en /api/connect: %s", ex_ing)
 
@@ -1161,6 +1189,19 @@ async def get_ingested_sources():
 
         sources = db_svc.get_ingested_sources_overview(catalog_schema="public")
         stats = db_svc.get_central_tb_direccion_stats(catalog_schema="public")
+        if (not stats.get("has_records") or stats.get("total", 0) == 0) and sources:
+            tot = sum(s.get("total", 0) for s in sources)
+            pend = sum(s.get("pendientes", 0) for s in sources)
+            norm = sum(s.get("normalizados", 0) for s in sources)
+            rech = sum(s.get("rechazados", 0) for s in sources)
+            stats = {
+                "total": tot,
+                "pendientes": pend,
+                "normalizados": norm,
+                "rechazados": rech,
+                "has_records": tot > 0,
+                "sources_count": len(sources),
+            }
         return {"success": True, "sources": sources, "stats": stats}
     except Exception as e:
         logger.debug("Aviso al consultar fuentes ingestadas: %s", e)

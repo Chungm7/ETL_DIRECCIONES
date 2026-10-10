@@ -2822,8 +2822,8 @@ class DatabaseService:
             SELECT 
                 COUNT(*) AS total,
                 COUNT(*) FILTER (WHERE dire_es_procesado IS NULL) AS pendientes,
-                COUNT(*) FILTER (WHERE dire_es_procesado IS TRUE OR dire_es_procesado = 1) AS normalizados,
-                COUNT(*) FILTER (WHERE dire_es_procesado IS FALSE OR dire_es_procesado = 0) AS rechazados,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS TRUE) AS normalizados,
+                COUNT(*) FILTER (WHERE dire_es_procesado IS FALSE) AS rechazados,
                 COUNT(DISTINCT (COALESCE(NULLIF(dire_esquema, ''), 'public') || '::' || COALESCE(NULLIF(dire_tabla, ''), 'tb_direccion'))) AS sources_count
             FROM "{catalog_schema}"."tb_direccion";
         """)
