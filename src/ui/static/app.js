@@ -154,23 +154,20 @@ function syncNumWorkers(val) {
 
 // ── Navegación e Interactividad del Stepper ──────────────────────────────────
 function tryGoStep(n) {
-  if (n === 5) {
+  if (n === 5) n = 4;
+  if (n === 4) {
     if (!wiz.schema || !wiz.table || wiz.source_mode !== 'central_tb_direccion' || n > wiz.maxStepUnlocked) {
-      if (wiz.centralStats && (wiz.centralStats.has_records || wiz.centralStats.total > 0)) {
+      if (wiz.centralStats && (wiz.centralStats.has_records || (wiz.centralStats.total || 0) > 0)) {
         resumeAllCentral();
         return;
       }
       showModalAlert(
         'Normalización con IA Bloqueada',
-        'Para ingresar a la Normalización con IA (Paso 5), primero debe:\n1. Migrar e ingestar una tabla a public.tb_direccion, o\n2. Seleccionar una fuente en la lista de Reanudación del Paso 4.',
+        'Para ingresar a la Normalización con IA (Paso 4), primero debe:\n1. Migrar e ingestar una tabla a public.tb_direccion, o\n2. Seleccionar una fuente en el Centro de Gestión Catastral (Paso 3).',
         'warning'
       );
       return;
     }
-  }
-  if (n === 4 && (!wiz.table || !wiz.schema) && wiz.centralStats && (wiz.centralStats.has_records || wiz.centralStats.total > 0)) {
-    goToResumeMode();
-    return;
   }
   if (n <= wiz.maxStepUnlocked) {
     goStep(n);
@@ -178,7 +175,9 @@ function tryGoStep(n) {
 }
 
 function goStep(n) {
-  [1, 2, 3, 4, 5].forEach(i => {
+  if (n === 5) n = 4;
+
+  [1, 2, 3, 4].forEach(i => {
     const el = document.getElementById(`step${i}`);
     if (el) el.classList.toggle('hidden', i !== n);
 
@@ -218,12 +217,16 @@ function goStep(n) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 
   if (n === 3) {
-    setTimeout(() => document.getElementById('searchSchema')?.focus(), 150);
+    if (wiz.centralStats && (wiz.centralStats.has_records || (wiz.centralStats.total || 0) > 0)) {
+      switchHubSubView('resume');
+    } else {
+      switchHubSubView('migrate');
+    }
+    loadIngestedSources();
   } else if (n === 4) {
-    setTimeout(() => {
-      document.getElementById('searchTable')?.focus();
-      loadIngestedSources();
-    }, 150);
+    if (!wiz.is_running && wiz.schema && wiz.table) {
+      initStep5();
+    }
   }
 }
 
@@ -505,7 +508,7 @@ async function verifyDBConnection() {
     const btnNext = document.getElementById('btnGoStep3');
     if (btnNext) btnNext.disabled = false;
 
-    // Desbloquear tab 3 (Esquema)
+    // Desbloquear tab 3 (Centro de Gestión Catastral)
     const tab3 = document.getElementById('tab3');
     if (tab3) tab3.classList.remove('locked');
 
@@ -513,12 +516,21 @@ async function verifyDBConnection() {
       updateCentralResumeUI(data.central_stats, data.ingested_sources);
     }
 
+    const hasData = Boolean(data.central_stats && (data.central_stats.has_records || (data.central_stats.total || 0) > 0));
+    if (hasData) {
+      wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+      document.getElementById('tab4')?.classList.remove('locked');
+      switchHubSubView('resume');
+    } else {
+      switchHubSubView('migrate');
+    }
+
     showDiag(
       'diagDB',
       'ok',
       'Conexión Establecida con Éxito',
       `Conectado a la base de datos <strong>${escapeHtml(dbname)}</strong> en ${escapeHtml(host)}:${port}.`,
-      `Esquemas detectados: <strong>${wiz.availableSchemas.length}</strong> disponible(s). Presione "Continuar a Esquemas" para seleccionarlo.`
+      `Esquemas detectados: <strong>${wiz.availableSchemas.length}</strong> disponible(s). Presione "Continuar al Centro de Gestión" para reanudar o migrar.`
     );
 
   } catch (e) {
@@ -626,11 +638,11 @@ async function inspectSchema() {
     updateTableCountBadge(wiz.availableTables.length, wiz.availableTables.length);
     document.getElementById('labelSchema').textContent = wiz.schema;
 
-    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
-    const tab4 = document.getElementById('tab4');
-    if (tab4) tab4.classList.remove('locked');
-
-    goStep(4);
+    const secTbl = document.getElementById('sectionTableSelect');
+    if (secTbl) {
+      secTbl.classList.remove('hidden');
+      secTbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
 
   } catch (e) {
     showModalAlert('Error de Red', 'Error al consultar tablas: ' + e.message, 'error');
@@ -886,25 +898,43 @@ async function previewTable() {
   }
 }
 
-// ── Modos de Flujo (Bifurcación: Ingesta vs Normalización) ──
-function switchWorkflowMode(mode) {
-  const cardMigrate = document.getElementById('cardModeMigrate');
-  const cardResume  = document.getElementById('cardModeResume');
-  const viewMigrate = document.getElementById('viewModeMigrate');
-  const viewResume  = document.getElementById('viewModeResume');
+// ── Centro de Gestión: Conmutador de Subvistas (Reanudación vs Migración) ────
+function switchHubSubView(mode) {
+  const resumeView = document.getElementById('hubResumeView');
+  const migrateView = document.getElementById('hubMigrateView');
+  const btnResume = document.getElementById('btnHubTabResume');
+  const btnMigrate = document.getElementById('btnHubTabMigrate');
 
   if (mode === 'resume') {
-    cardResume?.classList.add('selected');
-    cardMigrate?.classList.remove('selected');
-    viewMigrate?.classList.add('hidden');
-    viewResume?.classList.remove('hidden');
+    resumeView?.classList.remove('hidden');
+    migrateView?.classList.add('hidden');
+
+    if (btnResume) {
+      btnResume.className = 'btn btn-primary';
+    }
+    if (btnMigrate) {
+      btnMigrate.className = 'btn btn-ghost';
+    }
     loadIngestedSources();
   } else {
-    cardMigrate?.classList.add('selected');
-    cardResume?.classList.remove('selected');
-    viewMigrate?.classList.remove('hidden');
-    viewResume?.classList.add('hidden');
+    migrateView?.classList.remove('hidden');
+    resumeView?.classList.add('hidden');
+
+    if (btnMigrate) {
+      btnMigrate.className = 'btn btn-primary';
+    }
+    if (btnResume) {
+      btnResume.className = 'btn btn-ghost';
+    }
+    if (wiz.availableSchemas && wiz.availableSchemas.length > 0) {
+      renderSchemaCards(wiz.availableSchemas);
+      updateSchemaCountBadge(wiz.availableSchemas.length, wiz.availableSchemas.length);
+    }
   }
+}
+
+function switchWorkflowMode(mode) {
+  switchHubSubView(mode);
 }
 
 let pendingMigrationConfig = null;
@@ -981,10 +1011,10 @@ async function executeConfirmedMigration() {
     document.getElementById('resMigrateUnlinked').textContent = (data.remaining_unlinked || 0).toLocaleString();
     document.getElementById('resMigrateColDropped').textContent = data.column_dropped ? 'Eliminada (Desacoplada)' : 'Conservada';
 
-    // Desbloquear Paso 5 para esta tabla migrada
-    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
-    const tab5 = document.getElementById('tab5');
-    if (tab5) tab5.classList.remove('locked');
+    // Desbloquear Paso 4 (Normalización con IA) para esta tabla migrada
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+    const tab4 = document.getElementById('tab4');
+    if (tab4) tab4.classList.remove('locked');
 
     // Abrir modal de resultado
     document.getElementById('modalMigrationResultOverlay').classList.remove('hidden');
@@ -1012,7 +1042,7 @@ function migrateAnotherTable() {
   document.getElementById('migrationStatusBanner')?.classList.add('hidden');
   wiz.table = null;
   wiz.columns = [];
-  switchWorkflowMode('migrate');
+  switchHubSubView('migrate');
 }
 
 function goToResumeWorkflow() {
@@ -1020,8 +1050,8 @@ function goToResumeWorkflow() {
   wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
   const tab4 = document.getElementById('tab4');
   if (tab4) tab4.classList.remove('locked');
-  goStep(4);
-  switchWorkflowMode('resume');
+  goStep(3);
+  switchHubSubView('resume');
   loadIngestedSources();
 }
 
@@ -1044,7 +1074,7 @@ async function loadIngestedSources() {
       updateCentralResumeUI(data.stats, data.sources);
     }
     if (!data.success || !data.sources || data.sources.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--slate-400); padding:16px;">No hay tablas ingestadas en tb_direccion todavía. Seleccione una tabla arriba para migrarla.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--slate-400); padding:16px;">No hay tablas ingestadas en tb_direccion todavía. Seleccione "Migrar Nueva Tabla" para comenzar.</td></tr>`;
       return;
     }
 
@@ -1084,25 +1114,27 @@ function updateCentralResumeUI(stats, sources) {
   const lblTotal = document.getElementById('lblCentralTotal');
   const lblPending = document.getElementById('lblCentralPending');
   const btnPending = document.getElementById('btnLblCentralPending');
-  const lblStep3Pending = document.getElementById('lblStep3CentralPending');
   const btnResumeAll = document.getElementById('btnLblResumeAll');
 
   if (lblTotal) lblTotal.textContent = total.toLocaleString();
   if (lblPending) lblPending.textContent = pendientes.toLocaleString();
   if (btnPending) btnPending.textContent = pendientes.toLocaleString();
-  if (lblStep3Pending) lblStep3Pending.textContent = pendientes.toLocaleString();
   if (btnResumeAll) btnResumeAll.textContent = pendientes.toLocaleString();
 
+  const cardSummary = document.getElementById('cardCentralGlobalSummary');
+  const emptyState = document.getElementById('hubEmptyState');
+  const sourcesWrap = document.getElementById('hubSourcesWrap');
   const cardStep2 = document.getElementById('cardCentralDirectResume');
-  if (cardStep2) cardStep2.classList.toggle('hidden', !hasData);
 
-  const bannerStep3 = document.getElementById('bannerStep3CentralResume');
-  if (bannerStep3) bannerStep3.classList.toggle('hidden', !hasData || pendientes === 0);
+  if (cardStep2) cardStep2.classList.toggle('hidden', !hasData);
+  if (cardSummary) cardSummary.classList.toggle('hidden', !hasData);
+  if (emptyState) emptyState.classList.toggle('hidden', hasData);
+  if (sourcesWrap) sourcesWrap.classList.toggle('hidden', !hasData);
 
   if (hasData) {
-    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+    wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
+    document.getElementById('tab3')?.classList.remove('locked');
     document.getElementById('tab4')?.classList.remove('locked');
-    document.getElementById('tab5')?.classList.remove('locked');
   }
 }
 
@@ -1125,13 +1157,11 @@ function resumeFromCentralSource(schema, table) {
 
   syncNumWorkers(wiz.num_workers || 4);
 
-  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
   const tab4 = document.getElementById('tab4');
   if (tab4) tab4.classList.remove('locked');
-  const tab5 = document.getElementById('tab5');
-  if (tab5) tab5.classList.remove('locked');
 
-  goStep(5);
+  goStep(4);
   initStep5();
 }
 
@@ -1159,22 +1189,18 @@ function resumeAllCentral() {
 
   syncNumWorkers(wiz.num_workers || 4);
 
-  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 5);
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
   const tab4 = document.getElementById('tab4');
   if (tab4) tab4.classList.remove('locked');
-  const tab5 = document.getElementById('tab5');
-  if (tab5) tab5.classList.remove('locked');
 
-  goStep(5);
+  goStep(4);
   initStep5();
 }
 
 function goToResumeMode() {
-  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 4);
-  const tab4 = document.getElementById('tab4');
-  if (tab4) tab4.classList.remove('locked');
-  goStep(4);
-  switchWorkflowMode('resume');
+  wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 3);
+  goStep(3);
+  switchHubSubView('resume');
 }
 
 function confirmTable() {
@@ -2613,7 +2639,7 @@ async function checkInitialServerState() {
 }
 
 function syncWithActiveSession(data) {
-  wiz.maxStepUnlocked = 5;
+  wiz.maxStepUnlocked = 4;
   wiz.schema = data.active_schema || wiz.schema || 'public';
   wiz.table  = data.active_table  || wiz.table  || 'direcciones_actual';
   wiz.id_col = data.id_col || wiz.id_col || 'id_licencia';
@@ -2637,10 +2663,10 @@ function syncWithActiveSession(data) {
   if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
   if (elAiHost && data.ai && data.ai.base_url) elAiHost.textContent = data.ai.base_url;
 
-  goStep(5);
+  goStep(4);
 
   // Bloquear navegación a pasos de configuración durante la ejecución activa
-  [1, 2, 3, 4].forEach(i => {
+  [1, 2, 3].forEach(i => {
     document.getElementById(`tab${i}`)?.classList.add('locked');
   });
 
@@ -2669,7 +2695,7 @@ function syncWithActiveSession(data) {
 }
 
 function syncWithCompletedSession(data) {
-  wiz.maxStepUnlocked = 5;
+  wiz.maxStepUnlocked = 4;
   wiz.schema = data.active_schema || wiz.schema || 'public';
   wiz.table  = data.active_table  || wiz.table  || 'direcciones_actual';
   wiz.id_col = data.id_col || wiz.id_col || 'id_licencia';
@@ -2691,7 +2717,7 @@ function syncWithCompletedSession(data) {
   if (elAddr) elAddr.textContent = wiz.addr_col;
   if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
 
-  goStep(5);
+  goStep(4);
 
   updateStartButtonState(false);
   const btnStop = document.getElementById('btnStop');
