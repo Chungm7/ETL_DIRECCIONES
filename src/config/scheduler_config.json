@@ -1,17 +1,17 @@
 {
   "enabled": false,
-  "time_str": "04:15",
+  "time_str": "23:00",
   "end_time_str": null,
   "max_records": null,
-  "num_workers": 3,
-  "batch_size": 40,
+  "num_workers": 2,
+  "batch_size": 50,
   "target_schema": "public",
   "target_table": "tb_direccion",
   "source_mode": "central_tb_direccion",
   "filter_mode": "pending",
   "require_ai": true,
-  "last_run_at": "2026-10-10T10:01:47.356689",
-  "last_run_status": "RUNNING",
-  "last_run_message": "Disparo forzado/manual de prueba iniciado.",
-  "next_run_at": "2026-10-11T04:15:00"
+  "last_run_at": null,
+  "last_run_status": null,
+  "last_run_message": null,
+  "next_run_at": null
 }

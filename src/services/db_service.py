@@ -1262,26 +1262,14 @@ class DatabaseService:
         except Exception as ex_list:
             logger.debug("Aviso al consultar tablas existentes en %s: %s", target_schema, ex_list)
 
-        # 2. Fast-Path: Si ya existen las 10 tablas y los catálogos consolidados están al día, retornar rápido
+        # 2. Fast-Path: Si ya existen las 10 tablas, retornar de inmediato (< 1ms)
         missing = [t for t in tables_to_check if t.lower() not in existing_tables]
         if not missing:
-            try:
-                with self.get_session() as session:
-                    t_via = f'"{target_schema}"."tb_tipo_via"' if is_postgres else '"tb_tipo_via"'
-                    v_via = f'"{target_schema}"."tb_via"' if is_postgres else '"tb_via"'
-                    tv_c = session.execute(text(f"SELECT COUNT(*) FROM {t_via};")).scalar() or 0
-                    v_c = session.execute(text(f"SELECT COUNT(*) FROM {v_via};")).scalar() or 0
-
-                    phys_vias_count = len(CatalogManager.get_official_physical_vias_tuples())
-                    if tv_c >= 12 and v_c == phys_vias_count:
-                        self.ensure_tb_direccion_exists(target_schema)
-                        if is_postgres:
-                            self.adapt_legacy_catalog_columns(target_schema)
-                        self._v2_verified_schemas.add(target_schema)
-                        results["status"] = "ALL_TABLES_READY"
-                        return results
-            except Exception:
-                pass
+            self.ensure_tb_direccion_exists(target_schema)
+            self._v2_verified_schemas.add(target_schema)
+            logger.info("Arquitectura relacional V2 verificada y lista en '%s'.", target_schema)
+            results["status"] = "ALL_TABLES_READY"
+            return results
 
         # 3. Definición DDL atómica e individual para cada tabla faltante
         ddl_postgres = {

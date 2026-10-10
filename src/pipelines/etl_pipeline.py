@@ -157,12 +157,6 @@ class ETLPipeline:
                     f"Ejecución abortada (--require-ai): El modelo '{ollama_svc.model_name}' está apagado o no responde."
                 )
 
-        judge_model = getattr(ollama_svc, "judge_model_name", None) or getattr(ollama_svc, "model_name", "N/D")
-        if RICH_AVAILABLE and console:
-            console.print(f"[bold cyan][CONFIG][/bold cyan] Juez IA: [bold green]OPERATIVO[/bold green] (Modelo 2: {judge_model})")
-        else:
-            print(f"[CONFIG] Juez IA: OPERATIVO (Modelo 2: {judge_model})")
-
         # Paso 1: Arquitectura relacional V2 en central_tb_direccion
         if self.source_mode == "central_tb_direccion":
             # Garantizar que las 10 tablas relacionales V2 y sus catálogos existan en public.
@@ -210,12 +204,12 @@ class ETLPipeline:
 
         # 1. Identificación del motor
         metodo = getattr(destino, "metodo_normalizacion", "IA")
-        if "Juez" in metodo:
-            motor_lbl = "Juez IA"
-        elif "IA" in metodo:
-            motor_lbl = "IA"
+        if "Heurístico" in metodo or "Heuristico" in metodo:
+            motor_lbl = "Heurístico"
         elif "Híbrido" in metodo or "Hibrido" in metodo:
             motor_lbl = "Híbrido"
+        elif "IA" in metodo:
+            motor_lbl = "IA"
         else:
             motor_lbl = "Heurístico"
 
@@ -313,10 +307,12 @@ class ETLPipeline:
         """Actualiza métricas protegidas, emite eventos visuales a consola y notifica callbacks."""
         with self._metrics_lock:
             metodo = getattr(rec_dest, "metodo_normalizacion", "")
-            if "Juez" in metodo or "IA (" in metodo:
-                summary.ai_records += 1
-            elif "Híbrido" in metodo:
+            if "Heurístico" in metodo or "Heuristico" in metodo:
+                summary.heuristic_records += 1
+            elif "Híbrido" in metodo or "Hibrido" in metodo:
                 summary.hybrid_records += 1
+            elif "IA" in metodo:
+                summary.ai_records += 1
             else:
                 summary.heuristic_records += 1
 

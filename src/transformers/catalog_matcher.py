@@ -27,6 +27,7 @@ class CatalogMatcher:
     ZONAS_NAMES: Dict[int, str] = CatalogManager.get_default_zonas_names()
     _MATCH_VIA_CACHE: Dict[Tuple[str, Optional[int], Optional[str]], Optional[Dict[str, Any]]] = {}
     _MATCH_ZONA_CACHE: Dict[Tuple[str, Optional[int]], Optional[Dict[str, Any]]] = {}
+    _SYNCED_SCHEMAS: Set[str] = set()
 
     @classmethod
     def reset_defaults(cls) -> None:
@@ -39,15 +40,19 @@ class CatalogMatcher:
         cls.ZONAS_NAMES = CatalogManager.get_default_zonas_names()
         cls._MATCH_VIA_CACHE.clear()
         cls._MATCH_ZONA_CACHE.clear()
+        cls._SYNCED_SCHEMAS.clear()
 
 
     @classmethod
-    def sync_with_db(cls, db_service, schema: str) -> None:
+    def sync_with_db(cls, db_service, schema: str, force: bool = False) -> None:
         """Sincroniza dinámicamente los mapeos de vías y zonas leyendo las tablas reales del esquema.
 
         Respeta los IDs asignados en la base de datos (incluso si ya estaban pre-ocupados en ese esquema).
         """
         if not db_service or not db_service._engine:
+            return
+
+        if not force and schema in cls._SYNCED_SCHEMAS:
             return
 
         from sqlalchemy import text
@@ -213,6 +218,7 @@ class CatalogMatcher:
 
             cls._MATCH_VIA_CACHE.clear()
             cls._MATCH_ZONA_CACHE.clear()
+            cls._SYNCED_SCHEMAS.add(schema)
             logger.info("Mapeo de catálogos sincronizado exitosamente con esquema '%s'", schema)
         except Exception as e:
             logger.warning("Aviso al sincronizar catálogos dinámicos con '%s': %s", schema, e)

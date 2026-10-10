@@ -77,6 +77,22 @@ class ExecutionState:
         self._lock = threading.Lock()
         self.loop: Optional[asyncio.AbstractEventLoop] = None
 
+    def mark_preparing(
+        self,
+        schema: str,
+        table: str,
+        num_workers: int = 4,
+        model: Optional[str] = None,
+    ):
+        with self._lock:
+            self.is_running = True
+            self.active_schema = schema
+            self.active_table = table
+            self.num_workers = max(1, int(num_workers or 1))
+            self.active_model = model
+            self.stats["status"] = "PREPARING"
+        self.broadcast({"type": "stats", "payload": self.stats})
+
     def reset_for_run(
         self,
         total: int,
@@ -110,6 +126,7 @@ class ExecutionState:
                 "eta_seconds": 0,
                 "speed_rps": 0.0,
             }
+        self.broadcast({"type": "stats", "payload": self.stats})
 
     def clear_session(self):
         with self._lock:
@@ -1261,6 +1278,16 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         dir_col  = req.address_col or getattr(dynamic_db_settings, "dir_col", "emp_direccion")
         state.add_log(f"Iniciando pipeline ETL en esquema [{target_schema}] tabla [{target_table}]...")
 
+    workers_count = max(1, min(16, int(req.num_workers or state.num_workers or 4)))
+    state.mark_preparing(schema=target_schema, table=target_table, num_workers=workers_count, model=ollama_svc.model_name)
+    logger.info(
+        "[ETL] 🚀 Iniciando preparación del Pipeline ETL en esquema '%s', tabla '%s' (Modo: %s, Workers: %d)...",
+        target_schema,
+        target_table,
+        source_mode,
+        workers_count,
+    )
+
     try:
         state.add_log(f"Columna ID: [{id_col}] | Columna dirección: [{dir_col}]")
         state.add_log(f"Modo de origen: [{source_mode}]")
@@ -1292,7 +1319,6 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             db_settings=dynamic_db_settings,
         )
 
-        workers_count = max(1, min(16, int(req.num_workers or state.num_workers or 4)))
         state.num_workers = workers_count
         state.active_model = ollama_svc.model_name
 
@@ -1312,6 +1338,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         state.pipeline = pipeline
 
         state.add_log("Preparando entorno y tablas maestras...")
+        logger.info("[ETL] ⚙️  Verificando arquitectura relacional y sincronizando catálogos en BD...")
         pipeline.prepare_environment()
 
         # Calcular número total a procesar
@@ -1344,12 +1371,20 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             table=target_table,
             num_workers=workers_count,
             model=ollama_svc.model_name,
-            judge_model=ollama_svc.judge_model_name,
+            judge_model=None,
         )
         state.add_log(f"Total registros a normalizar: {to_process} (Filtro: {filter_mode.upper()}, Instancias concurrentes: {workers_count})")
+        logger.info(
+            "[ETL] 📊 Total registros a normalizar: %d (Filtro: %s, Workers: %d, Modelo IA: %s)",
+            to_process,
+            filter_mode.upper(),
+            workers_count,
+            ollama_svc.model_name,
+        )
 
         if to_process == 0:
             state.add_log(f"[INFO] No hay registros pendientes para procesar en [{target_schema}.{target_table}] con filtro '{filter_mode}'.")
+            logger.info("[ETL] ℹ️ No hay registros pendientes en [%s.%s]. Pipeline finalizado.", target_schema, target_table)
             state.finish_run(summary_data={
                 "total_records": 0,
                 "processed_records": 0,
@@ -1363,6 +1398,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             })
             return
 
+        logger.info("[ETL] ▶️  Iniciando procesamiento concurrente de %d registros...", to_process)
         summary = pipeline.run(max_records=req.limit, limit=req.limit, filter_mode=filter_mode)
 
         summary_dict = {
@@ -1377,10 +1413,18 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             "heuristic_records": summary.heuristic_records,
         }
         state.add_log("Pipeline completado exitosamente.")
+        logger.info(
+            "[ETL] ✅ Pipeline completado: %d/%d registros procesados (%d válidos, %d observados, %d fallidos)",
+            summary.processed_records,
+            summary.total_records,
+            summary.valid_processed_records,
+            summary.observed_records,
+            summary.failed_records,
+        )
         state.finish_run(summary_data=summary_dict)
 
     except Exception as e:
-        logger.exception("Error durante la ejecución del pipeline: %s", e)
+        logger.exception("[ETL] ❌ Error durante la ejecución del pipeline: %s", e)
         state.add_log(f"ERROR: {e}")
         state.finish_run(error=str(e))
 
@@ -1450,6 +1494,15 @@ def _on_scheduler_trigger(sched_cfg: SchedulerConfig):
         state.add_log("[SCHEDULER] ⚠️ Aviso: Se omitió el disparo programado porque ya había un proceso activo en ejecución.")
         return
 
+    logger.info(
+        "[SCHEDULER] ⏰ Ejecutando normalización automática diaria programada (Horario: %s a %s, Destino: %s.%s, Modo: %s, Workers: %d)...",
+        sched_cfg.time_str,
+        sched_cfg.end_time_str or "sin límite",
+        sched_cfg.target_schema,
+        sched_cfg.target_table,
+        sched_cfg.source_mode,
+        sched_cfg.num_workers or 2,
+    )
     state.add_log(f"[SCHEDULER] ⏰ Ejecutando normalización automática diaria programada ({sched_cfg.time_str})...")
     req = StartPipelineRequest(
         schema_name=sched_cfg.target_schema,

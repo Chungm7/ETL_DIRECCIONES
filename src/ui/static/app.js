@@ -1515,12 +1515,17 @@ function updateStats(s) {
 
   const progressLabel = document.getElementById('progressLabel');
   if (progressLabel) {
-    progressLabel.textContent = `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
+    if (status === 'PREPARING') {
+      progressLabel.textContent = 'Analizando registros y preparando catálogos...';
+    } else {
+      progressLabel.textContent = `${proc.toLocaleString()} de ${total.toLocaleString()} registros (${pct}%)`;
+    }
   }
 
   updateTimeBadges(s);
 
   const labels = {
+    PREPARING: 'Preparando entorno y tablas maestras...',
     RUNNING: 'Ejecutando proceso de normalización...',
     IDLE: 'Listo para iniciar',
     FINISHED: 'Proceso completado',
@@ -1531,8 +1536,8 @@ function updateStats(s) {
 
   const dot = document.getElementById('termLiveDot');
   if (dot) {
-    dot.className = status === 'RUNNING' ? 'dot-live' : '';
-    dot.style.background = status === 'RUNNING' ? 'var(--green)' : 'var(--slate-400)';
+    dot.className = (status === 'RUNNING' || status === 'PREPARING') ? 'dot-live' : '';
+    dot.style.background = status === 'RUNNING' ? 'var(--green)' : (status === 'PREPARING' ? 'var(--amber)' : 'var(--slate-400)');
   }
 
   if (status === 'RUNNING') {
