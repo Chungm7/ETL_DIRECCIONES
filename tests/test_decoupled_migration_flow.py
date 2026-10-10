@@ -940,3 +940,65 @@ class TestEnsureCatalogsAuditColumns:
             assert res2["success"] is True
             assert res2["migrated"] == 0
             assert res2["already_migrated"] == 2
+
+    def test_ensure_tb_direccion_exists_cache(self):
+        """Valida que ensure_tb_direccion_exists use el conjunto de caché _tb_direccion_verified
+        y no ejecute DDL repetitivo en llamadas subsiguientes.
+        """
+        db_svc = self._get_db_svc()
+        db_svc._tb_direccion_verified.clear()
+
+        # Primera llamada: verifica y cachea
+        ok1 = db_svc.ensure_tb_direccion_exists("main")
+        assert ok1 is True
+        assert "main" in db_svc._tb_direccion_verified
+
+        # Segunda llamada: hit en caché inmediato
+        with patch.object(db_svc, "get_session") as mock_session:
+            ok2 = db_svc.ensure_tb_direccion_exists("main")
+            assert ok2 is True
+            # No debió abrir ninguna sesión ya que respondió directamente de la caché
+            mock_session.assert_not_called()
+
+    def test_migrate_source_table_phase_a_does_not_call_v2_or_catalog_matcher(self):
+        """Garantiza que la Fase A (ingesta cruda) nunca invoque ensure_v2_tables_exist
+        ni CatalogMatcher.sync_with_db, manteniendo la migración en milisegundos.
+        """
+        import time
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_tb_direccion_exists("main")
+
+        with db_svc.get_session() as session:
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS test_7_rows (
+                    id INTEGER PRIMARY KEY,
+                    dir TEXT
+                );
+            """))
+            session.execute(text("DELETE FROM test_7_rows;"))
+            for i in range(1, 8):
+                session.execute(text(f"INSERT INTO test_7_rows VALUES ({i}, 'DIRECCION DE PRUEBA {i}');"))
+
+        with patch.object(db_svc, "ensure_v2_tables_exist") as mock_v2, \
+             patch("src.transformers.catalog_matcher.CatalogMatcher.sync_with_db") as mock_sync:
+            
+            t0 = time.perf_counter()
+            res = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="",
+                source_table="test_7_rows",
+                id_col="id",
+                addr_col="dir",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+            elapsed = time.perf_counter() - t0
+
+            assert res["success"] is True
+            assert res["total_source"] == 7
+            assert res["migrated"] == 7
+            # Verificamos que jamás se invocó V2 ni la sincronización pesada
+            mock_v2.assert_not_called()
+            mock_sync.assert_not_called()
+            # La migración de 7 registros toma menos de 0.5 segundos (típicamente < 0.05s)
+            assert elapsed < 0.5

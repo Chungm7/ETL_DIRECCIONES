@@ -29,6 +29,7 @@ class DatabaseService:
         self._engine = None
         self._session_factory = None
         self._v2_verified_schemas: Set[str] = set()
+        self._tb_direccion_verified: Set[str] = set()
 
         if SQLALCHEMY_AVAILABLE:
             self._init_engine()
@@ -2263,6 +2264,9 @@ class DatabaseService:
             return False
 
         schema = target_schema or "public"
+        if schema in self._tb_direccion_verified:
+            return True
+
         is_postgres = False
         is_sqlite = False
         try:
@@ -2276,56 +2280,9 @@ class DatabaseService:
 
         try:
             with self.get_session() as session:
-                # 1. Crear tabla tb_direccion si no existe
-                if is_postgres:
-                    create_table_sql = f"""
-                    CREATE TABLE IF NOT EXISTS {target_tbl} (
-                        dire_id             BIGSERIAL NOT NULL,
-                        zona_id             BIGINT,
-                        dire_referencia     TEXT,
-                        dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT',
-                        dire_esquema        VARCHAR(500),
-                        dire_tabla          VARCHAR(500),
-                        dire_tabla_id       BIGINT,
-                        dire_valor_origen   VARCHAR(500),
-                        dire_es_procesado   BOOLEAN,
-                        usua_id             BIGINT,
-                        usua_nombre         VARCHAR(200),
-                        create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        update_at           TIMESTAMP WITHOUT TIME ZONE,
-                        audit_user_pc       VARCHAR(100),
-                        audit_nombre_pc     VARCHAR(100),
-                        audit_ip            VARCHAR(50),
-                        audit_mac_address   VARCHAR(50),
-                        CONSTRAINT pk_tb_direccion PRIMARY KEY (dire_id)
-                    );
-                    """
-                else:
-                    create_table_sql = f"""
-                    CREATE TABLE IF NOT EXISTS {target_tbl} (
-                        dire_id             INTEGER PRIMARY KEY AUTOINCREMENT,
-                        zona_id             INTEGER,
-                        dire_referencia     TEXT,
-                        dire_estado         VARCHAR(3) DEFAULT 'ACT',
-                        dire_esquema        VARCHAR(500),
-                        dire_tabla          VARCHAR(500),
-                        dire_tabla_id       INTEGER,
-                        dire_valor_origen   VARCHAR(500),
-                        dire_es_procesado   BOOLEAN,
-                        usua_id             INTEGER,
-                        usua_nombre         VARCHAR(200),
-                        create_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        update_at           TIMESTAMP,
-                        audit_user_pc       VARCHAR(100),
-                        audit_nombre_pc     VARCHAR(100),
-                        audit_ip            VARCHAR(50),
-                        audit_mac_address   VARCHAR(50)
-                    );
-                    """
-                session.execute(text(create_table_sql))
-
-                # 2. Consultar columnas que ya existen físicamente en tb_direccion para evitar fallos DDL
+                # 1. Consultar columnas que ya existen físicamente en tb_direccion para evitar DDL redundante
                 existing_cols = set()
+                table_already_exists = False
                 if is_postgres:
                     col_rows = session.execute(text("""
                         SELECT LOWER(column_name) 
@@ -2333,9 +2290,85 @@ class DatabaseService:
                         WHERE table_schema = :schema AND table_name = 'tb_direccion';
                     """), {"schema": schema}).fetchall()
                     existing_cols = {r[0] for r in col_rows}
+                    table_already_exists = bool(existing_cols)
                 elif is_sqlite:
-                    col_rows = session.execute(text(f"PRAGMA table_info({target_tbl});")).fetchall()
-                    existing_cols = {r[1].lower() for r in col_rows}
+                    try:
+                        col_rows = session.execute(text(f"PRAGMA table_info({target_tbl});")).fetchall()
+                        existing_cols = {r[1].lower() for r in col_rows}
+                        table_already_exists = bool(existing_cols)
+                    except Exception:
+                        table_already_exists = False
+
+                # FAST-PATH: Si la tabla ya existe y contiene las columnas requeridas de negocio y auditoría
+                required_cols = {
+                    "dire_id", "zona_id", "dire_referencia", "dire_estado",
+                    "dire_esquema", "dire_tabla", "dire_tabla_id", "dire_valor_origen",
+                    "dire_es_procesado", "create_at", "update_at", "audit_mac_address"
+                }
+                if table_already_exists and required_cols.issubset(existing_cols):
+                    self._tb_direccion_verified.add(schema)
+                    logger.info("Estructura de tb_direccion verificada exitosamente en '%s'.", schema)
+                    return True
+
+                # Si no existe la tabla, crearla de forma limpia
+                if not table_already_exists:
+                    if is_postgres:
+                        create_table_sql = f"""
+                        CREATE TABLE IF NOT EXISTS {target_tbl} (
+                            dire_id             BIGSERIAL NOT NULL,
+                            zona_id             BIGINT,
+                            dire_referencia     TEXT,
+                            dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT',
+                            dire_esquema        VARCHAR(500),
+                            dire_tabla          VARCHAR(500),
+                            dire_tabla_id       BIGINT,
+                            dire_valor_origen   VARCHAR(500),
+                            dire_es_procesado   BOOLEAN,
+                            usua_id             BIGINT,
+                            usua_nombre         VARCHAR(200),
+                            create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            update_at           TIMESTAMP WITHOUT TIME ZONE,
+                            audit_user_pc       VARCHAR(100),
+                            audit_nombre_pc     VARCHAR(100),
+                            audit_ip            VARCHAR(50),
+                            audit_mac_address   VARCHAR(50),
+                            CONSTRAINT pk_tb_direccion PRIMARY KEY (dire_id)
+                        );
+                        """
+                    else:
+                        create_table_sql = f"""
+                        CREATE TABLE IF NOT EXISTS {target_tbl} (
+                            dire_id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                            zona_id             INTEGER,
+                            dire_referencia     TEXT,
+                            dire_estado         VARCHAR(3) DEFAULT 'ACT',
+                            dire_esquema        VARCHAR(500),
+                            dire_tabla          VARCHAR(500),
+                            dire_tabla_id       INTEGER,
+                            dire_valor_origen   VARCHAR(500),
+                            dire_es_procesado   BOOLEAN,
+                            usua_id             INTEGER,
+                            usua_nombre         VARCHAR(200),
+                            create_at           TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            update_at           TIMESTAMP,
+                            audit_user_pc       VARCHAR(100),
+                            audit_nombre_pc     VARCHAR(100),
+                            audit_ip            VARCHAR(50),
+                            audit_mac_address   VARCHAR(50)
+                        );
+                        """
+                    session.execute(text(create_table_sql))
+                    # Recargar existing_cols
+                    if is_postgres:
+                        col_rows = session.execute(text("""
+                            SELECT LOWER(column_name) 
+                            FROM information_schema.columns 
+                            WHERE table_schema = :schema AND table_name = 'tb_direccion';
+                        """), {"schema": schema}).fetchall()
+                        existing_cols = {r[0] for r in col_rows}
+                    elif is_sqlite:
+                        col_rows = session.execute(text(f"PRAGMA table_info({target_tbl});")).fetchall()
+                        existing_cols = {r[1].lower() for r in col_rows}
 
                 # 2.1. Renombrar columnas legacy si existían (resa_created_at/created_at -> create_at, resa_updated_at/updated_at -> update_at)
                 for old_name in ("resa_created_at", "resa_create_at", "created_at"):
@@ -2450,6 +2483,7 @@ class DatabaseService:
                     except Exception as ex_fk:
                         logger.debug("Aviso al asociar FK de zona en %s: %s", target_tbl, ex_fk)
 
+            self._tb_direccion_verified.add(schema)
             logger.info("Estructura de tb_direccion verificada/creada exitosamente en '%s'.", schema)
             return True
         except Exception as e:
@@ -2493,18 +2527,15 @@ class DatabaseService:
             pass
 
         # Asegurar e integrar de forma definitiva la arquitectura relacional V2 completa en el esquema central
-        # (tb_tipo_via, tb_via, tb_tipo_zona, tb_zona, tb_direccion, tb_direccion_via, tb_componente_direccion,
-        #  tb_contenido_componente_direccion, tb_tipo_modulo, tb_direccion_tipo_modulo y catálogos)
-        try:
-            self.ensure_v2_tables_exist(target_catalog_schema)
-            from src.transformers.catalog_matcher import CatalogMatcher
-            CatalogMatcher.sync_with_db(self, target_catalog_schema)
-        except Exception as ex_v2:
-            logger.warning("Aviso al asegurar arquitectura relacional V2 en %s: %s", target_catalog_schema, ex_v2)
-            self.ensure_tb_direccion_exists(target_catalog_schema)
+        # Asegurar exclusivamente la existencia y estructura de tb_direccion en el esquema central (Fase A).
+        # La verificación de catálogos relacionales V2 (tb_via, tb_zona, etc.) y CatalogMatcher
+        # pertenece exclusivamente a la Fase B (Normalización con IA) y no debe demorar la ingesta cruda.
+        self.ensure_tb_direccion_exists(target_catalog_schema)
 
         src_table_ref = f'"{source_table}"' if is_sqlite else (f'"{source_schema}"."{source_table}"' if (source_schema and source_schema not in ("", "main")) else f'"{source_table}"')
         target_dir_ref = f'"{target_catalog_schema}"."tb_direccion"' if (not is_sqlite and target_catalog_schema and target_catalog_schema not in ("", "main")) else '"tb_direccion"'
+
+        logger.info("Iniciando migración atómica rápida (Fase A) desde %s hacia %s...", src_table_ref, target_dir_ref)
 
         try:
             with self.get_session() as session:
@@ -2614,7 +2645,7 @@ class DatabaseService:
                                       (
                                           src."{id_col}" IS NOT NULL 
                                           AND CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' 
-                                          AND d.dire_tabla_id = CAST(src."{id_col}" AS BIGINT)
+                                          AND d.dire_tabla_id = (CASE WHEN CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' THEN CAST(src."{id_col}" AS BIGINT) ELSE NULL END)
                                       )
                                       OR (
                                           (src."{id_col}" IS NULL OR NOT (CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$'))
@@ -2744,7 +2775,8 @@ class DatabaseService:
         if not self.table_exists("tb_direccion", catalog_schema):
             return []
 
-        self.ensure_tb_direccion_columns(catalog_schema)
+        if catalog_schema not in self._tb_direccion_verified:
+            self.ensure_tb_direccion_columns(catalog_schema)
 
         sql = text(f"""
             SELECT 
@@ -2795,7 +2827,8 @@ class DatabaseService:
         if not self.table_exists("tb_direccion", catalog_schema):
             return default_stats
 
-        self.ensure_tb_direccion_columns(catalog_schema)
+        if catalog_schema not in self._tb_direccion_verified:
+            self.ensure_tb_direccion_columns(catalog_schema)
 
         sql = text(f"""
             SELECT 
