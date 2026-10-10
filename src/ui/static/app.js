@@ -714,17 +714,47 @@ function showColumnConfig(tableInfo) {
     selAddr.appendChild(o2);
   });
 
-  // Sugerencias de coincidencia inteligente
-  const idHints   = ['id', 'id_', '_id', 'codigo', 'cod', 'pk', 'licencia', 'nro', 'correlativo'];
-  const addrHints = ['direccion', 'dir', 'address', 'emp_', 'domicilio', 'ubica'];
+  // Sugerencias de coincidencia inteligente (priorizando PK reales y descartando FKs como id_distrito)
+  let bestId = null;
+  if (tableInfo.recommended_id_col) {
+    bestId = tableInfo.columns.find(c => c.name.toLowerCase() === tableInfo.recommended_id_col.toLowerCase());
+  }
 
-  const bestId = tableInfo.columns.find(c =>
-    idHints.some(h => c.name.toLowerCase().includes(h))
-  ) || tableInfo.columns[0];
+  if (!bestId) {
+    const fkNames = ['id_distrito', 'id_provincia', 'id_departamento', 'id_ubigeo', 'id_zona', 'id_via', 'id_tipo_via', 'id_tipo_zona', 'id_tipo', 'id_estado', 'id_pais', 'distrito_id', 'provincia_id', 'departamento_id', 'zona_id', 'via_id'];
+    const primeCandidates = ['id_licencia', 'id_direccion', 'id', 'pk', 'codigo', 'cod', 'correlativo', `${(tableInfo.name||'').toLowerCase()}_id`, `id_${(tableInfo.name||'').toLowerCase()}`];
+    
+    // 1. Candidatos primarios directos
+    bestId = tableInfo.columns.find(c => primeCandidates.includes(c.name.toLowerCase()));
 
-  let bestAddr = tableInfo.columns.find(c =>
-    addrHints.some(h => c.name.toLowerCase().includes(h))
-  );
+    // 2. Columnas con _id o id_ que no sean llaves foráneas conocidas
+    if (!bestId) {
+      bestId = tableInfo.columns.find(c => {
+        const lower = c.name.toLowerCase();
+        return (lower.endsWith('_id') || lower.startsWith('id_') || lower.includes('id') || lower.includes('cod'))
+               && !fkNames.includes(lower);
+      });
+    }
+
+    if (!bestId) {
+      bestId = tableInfo.columns[0];
+    }
+  }
+
+  let bestAddr = null;
+  if (tableInfo.recommended_addr_col) {
+    bestAddr = tableInfo.columns.find(c => c.name.toLowerCase() === tableInfo.recommended_addr_col.toLowerCase());
+  }
+
+  if (!bestAddr) {
+    const addrExact = ['emp_direccion', 'direccion', 'dir_direccion', 'address', 'domicilio', 'ubicacion'];
+    bestAddr = tableInfo.columns.find(c => addrExact.includes(c.name.toLowerCase()));
+  }
+
+  if (!bestAddr) {
+    const addrHints = ['direccion', 'dir', 'address', 'emp_', 'domicilio', 'ubica'];
+    bestAddr = tableInfo.columns.find(c => addrHints.some(h => c.name.toLowerCase().includes(h)));
+  }
 
   // Si la columna de dirección original ya fue eliminada tras migración exitosa:
   if (!bestAddr) {
@@ -923,17 +953,21 @@ async function executeConfirmedMigration() {
   if (!pendingMigrationConfig) return;
 
   const progressOverlay = document.getElementById('modalMigrationProgressOverlay');
-  progressOverlay.classList.remove('hidden');
+  if (progressOverlay) progressOverlay.classList.remove('hidden');
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minutos de timeout de seguridad
 
   try {
     const res = await fetch('/api/migrate-source-table', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(pendingMigrationConfig),
+      signal: controller.signal,
     });
-    const data = await res.json();
+    clearTimeout(timeoutId);
 
-    progressOverlay.classList.add('hidden');
+    const data = await res.json();
 
     if (!res.ok) {
       showModalAlert('Error en la Migración', data.detail || data.error || 'Error desconocido', 'error');
@@ -960,8 +994,13 @@ async function executeConfirmedMigration() {
     loadIngestedSources().catch(err => console.debug("loadIngestedSources bg err:", err));
 
   } catch (e) {
-    progressOverlay.classList.add('hidden');
-    showModalAlert('Error de Red', 'Error al ejecutar migración: ' + e.message, 'error');
+    clearTimeout(timeoutId);
+    const msg = (e.name === 'AbortError') 
+      ? 'La migración tomó más tiempo del esperado en responder. Verifique la base de datos o reintente.'
+      : 'Error al ejecutar migración: ' + e.message;
+    showModalAlert('Aviso de Migración', msg, 'error');
+  } finally {
+    if (progressOverlay) progressOverlay.classList.add('hidden');
   }
 }
 

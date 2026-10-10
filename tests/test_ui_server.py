@@ -655,7 +655,9 @@ def test_status_endpoint_concurrency_and_session_state(client):
 
 def test_api_start_with_custom_workers_and_conflict(client):
     """Verifica que /api/start configure num_workers y rechace ejecuciones concurrentes simultáneas."""
+    from src.ui.server import scheduler_service
     state.is_running = False
+    scheduler_service.config.enabled = False
     with patch("src.ui.server.threading.Thread") as mock_th:
         payload = {
             "schema_name": "public",

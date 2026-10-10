@@ -2527,96 +2527,166 @@ class DatabaseService:
                     pass
 
                 migrated_count = 0
-                effective_batch = max(1000, batch_size)
 
+                # Si no hay registros en la fuente, retornar de inmediato
+                if total_source == 0:
+                    return {
+                        "success": True,
+                        "source_schema": source_schema,
+                        "source_table": source_table,
+                        "total_source": 0,
+                        "already_linked": already_in_dir,
+                        "already_migrated": already_in_dir,
+                        "migrated": 0,
+                        "total_in_tb_direccion": already_in_dir,
+                        "remaining_unlinked": 0,
+                        "column_dropped": False,
+                    }
+
+                # Si ya todos los registros están migrados, retornar de inmediato
+                if already_in_dir >= total_source:
+                    return {
+                        "success": True,
+                        "source_schema": source_schema,
+                        "source_table": source_table,
+                        "total_source": total_source,
+                        "already_linked": already_in_dir,
+                        "already_migrated": already_in_dir,
+                        "migrated": 0,
+                        "total_in_tb_direccion": already_in_dir,
+                        "remaining_unlinked": 0,
+                        "column_dropped": False,
+                    }
+
+                # 3. Migración atómica, fluida y resiliente
                 if is_postgres:
-                    # En PostgreSQL: Inserción por lotes usando subconsulta NOT EXISTS sin tocar la tabla fuente.
-                    # Las direcciones vacías/NULL se registran con dire_es_procesado = FALSE y fecha_proceso = CURRENT_TIMESTAMP
-                    # Las direcciones con texto se registran con dire_es_procesado = NULL (pendientes para IA)
-                    insert_batch_sql = text(f"""
-                        WITH batch AS (
-                            SELECT src."{id_col}" AS b_id, src."{addr_col}" AS b_addr
-                            FROM {src_table_ref} src
-                            WHERE NOT EXISTS (
-                                SELECT 1 FROM {target_dir_ref} d
-                                WHERE d.dire_esquema = :esq
-                                  AND d.dire_tabla = :tab
-                                  AND d.dire_tabla_id = src."{id_col}"
+                    if already_in_dir == 0:
+                        # Vía directa en una sola operación atómica (sin bucles)
+                        insert_sql = text(f"""
+                            INSERT INTO {target_dir_ref} (
+                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_valor_origen, dire_es_procesado, dire_estado, update_at
                             )
-                            LIMIT :batch_size
-                        )
-                        INSERT INTO {target_dir_ref} (
-                            dire_esquema, dire_tabla, dire_tabla_id,
-                            dire_valor_origen, dire_es_procesado, dire_estado, update_at
-                        )
-                        SELECT
-                            :esq,
-                            :tab,
-                            b.b_id,
-                            CASE WHEN TRIM(COALESCE(b.b_addr, '')) = '' THEN NULL ELSE b.b_addr END,
-                            CASE WHEN TRIM(COALESCE(b.b_addr, '')) = '' THEN FALSE ELSE NULL END,
-                            'ACT',
-                            CASE WHEN TRIM(COALESCE(b.b_addr, '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
-                        FROM batch b;
-                    """)
-
-                    while True:
-                        res = session.execute(insert_batch_sql, {
-                            "batch_size": effective_batch,
+                            SELECT
+                                :esq,
+                                :tab,
+                                CASE 
+                                    WHEN src."{id_col}" IS NULL THEN NULL
+                                    WHEN CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' THEN CAST(src."{id_col}" AS BIGINT)
+                                    ELSE NULL
+                                END,
+                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN NULL ELSE CAST(src."{addr_col}" AS TEXT) END,
+                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN FALSE ELSE NULL END,
+                                'ACT',
+                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                            FROM {src_table_ref} src;
+                        """)
+                        res = session.execute(insert_sql, {
                             "esq": source_schema or "public",
                             "tab": source_table,
                         })
-                        affected = res.rowcount or 0
-                        if affected == 0:
-                            break
-                        migrated_count += affected
-                        logger.info("Migrados %d registros de %s.%s a %s.tb_direccion (total acumulado: %d)", affected, source_schema, source_table, target_catalog_schema, migrated_count)
-
-                else:
-                    # Modo estándar / SQLite (compatible con tests y otras BDs)
-                    while True:
-                        rows = session.execute(text(f"""
-                            SELECT src."{id_col}" AS id_val, src."{addr_col}" AS addr_val
+                        migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else total_source
+                    else:
+                        # Vía incremental: insertar únicamente registros faltantes sin bucles infinitos
+                        insert_sql = text(f"""
+                            INSERT INTO {target_dir_ref} (
+                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_valor_origen, dire_es_procesado, dire_estado, update_at
+                            )
+                            SELECT
+                                :esq,
+                                :tab,
+                                CASE 
+                                    WHEN src."{id_col}" IS NULL THEN NULL
+                                    WHEN CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' THEN CAST(src."{id_col}" AS BIGINT)
+                                    ELSE NULL
+                                END,
+                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN NULL ELSE CAST(src."{addr_col}" AS TEXT) END,
+                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN FALSE ELSE NULL END,
+                                'ACT',
+                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
                             FROM {src_table_ref} src
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM {target_dir_ref} d
                                 WHERE d.dire_esquema = :esq
                                   AND d.dire_tabla = :tab
-                                  AND d.dire_tabla_id = src."{id_col}"
-                            )
-                            ORDER BY src."{id_col}" ASC
-                            LIMIT :batch_size;
-                        """), {
-                            "batch_size": effective_batch,
+                                  AND (
+                                      (
+                                          src."{id_col}" IS NOT NULL 
+                                          AND CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' 
+                                          AND d.dire_tabla_id = CAST(src."{id_col}" AS BIGINT)
+                                      )
+                                      OR (
+                                          (src."{id_col}" IS NULL OR NOT (CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$'))
+                                          AND d.dire_tabla_id IS NULL 
+                                          AND d.dire_valor_origen IS NOT DISTINCT FROM CAST(src."{addr_col}" AS TEXT)
+                                      )
+                                  )
+                            );
+                        """)
+                        res = session.execute(insert_sql, {
                             "esq": source_schema or "public",
                             "tab": source_table,
-                        }).fetchall()
+                        })
+                        migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else max(0, total_source - already_in_dir)
 
-                        if not rows:
-                            break
+                    logger.info("Migración PostgreSQL fluida: %d registros de %s.%s ingresados a %s.tb_direccion", migrated_count, source_schema, source_table, target_catalog_schema)
 
-                        for r in rows:
-                            id_val = r[0]
-                            raw_addr = r[1]
-                            addr_val = str(raw_addr or "").strip()
-                            is_empty = (not addr_val)
+                else:
+                    # Modo estándar / SQLite (compatible con tests unitarios y entornos de prueba)
+                    if already_in_dir == 0:
+                        insert_sql = text(f"""
+                            INSERT INTO {target_dir_ref} (
+                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_valor_origen, dire_es_procesado, dire_estado, update_at
+                            )
+                            SELECT
+                                :esq,
+                                :tab,
+                                src."{id_col}",
+                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN NULL ELSE src."{addr_col}" END,
+                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN 0 ELSE NULL END,
+                                'ACT',
+                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                            FROM {src_table_ref} src;
+                        """)
+                        res = session.execute(insert_sql, {
+                            "esq": source_schema or "public",
+                            "tab": source_table,
+                        })
+                        migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else total_source
+                    else:
+                        insert_sql = text(f"""
+                            INSERT INTO {target_dir_ref} (
+                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_valor_origen, dire_es_procesado, dire_estado, update_at
+                            )
+                            SELECT
+                                :esq,
+                                :tab,
+                                src."{id_col}",
+                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN NULL ELSE src."{addr_col}" END,
+                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN 0 ELSE NULL END,
+                                'ACT',
+                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                            FROM {src_table_ref} src
+                            WHERE NOT EXISTS (
+                                SELECT 1 FROM {target_dir_ref} d
+                                WHERE d.dire_esquema = :esq
+                                  AND d.dire_tabla = :tab
+                                  AND (
+                                      (src."{id_col}" IS NOT NULL AND d.dire_tabla_id = src."{id_col}")
+                                      OR (src."{id_col}" IS NULL AND d.dire_tabla_id IS NULL AND (d.dire_valor_origen IS src."{addr_col}" OR (d.dire_valor_origen IS NULL AND src."{addr_col}" IS NULL)))
+                                  )
+                            );
+                        """)
+                        res = session.execute(insert_sql, {
+                            "esq": source_schema or "public",
+                            "tab": source_table,
+                        })
+                        migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else max(0, total_source - already_in_dir)
 
-                            session.execute(text(f"""
-                                INSERT INTO {target_dir_ref} (
-                                    dire_esquema, dire_tabla, dire_tabla_id,
-                                    dire_valor_origen, dire_es_procesado, dire_estado, update_at
-                                ) VALUES (
-                                    :esq, :tab, :tab_id, :val_orig, :es_proc, 'ACT', :up_at
-                                );
-                            """), {
-                                "esq": source_schema or "public",
-                                "tab": source_table,
-                                "tab_id": id_val,
-                                "val_orig": None if is_empty else addr_val[:500],
-                                "es_proc": False if is_empty else None,
-                                "up_at": datetime.now() if is_empty else None,
-                            })
-                            migrated_count += 1
+                    logger.info("Migración SQLite/estándar fluida: %d registros ingresados a %s", migrated_count, target_dir_ref)
 
                 # 3. Conteo final en tb_direccion para esta fuente
                 total_in_dir_after = session.execute(text(f"""

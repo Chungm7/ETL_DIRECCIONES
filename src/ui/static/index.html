@@ -2261,7 +2261,8 @@
 
 <!-- MODAL 2: CARGA EN VIVO / PROGRESO DE PRE-MIGRACIÓN (FASE A) -->
 <div id="modalMigrationProgressOverlay" class="modal-overlay hidden" role="dialog" aria-modal="true">
-  <div class="modal-dialog" style="max-width:440px; text-align:center;">
+  <div class="modal-dialog" style="max-width:440px; text-align:center; position:relative;">
+    <button type="button" onclick="document.getElementById('modalMigrationProgressOverlay').classList.add('hidden')" style="position:absolute; top:12px; right:12px; border:none; background:transparent; font-size:18px; line-height:1; cursor:pointer; color:var(--slate-400); padding:4px 8px; border-radius:4px;" title="Cerrar overlay">✕</button>
     <div style="padding:28px 20px;">
       <div style="display:inline-flex; align-items:center; justify-content:center; width:64px; height:64px; border-radius:50%; background:#eff6ff; margin-bottom:16px;">
         <div class="spinner" style="width:36px; height:36px; border-width:3.5px; border-top-color:#2563eb;"></div>

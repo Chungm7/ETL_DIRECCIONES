@@ -828,6 +828,25 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
                 "tb_direccion_tipo_modulo",
             }
 
+            # Consultar llaves primarias declaradas en el esquema (en PostgreSQL)
+            pk_by_table: Dict[str, str] = {}
+            if is_postgres:
+                try:
+                    pk_rows = session.execute(sa_text("""
+                        SELECT tc.table_name, ccu.column_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.constraint_column_usage AS ccu USING (constraint_schema, constraint_name)
+                        WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = :schema;
+                    """), {"schema": req.schema_name}).fetchall()
+                    for pt, pc in pk_rows:
+                        pk_by_table[str(pt)] = str(pc)
+                except Exception as ex_pk:
+                    logger.debug("Aviso al consultar PKs en %s: %s", req.schema_name, ex_pk)
+                    session.rollback()
+
+            settings = get_settings()
+            fk_names = {'id_distrito', 'id_provincia', 'id_departamento', 'id_ubigeo', 'id_zona', 'id_via', 'id_tipo_via', 'id_tipo_zona', 'id_tipo', 'id_estado', 'id_pais', 'distrito_id', 'provincia_id', 'departamento_id', 'zona_id', 'via_id'}
+
             for (tname,) in rows:
                 if str(tname).lower() in system_excluded_tables:
                     continue
@@ -844,10 +863,49 @@ async def wizard_inspect_schema(req: InspectSchemaRequest):
                     except Exception:
                         count_val = -1
 
+                col_names_lower = {c["name"].lower(): c["name"] for c in columns}
+
+                # Resolver recommended_id_col priorizando PK declarada y candidatos fuertes (evitando FKs como id_distrito)
+                rec_id = pk_by_table.get(tname)
+                if not rec_id:
+                    id_cands = [settings.db.id_col, "id_licencia", "xxxx_id", "id", "id_direccion", f"{tname}_id", f"id_{tname}", "codigo", "cod", "nro", "pk"]
+                    for cand in id_cands:
+                        if cand and cand.lower() in col_names_lower:
+                            rec_id = col_names_lower[cand.lower()]
+                            break
+                if not rec_id:
+                    for c in columns:
+                        cl = c["name"].lower()
+                        if (cl.endswith("_id") or cl.startswith("id_") or "id" in cl or "cod" in cl) and cl not in fk_names:
+                            rec_id = c["name"]
+                            break
+                if not rec_id and columns:
+                    rec_id = columns[0]["name"]
+
+                # Resolver recommended_addr_col
+                rec_addr = None
+                addr_cands = [settings.db.dir_col, "emp_direccion", "direccion", "dir_direccion", "address", "domicilio", "ubicacion"]
+                for cand in addr_cands:
+                    if cand and cand.lower() in col_names_lower:
+                        rec_addr = col_names_lower[cand.lower()]
+                        break
+                if not rec_addr:
+                    for c in columns:
+                        cl = c["name"].lower()
+                        if any(term in cl for term in ("dir", "direc", "address", "domicilio", "ubica", "emp_")):
+                            rec_addr = c["name"]
+                            break
+                if not rec_addr and len(columns) > 1:
+                    rec_addr = columns[1]["name"]
+                elif not rec_addr and columns:
+                    rec_addr = columns[0]["name"]
+
                 tables_info.append({
                     "name": tname,
                     "columns": columns,
                     "row_count": count_val,
+                    "recommended_id_col": rec_id,
+                    "recommended_addr_col": rec_addr,
                 })
 
         return {
@@ -1052,7 +1110,9 @@ async def wizard_migrate_source_table(req: MigrateSourceTableRequest):
     """
     db_svc = state.dynamic_db_service or DatabaseService()
     try:
-        res = db_svc.migrate_source_table_to_tb_direccion(
+        from starlette.concurrency import run_in_threadpool
+        res = await run_in_threadpool(
+            db_svc.migrate_source_table_to_tb_direccion,
             source_schema=req.schema_name,
             source_table=req.table_name,
             id_col=req.id_col,

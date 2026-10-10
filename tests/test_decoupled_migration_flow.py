@@ -812,3 +812,131 @@ class TestEnsureCatalogsAuditColumns:
             assert "create_at" in [
                 r[1] for r in session.execute(text("PRAGMA table_info(tb_tipo_modulo);")).fetchall()
             ]
+
+    def test_migration_handles_null_ids_fluidly(self):
+        """Verifica que la migración maneje identificadores nulos sin colgarse ni entrar en bucle infinito."""
+        from unittest.mock import patch
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_v2_tables_exist()
+
+        with db_svc.get_session() as session:
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS test_null_ids (
+                    id_distrito INTEGER,
+                    emp_direccion TEXT
+                );
+            """))
+            session.execute(text("DELETE FROM test_null_ids;"))
+            session.execute(text("""
+                INSERT INTO test_null_ids (id_distrito, emp_direccion) VALUES
+                (NULL, 'CALLE SAN JOSE 100 - CHICLAYO'),
+                (NULL, 'AV. BALTA 200 - CHICLAYO'),
+                (140101, 'JR. COLON 300 - CHICLAYO');
+            """))
+
+        with patch.object(db_svc, "ensure_v2_tables_exist"), patch.object(db_svc, "ensure_tb_direccion_columns"):
+            res = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="",
+                source_table="test_null_ids",
+                id_col="id_distrito",
+                addr_col="emp_direccion",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+
+            assert res["success"] is True
+            assert res["migrated"] == 3
+            assert res["total_source"] == 3
+            assert res["remaining_unlinked"] == 0
+
+        # Verificar que se insertaron las 3 filas en tb_direccion
+        with db_svc.get_session() as session:
+            rows = session.execute(text("""
+                SELECT dire_id, dire_tabla_id, dire_valor_origen 
+                FROM tb_direccion 
+                WHERE dire_tabla = 'test_null_ids';
+            """)).fetchall()
+            assert len(rows) == 3
+
+    def test_migration_handles_duplicate_ids_fluidly(self):
+        """Verifica que la migración maneje columnas con IDs duplicados sin perder filas."""
+        from unittest.mock import patch
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_v2_tables_exist()
+
+        with db_svc.get_session() as session:
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS test_dup_ids (
+                    id_distrito INTEGER,
+                    emp_direccion TEXT
+                );
+            """))
+            session.execute(text("DELETE FROM test_dup_ids;"))
+            session.execute(text("""
+                INSERT INTO test_dup_ids (id_distrito, emp_direccion) VALUES
+                (1, 'DIR A'),
+                (1, 'DIR B'),
+                (1, 'DIR C');
+            """))
+
+        with patch.object(db_svc, "ensure_v2_tables_exist"), patch.object(db_svc, "ensure_tb_direccion_columns"):
+            res = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="",
+                source_table="test_dup_ids",
+                id_col="id_distrito",
+                addr_col="emp_direccion",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+
+            assert res["success"] is True
+            assert res["migrated"] == 3
+            assert res["total_source"] == 3
+
+    def test_migration_idempotent_when_already_migrated(self):
+        """Verifica que al re-ejecutar la migración cuando ya todos los datos existen, retorne de inmediato con 0 nuevos."""
+        from unittest.mock import patch
+        from sqlalchemy import text
+        db_svc = self._get_db_svc()
+        db_svc.ensure_v2_tables_exist()
+
+        with db_svc.get_session() as session:
+            session.execute(text("""
+                CREATE TABLE IF NOT EXISTS test_idem (
+                    id_licencia INTEGER,
+                    emp_direccion TEXT
+                );
+            """))
+            session.execute(text("DELETE FROM test_idem;"))
+            session.execute(text("""
+                INSERT INTO test_idem (id_licencia, emp_direccion) VALUES
+                (10, 'AV. SALAVERRY 100'),
+                (20, 'CA. TACNA 200');
+            """))
+
+        with patch.object(db_svc, "ensure_v2_tables_exist"), patch.object(db_svc, "ensure_tb_direccion_columns"):
+            res1 = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="",
+                source_table="test_idem",
+                id_col="id_licencia",
+                addr_col="emp_direccion",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+            assert res1["success"] is True
+            assert res1["migrated"] == 2
+
+            # Segunda ejecución — idempotente
+            res2 = db_svc.migrate_source_table_to_tb_direccion(
+                source_schema="",
+                source_table="test_idem",
+                id_col="id_licencia",
+                addr_col="emp_direccion",
+                drop_source_col=False,
+                target_catalog_schema="main",
+            )
+            assert res2["success"] is True
+            assert res2["migrated"] == 0
+            assert res2["already_migrated"] == 2
