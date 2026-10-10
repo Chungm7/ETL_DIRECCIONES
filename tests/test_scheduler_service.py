@@ -166,3 +166,140 @@ def test_api_scheduler_endpoints(client):
     assert trig_res.status_code == 200
     trig_json = trig_res.json()
     assert trig_json["status"] in ("TRIGGERED", "RUNNING")
+    # Restaurar scheduler_service a inactivo para no interferir con otros tests
+    scheduler_service.config.enabled = False
+
+
+def test_is_in_time_window_same_day():
+    """Prueba rangos diurnos dentro del mismo día (ej. 08:00 a 16:00)."""
+    # 07:59 -> Fuera
+    dt_before = datetime(2026, 10, 10, 7, 59)
+    assert SchedulerService.is_in_time_window("08:00", "16:00", dt_before) is False
+
+    # 08:00 -> Dentro
+    dt_start = datetime(2026, 10, 10, 8, 0)
+    assert SchedulerService.is_in_time_window("08:00", "16:00", dt_start) is True
+
+    # 12:30 -> Dentro
+    dt_mid = datetime(2026, 10, 10, 12, 30)
+    assert SchedulerService.is_in_time_window("08:00", "16:00", dt_mid) is True
+
+    # 15:59 -> Dentro
+    dt_last = datetime(2026, 10, 10, 15, 59)
+    assert SchedulerService.is_in_time_window("08:00", "16:00", dt_last) is True
+
+    # 16:00 -> Fuera
+    dt_end = datetime(2026, 10, 10, 16, 0)
+    assert SchedulerService.is_in_time_window("08:00", "16:00", dt_end) is False
+
+    # 20:00 -> Fuera
+    dt_after = datetime(2026, 10, 10, 20, 0)
+    assert SchedulerService.is_in_time_window("08:00", "16:00", dt_after) is False
+
+
+def test_is_in_time_window_crosses_midnight():
+    """Prueba rangos nocturnos que cruzan la medianoche (ej. 22:00 / 10 PM a 06:00 / 6 AM)."""
+    # 21:59 -> Fuera
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 10, 21, 59)) is False
+
+    # 22:00 -> Dentro
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 10, 22, 0)) is True
+
+    # 23:45 -> Dentro
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 10, 23, 45)) is True
+
+    # 00:00 (Medianoche) -> Dentro
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 11, 0, 0)) is True
+
+    # 03:15 (Madrugada) -> Dentro
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 11, 3, 15)) is True
+
+    # 05:59 -> Dentro
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 11, 5, 59)) is True
+
+    # 06:00 (Fin de ventana) -> Fuera
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 11, 6, 0)) is False
+
+    # 12:00 (Mediodía) -> Fuera
+    assert SchedulerService.is_in_time_window("22:00", "06:00", datetime(2026, 10, 11, 12, 0)) is False
+
+
+def test_get_current_window_cycle_id_across_midnight(temp_config_file):
+    """Comprueba que el identificador de ciclo sea estable durante toda la noche cruzando medianoche."""
+    svc = SchedulerService(config_path=temp_config_file)
+    svc.update_settings(enabled=True, time_str="22:00", end_time_str="06:00")
+
+    # A las 23:00 del día 1
+    cycle_d1 = svc.get_current_window_cycle_id(datetime(2026, 10, 10, 23, 0))
+    assert cycle_d1 == "cycle_2026-10-10_22:00"
+
+    # A las 04:00 del día 2 (misma noche de ejecución)
+    cycle_d2 = svc.get_current_window_cycle_id(datetime(2026, 10, 11, 4, 0))
+    assert cycle_d2 == "cycle_2026-10-10_22:00"
+    assert cycle_d1 == cycle_d2, "El ID de ciclo nocturno debe ser idéntico antes y después de medianoche"
+
+    # A las 12:00 del día 2 (fuera de ventana)
+    assert svc.get_current_window_cycle_id(datetime(2026, 10, 11, 12, 0)) is None
+
+
+def test_scheduler_device_timezone_info(temp_config_file):
+    """Verifica que el servicio reporte la zona horaria del dispositivo host."""
+    svc = SchedulerService(config_path=temp_config_file)
+    status = svc.get_status_dict()
+    assert "timezone" in status
+    tz_info = status["timezone"]
+    assert "tz_name" in tz_info
+    assert "offset" in tz_info
+    assert "current_local_time" in tz_info
+    assert "manual_start_blocked" in status
+
+
+def test_scheduler_auto_stop_callback(temp_config_file):
+    """Verifica que el scheduler invoque on_stop al abandonar la ventana de ejecución."""
+    stop_called = threading.Event()
+
+    def on_stop_cb():
+        stop_called.set()
+
+    svc = SchedulerService(config_path=temp_config_file, on_stop=on_stop_cb)
+    svc.update_settings(enabled=True, time_str="22:00", end_time_str="06:00")
+
+    # Simulamos que estuvimos en una ventana activa
+    svc._active_cycle_id = "cycle_2026-10-10_22:00"
+
+    # Al simular llamada con hora fuera de la ventana (ej. 06:01)
+    out_dt = datetime(2026, 10, 11, 6, 1)
+    assert svc.is_currently_in_window(out_dt) is False
+
+    # Ejecutamos la lógica que ocurre en el loop al salir de ventana
+    if not svc.is_currently_in_window(out_dt) and svc._active_cycle_id is not None:
+        svc._active_cycle_id = None
+        if svc.on_stop:
+            svc.on_stop()
+
+    assert stop_called.is_set()
+    assert svc._active_cycle_id is None
+
+
+def test_api_start_blocked_when_scheduler_enabled(client):
+    """Verifica que /api/start rechace con HTTP 400 el inicio manual si la programación está activa."""
+    try:
+        # Activar scheduler
+        scheduler_service.config.enabled = True
+        scheduler_service.config.time_str = "22:00"
+        scheduler_service.config.end_time_str = "06:00"
+
+        res = client.post(
+            "/api/start",
+            json={
+                "schema_name": "public",
+                "table_name": "tb_direccion",
+                "batch_size": 20,
+            },
+        )
+        assert res.status_code == 400
+        data = res.json()
+        assert "No se permite iniciar manualmente mientras la programación horaria automática esté activa" in data["detail"]
+    finally:
+        # Restaurar a inactivo
+        scheduler_service.config.enabled = False

@@ -23,6 +23,7 @@ class SchedulerConfig(BaseModel):
     """Modelo de configuración persistente para la programación diaria desatendida."""
     enabled: bool = Field(default=False, description="Indica si la ejecución diaria automática está activa")
     time_str: str = Field(default="23:00", description="Hora de disparo diario en formato HH:MM (24h)")
+    end_time_str: Optional[str] = Field(default=None, description="Hora de fin del rango horario en formato HH:MM (24h).")
     max_records: Optional[int] = Field(default=None, description="Límite de registros a procesar (None = todos los pendientes)")
     num_workers: int = Field(default=2, ge=1, le=16, description="Cantidad de hilos concurrentes para la ejecución programada")
     batch_size: int = Field(default=50, ge=1, le=200, description="Tamaño del lote de base de datos")
@@ -32,10 +33,27 @@ class SchedulerConfig(BaseModel):
     filter_mode: str = Field(default="pending", description="Filtro de registros ('pending', 'all', 'observed')")
     require_ai: bool = Field(default=True, description="Requiere normalización con modelo de Inteligencia Artificial")
     last_run_at: Optional[str] = Field(default=None, description="Fecha y hora ISO del último disparo")
-    last_run_status: Optional[str] = Field(default=None, description="Estado del último disparo (SUCCESS, RUNNING, ERROR, STOPPED)")
+    last_run_status: Optional[str] = Field(default=None, description="Estado del último disparo (SUCCESS, RUNNING, ERROR, STOPPED, STOPPED_BY_SCHEDULE)")
     last_run_message: Optional[str] = Field(default=None, description="Detalle del último resultado")
     next_run_at: Optional[str] = Field(default=None, description="Próxima fecha y hora ISO programada para el disparo")
-    end_time_str: Optional[str] = Field(default=None, description="Hora de fin del rango horario en formato HH:MM (24h). Si se define, el proceso no iniciará fuera de este rango y será detenido automáticamente al superarla.")
+
+
+def get_device_timezone_info() -> Dict[str, str]:
+    """Obtiene la información de zona horaria y hora local del dispositivo host."""
+    now_local = datetime.now()
+    tz_name = now_local.astimezone().tzname() or "Local"
+    offset_str = now_local.astimezone().strftime("%z")
+    if len(offset_str) == 5:
+        offset_fmt = f"UTC{offset_str[:3]}:{offset_str[3:]}"
+    else:
+        offset_fmt = "UTC"
+    return {
+        "tz_name": tz_name,
+        "offset": offset_fmt,
+        "description": f"{tz_name} ({offset_fmt})",
+        "current_local_time": now_local.strftime("%Y-%m-%d %H:%M:%S"),
+        "current_time_hm": now_local.strftime("%H:%M"),
+    }
 
 
 class SchedulerService:
@@ -45,13 +63,15 @@ class SchedulerService:
         self,
         config_path: Optional[str] = None,
         on_trigger: Optional[Callable[[SchedulerConfig], Any]] = None,
+        on_stop: Optional[Callable[[], Any]] = None,
     ):
         self.config_path = config_path or DEFAULT_CONFIG_PATH
         self.on_trigger = on_trigger
+        self.on_stop = on_stop
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
-        self._last_triggered_date: Optional[str] = None
+        self._active_cycle_id: Optional[str] = None
         self.config: SchedulerConfig = self.load_config()
 
         # Asegurar cálculo inicial del próximo disparo si está habilitado
@@ -71,7 +91,6 @@ class SchedulerService:
             except Exception as e:
                 logger.warning("Aviso al leer configuración de scheduler desde %s: %s. Creando configuración por defecto.", self.config_path, e)
 
-        # Configuración por defecto segura
         default_cfg = SchedulerConfig()
         self.save_config(default_cfg)
         return default_cfg
@@ -91,12 +110,14 @@ class SchedulerService:
 
     @staticmethod
     def compute_next_run(time_str: str) -> datetime:
-        """Calcula el próximo datetime exacto en que debe ejecutarse el disparo diario."""
+        """Calcula el próximo datetime exacto en que debe ejecutarse el disparo diario en la hora local del dispositivo."""
         now = datetime.now()
         try:
             parts = str(time_str).strip().split(":")
             hh = int(parts[0])
             mm = int(parts[1]) if len(parts) > 1 else 0
+            if not (0 <= hh <= 23 and 0 <= mm <= 59):
+                raise ValueError()
         except Exception:
             hh, mm = 23, 0
 
@@ -105,6 +126,71 @@ class SchedulerService:
             return target_today
         else:
             return target_today + timedelta(days=1)
+
+    @staticmethod
+    def is_in_time_window(
+        start_hm: str,
+        end_hm: Optional[str] = None,
+        current_dt: Optional[datetime] = None,
+    ) -> bool:
+        """Evalúa si un momento dado se encuentra dentro del rango de horario configurado.
+        
+        Soporta:
+        - Rango nocturno con cruce de medianoche: start='22:00', end='06:00'
+          (Activo si current >= 22:00 o current < 06:00)
+        - Rango diurno en el mismo día: start='08:00', end='16:00'
+          (Activo si 08:00 <= current < 16:00)
+        - Disparo puntual (sin hora fin): coincide exactamente el minuto HH:MM
+        """
+        now = current_dt or datetime.now()
+        cur_hm = now.strftime("%H:%M")
+
+        try:
+            sp = start_hm.strip().split(":")
+            s_val = f"{int(sp[0]):02d}:{int(sp[1]):02d}"
+        except Exception:
+            s_val = "23:00"
+
+        if not end_hm or not str(end_hm).strip():
+            return cur_hm == s_val
+
+        try:
+            ep = str(end_hm).strip().split(":")
+            e_val = f"{int(ep[0]):02d}:{int(ep[1]):02d}"
+        except Exception:
+            return cur_hm == s_val
+
+        if s_val < e_val:
+            return s_val <= cur_hm < e_val
+        elif s_val > e_val:
+            return cur_hm >= s_val or cur_hm < e_val
+        else:
+            return True
+
+    def is_currently_in_window(self, current_dt: Optional[datetime] = None) -> bool:
+        """Indica si el momento actual se encuentra dentro de la ventana de ejecución configurada."""
+        return self.is_in_time_window(
+            start_hm=self.config.time_str,
+            end_hm=self.config.end_time_str,
+            current_dt=current_dt,
+        )
+
+    def get_current_window_cycle_id(self, current_dt: Optional[datetime] = None) -> Optional[str]:
+        """Genera un identificador único para el ciclo actual de la ventana horaria (estable a través de la medianoche)."""
+        now = current_dt or datetime.now()
+        if not self.is_currently_in_window(now):
+            return None
+        s_val = self.config.time_str
+        e_val = self.config.end_time_str
+        if e_val and s_val > e_val:
+            cur_hm = now.strftime("%H:%M")
+            if cur_hm < e_val:
+                cycle_date = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+            else:
+                cycle_date = now.strftime("%Y-%m-%d")
+        else:
+            cycle_date = now.strftime("%Y-%m-%d")
+        return f"cycle_{cycle_date}_{s_val}"
 
     def update_settings(
         self,
@@ -119,7 +205,6 @@ class SchedulerService:
     ) -> SchedulerConfig:
         """Actualiza la configuración programada y recalcula la próxima ejecución."""
         with self._lock:
-            # Validar formato de hora HH:MM
             clean_time = str(time_str).strip()
             try:
                 p = clean_time.split(":")
@@ -144,7 +229,8 @@ class SchedulerService:
                 self.config.target_schema = target_schema
             if target_table is not None:
                 self.config.target_table = target_table
-            if end_time_str is not None:
+
+            if end_time_str is not None and str(end_time_str).strip():
                 clean_end = str(end_time_str).strip()
                 try:
                     ep = clean_end.split(':')
@@ -163,8 +249,8 @@ class SchedulerService:
                 self.config.next_run_at = next_dt.isoformat()
             else:
                 self.config.next_run_at = None
+                self._active_cycle_id = None
 
-            # Persistir
             try:
                 os.makedirs(os.path.dirname(self.config_path), exist_ok=True)
                 with open(self.config_path, "w", encoding="utf-8") as f:
@@ -175,30 +261,39 @@ class SchedulerService:
             return self.config
 
     def get_status_dict(self) -> Dict[str, Any]:
-        """Retorna el estado completo del scheduler para consumo de la UI."""
+        """Retorna el estado completo del scheduler para consumo de la UI y validación de inicio manual."""
         data = self.config.model_dump()
         next_dt_str = self.config.next_run_at
         countdown_human = "Programación inactiva"
         seconds_remaining = None
+        in_window = self.is_currently_in_window()
 
-        if self.config.enabled and next_dt_str:
-            try:
-                next_dt = datetime.fromisoformat(next_dt_str)
-                now = datetime.now()
-                delta = next_dt - now
-                total_secs = int(delta.total_seconds())
-                if total_secs > 0:
-                    seconds_remaining = total_secs
-                    hours = total_secs // 3600
-                    minutes = (total_secs % 3600) // 60
-                    if hours > 0:
-                        countdown_human = f"en ~{hours}h {minutes:02d}m"
+        if self.config.enabled:
+            if in_window:
+                countdown_human = "En ventana activa de ejecución"
+                seconds_remaining = 0
+            elif next_dt_str:
+                try:
+                    next_dt = datetime.fromisoformat(next_dt_str)
+                    now = datetime.now()
+                    delta = next_dt - now
+                    total_secs = int(delta.total_seconds())
+                    if total_secs > 0:
+                        seconds_remaining = total_secs
+                        hours = total_secs // 3600
+                        minutes = (total_secs % 3600) // 60
+                        if hours > 0:
+                            countdown_human = f"en ~{hours}h {minutes:02d}m"
+                        else:
+                            countdown_human = f"en ~{minutes} min"
                     else:
-                        countdown_human = f"en ~{minutes} min"
-                else:
-                    countdown_human = "Por ejecutarse en breve"
-            except Exception:
-                pass
+                        countdown_human = "Por iniciarse en breve"
+                except Exception:
+                    pass
+
+        range_desc = self.config.time_str
+        if self.config.end_time_str:
+            range_desc += f" a {self.config.end_time_str}"
 
         data["scheduled_time"] = self.config.time_str
         data["end_time"] = self.config.end_time_str
@@ -206,6 +301,10 @@ class SchedulerService:
         data["seconds_remaining"] = seconds_remaining
         data["countdown_human"] = countdown_human
         data["is_monitoring"] = bool(self._monitor_thread and self._monitor_thread.is_alive())
+        data["is_in_window"] = in_window
+        data["range_human"] = range_desc
+        data["manual_start_blocked"] = bool(self.config.enabled)
+        data["timezone"] = get_device_timezone_info()
         return data
 
     def start(self):
@@ -219,7 +318,14 @@ class SchedulerService:
             daemon=True,
         )
         self._monitor_thread.start()
-        logger.info("Scheduler de ejecuciones diarias iniciado. Horario: %s - %s (Activo: %s).", self.config.time_str, self.config.end_time_str or "sin límite", self.config.enabled)
+        tz_inf = get_device_timezone_info()
+        logger.info(
+            "Scheduler de ejecuciones diarias iniciado 24/7. Horario: %s - %s (%s). Activo: %s.",
+            self.config.time_str,
+            self.config.end_time_str or "sin límite",
+            tz_inf["description"],
+            self.config.enabled,
+        )
 
     def stop(self):
         """Detiene el hilo monitor en segundo plano."""
@@ -238,7 +344,6 @@ class SchedulerService:
         self.save_config(self.config)
 
         if self.on_trigger:
-            # Ejecutar callback en hilo separado para no bloquear la API
             t = threading.Thread(
                 target=self._execute_trigger,
                 name="SchedulerForcedExecutionThread",
@@ -261,47 +366,61 @@ class SchedulerService:
             self.save_config(self.config)
 
     def _monitor_loop(self):
-        """Bucle de evaluación continua en segundo plano."""
+        """Bucle de evaluación continua en segundo plano cada 10 segundos."""
         while not self._stop_event.is_set():
             try:
                 if self.config.enabled:
                     now = datetime.now()
-                    today_str = now.strftime("%Y-%m-%d")
-                    current_hm = now.strftime("%H:%M")
+                    in_window = self.is_currently_in_window(now)
+                    cycle_id = self.get_current_window_cycle_id(now)
 
-                    # Verificar si coincide la hora de inicio y no se ha disparado hoy
-                    # y que aún estemos dentro del rango horario configurado (si existe hora fin)
-                    within_window = True
-                    if self.config.end_time_str:
-                        within_window = current_hm <= self.config.end_time_str
-                        if not within_window and self._last_triggered_date == today_str:
-                            # Fuera del rango: si hay proceso corriendo pedir detención
-                            pass  # La detención la gestiona el pipeline worker según su propia lógica
-                    if current_hm == self.config.time_str and self._last_triggered_date != today_str and within_window:
-                        self._last_triggered_date = today_str
-                        logger.info("[SCHEDULER] Coincidencia horaria alcanzada (%s). Iniciando disparo automático diario...", current_hm)
-                        
-                        self.config.last_run_at = now.isoformat()
-                        self.config.last_run_status = "RUNNING"
-                        self.config.last_run_message = f"Disparo automático diario ejecutado a las {current_hm}."
-
-                        # Recalcular siguiente disparo para mañana
-                        next_dt = self.compute_next_run(self.config.time_str)
-                        self.config.next_run_at = next_dt.isoformat()
-                        self.save_config(self.config)
-
-                        # Ejecutar en hilo desacoplado
-                        if self.on_trigger:
-                            t = threading.Thread(
-                                target=self._execute_trigger,
-                                name="SchedulerDailyExecutionThread",
-                                daemon=True,
+                    if in_window:
+                        if self._active_cycle_id != cycle_id:
+                            self._active_cycle_id = cycle_id
+                            logger.info(
+                                "[SCHEDULER] 🌙 Ventana de horario diario alcanzada (%s a %s). Iniciando disparo automático...",
+                                self.config.time_str,
+                                self.config.end_time_str or "sin límite",
                             )
-                            t.start()
+                            self.config.last_run_at = now.isoformat()
+                            self.config.last_run_status = "RUNNING"
+                            self.config.last_run_message = (
+                                f"Disparo automático iniciado dentro de la ventana {self.config.time_str} - {self.config.end_time_str or ''}."
+                            )
+                            self.save_config(self.config)
 
-                # Esperar 20 segundos antes de la siguiente comprobación
-                self._stop_event.wait(20.0)
+                            if self.on_trigger:
+                                t = threading.Thread(
+                                    target=self._execute_trigger,
+                                    name="SchedulerDailyExecutionThread",
+                                    daemon=True,
+                                )
+                                t.start()
+                    else:
+                        if self._active_cycle_id is not None:
+                            logger.info(
+                                "[SCHEDULER] ☀️ Fin del rango horario programado alcanzado (%s). Solicitando detención automática...",
+                                self.config.end_time_str or self.config.time_str,
+                            )
+                            self._active_cycle_id = None
+                            if self.on_stop:
+                                try:
+                                    self.on_stop()
+                                except Exception as ex_stop:
+                                    logger.error("[SCHEDULER] Error al ejecutar callback on_stop: %s", ex_stop)
+                            self.config.last_run_status = "STOPPED_BY_SCHEDULE"
+                            self.config.last_run_message = (
+                                f"Proceso detenido automáticamente al alcanzar fin de ventana ({self.config.end_time_str})."
+                            )
+                            self.save_config(self.config)
+
+                        next_dt = self.compute_next_run(self.config.time_str)
+                        if self.config.next_run_at != next_dt.isoformat():
+                            self.config.next_run_at = next_dt.isoformat()
+                            self.save_config(self.config)
+
+                self._stop_event.wait(10.0)
 
             except Exception as e:
                 logger.error("[SCHEDULER] Error inesperado en monitor loop: %s", e)
-                self._stop_event.wait(30.0)
+                self._stop_event.wait(15.0)

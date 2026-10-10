@@ -493,6 +493,7 @@ async def get_system_status():
         "stats": state.stats,
         "recent_records": state.recent_records[-100:],
         "log_history": state.log_history[-200:],
+        "scheduler": scheduler_service.get_status_dict(),
     }
 
 
@@ -1327,6 +1328,18 @@ def _run_pipeline_worker(req: StartPipelineRequest):
 @app.post("/api/start")
 async def start_pipeline(req: StartPipelineRequest):
     """Inicia la ejecución del pipeline ETL en segundo plano."""
+    if scheduler_service.config.enabled:
+        time_desc = scheduler_service.config.time_str
+        if scheduler_service.config.end_time_str:
+            time_desc += f" a {scheduler_service.config.end_time_str}"
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"No se permite iniciar manualmente mientras la programación horaria automática esté activa ({time_desc}). "
+                "Para iniciar de forma manual, desactive la casilla de ejecución diaria en el panel inferior y guarde la configuración."
+            )
+        )
+
     if state.is_running:
         raise HTTPException(
             status_code=409,
@@ -1402,7 +1415,20 @@ def _on_scheduler_trigger(sched_cfg: SchedulerConfig):
     worker.start()
 
 
-scheduler_service = SchedulerService(on_trigger=_on_scheduler_trigger)
+def _on_scheduler_stop():
+    """Callback invocado automáticamente por el SchedulerService cuando finaliza la ventana de horas."""
+    if state.is_running and state.pipeline:
+        logger.info("[SCHEDULER] 🛑 Hora de fin alcanzada. Deteniendo proceso automáticamente para liberar servidor IA...")
+        state.add_log("[SCHEDULER] 🛑 Hora de fin alcanzada. Deteniendo proceso automáticamente para liberar el servidor IA durante horario laboral...")
+        try:
+            state.pipeline.request_stop()
+            state.stats["status"] = "STOPPING"
+            state.broadcast({"type": "stopping", "payload": {"status": "STOPPING", "message": "Fin de horario programado alcanzado."}})
+        except Exception as e:
+            logger.error("[SCHEDULER] Error solicitando parada automática: %s", e)
+
+
+scheduler_service = SchedulerService(on_trigger=_on_scheduler_trigger, on_stop=_on_scheduler_stop)
 
 
 class UpdateSchedulerRequest(BaseModel):

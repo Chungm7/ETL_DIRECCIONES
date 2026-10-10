@@ -131,6 +131,9 @@ const wiz = {
   inspectorMotor: 'all',   // 'all' | 'ia' | 'hibrido' | 'heuristico'
   counts: { all: 0, valid: 0, observed: 0, error: 0 },
   evtSource: null,
+  scheduler_enabled: false,
+  scheduler_range: '',
+  is_running: false,
 };
 
 function syncNumWorkers(val) {
@@ -1314,6 +1317,65 @@ function formatTimeHMS(totalSeconds) {
   return `${pad(h)}h ${pad(m)}m ${pad(s)}s`;
 }
 
+let _deviceClockInterval = null;
+function startDeviceClock(tzDesc = null) {
+  const tzEl = document.getElementById('schedulerTzText');
+  const clockEl = document.getElementById('schedulerClockText');
+  if (tzDesc && tzEl) {
+    tzEl.textContent = tzDesc;
+  } else if (tzEl && (tzEl.textContent === 'Detectando...' || !tzEl.textContent)) {
+    try {
+      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+      tzEl.textContent = browserTz;
+    } catch (_) {}
+  }
+  if (!_deviceClockInterval) {
+    _deviceClockInterval = setInterval(() => {
+      const cEl = document.getElementById('schedulerClockText');
+      if (cEl) {
+        cEl.textContent = new Date().toLocaleTimeString();
+      }
+    }, 1000);
+  }
+  if (clockEl) {
+    clockEl.textContent = new Date().toLocaleTimeString();
+  }
+}
+
+function updateStartButtonState(isRunning = null) {
+  if (isRunning !== null) {
+    wiz.is_running = Boolean(isRunning);
+  }
+  const btnStart = document.getElementById('btnStart');
+  const warningEl = document.getElementById('lblSchedulerBlockWarning');
+  const warningText = document.getElementById('lblSchedulerBlockWarningText');
+  if (!btnStart) return;
+
+  if (wiz.is_running) {
+    btnStart.disabled = true;
+    btnStart.title = 'El proceso ya se encuentra en ejecución activa.';
+    if (warningEl) warningEl.style.display = 'none';
+    return;
+  }
+
+  if (wiz.scheduler_enabled) {
+    btnStart.disabled = true;
+    const rangeText = wiz.scheduler_range ? ` (${wiz.scheduler_range})` : '';
+    btnStart.title = `Inicio manual bloqueado: La programación automática diaria está activa${rangeText}. Desactive la casilla en el panel inferior para ejecutar manualmente.`;
+    if (warningEl) {
+      warningEl.style.display = 'inline-flex';
+      if (warningText) {
+        warningText.textContent = `Controlado por Programación Diaria${rangeText} (Inicio manual bloqueado)`;
+      }
+    }
+  } else {
+    btnStart.disabled = false;
+    btnStart.title = 'Iniciar Normalización';
+    if (warningEl) warningEl.style.display = 'none';
+  }
+}
+
+
 function updateTimeBadges(s) {
   if (!s) return;
   const total  = s.total_to_process || 0;
@@ -2226,7 +2288,16 @@ async function startETL() {
     span.textContent = 'Restante: Calculando...';
   }
 
-  document.getElementById('btnStart').disabled = true;
+  if (wiz.scheduler_enabled) {
+    showModalAlert(
+      'Inicio Manual Bloqueado',
+      `No se permite iniciar manualmente mientras la programación horaria automática esté activa (${wiz.scheduler_range || 'diario'}). Desactive la casilla de ejecución diaria en el panel inferior para ejecutar manualmente.`,
+      'warning'
+    );
+    return;
+  }
+
+  updateStartButtonState(true);
   document.getElementById('btnStop').disabled  = false;
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStopSync) btnStopSync.disabled = false;
@@ -2254,7 +2325,7 @@ async function startETL() {
 
     if (!res.ok) {
       showModalAlert('Error al Iniciar Proceso', data.detail || 'Error desconocido', 'error');
-      document.getElementById('btnStart').disabled = false;
+      updateStartButtonState(false);
       document.getElementById('btnStop').disabled  = true;
       if (btnStopSync) btnStopSync.disabled = true;
     } else {
@@ -2264,7 +2335,7 @@ async function startETL() {
     }
   } catch (e) {
     showModalAlert('Error de Comunicación', e.message, 'error');
-    document.getElementById('btnStart').disabled = false;
+    updateStartButtonState(false);
     document.getElementById('btnStop').disabled  = true;
     if (btnStopSync) btnStopSync.disabled = true;
   }
@@ -2287,7 +2358,7 @@ function onDone(data) {
     const span = etaEl.querySelector('span') || etaEl;
     span.textContent = 'Completado';
   }
-  document.getElementById('btnStart').disabled = false;
+  updateStartButtonState(false);
   document.getElementById('btnStop').disabled  = true;
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStopSync) btnStopSync.disabled = true;
@@ -2308,7 +2379,7 @@ function onError(data) {
     const span = etaEl.querySelector('span') || etaEl;
     span.textContent = 'Interrumpido';
   }
-  document.getElementById('btnStart').disabled = false;
+  updateStartButtonState(false);
   document.getElementById('btnStop').disabled  = true;
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStopSync) btnStopSync.disabled = true;
@@ -2432,6 +2503,12 @@ async function checkInitialServerState() {
       wiz.ai_port = parseInt(aiPortInput?.value) || 11434;
     }
 
+    // Scheduler pre-cargado desde status
+    if (data.scheduler) {
+      updateSchedulerUI(data.scheduler);
+    }
+    updateStartButtonState(data.is_running);
+
     // 2. Pre-cargar estado verificado de IA si el servidor reporta conexión positiva
     if (data.ai && data.ai.connected) {
       const activeMdl = data.active_model || data.defaults?.ai_model;
@@ -2532,10 +2609,9 @@ function syncWithActiveSession(data) {
     if (bDesc) bDesc.textContent = `Esta sesión está sincronizada en tiempo real con el servidor (${wiz.num_workers} instancias IA en paralelo). Puede monitorear o detener el proceso.`;
   }
 
-  const btnStart = document.getElementById('btnStart');
+  updateStartButtonState(true);
   const btnStop = document.getElementById('btnStop');
   const btnStopSync = document.getElementById('btnStopSync');
-  if (btnStart) btnStart.disabled = true;
   if (btnStop) btnStop.disabled = false;
   if (btnStopSync) btnStopSync.disabled = false;
 
@@ -2573,9 +2649,8 @@ function syncWithCompletedSession(data) {
 
   goStep(5);
 
-  const btnStart = document.getElementById('btnStart');
+  updateStartButtonState(false);
   const btnStop = document.getElementById('btnStop');
-  if (btnStart) btnStart.disabled = false;
   if (btnStop) btnStop.disabled = true;
 
   if (data.stats) updateStats(data.stats);
@@ -2625,11 +2700,15 @@ function updateSchedulerUI(cfg) {
   const inpWorkers = document.getElementById('inpSchedulerWorkers');
   const badge = document.getElementById('schedulerBadgeStatus');
   const countdown = document.getElementById('schedulerCountdownText');
+  const winStatusEl = document.getElementById('schedulerWindowStatusText');
 
   const isEnabled = Boolean(data.enabled);
   const timeVal = data.scheduled_time || data.time_str || '23:00';
   const endTimeVal = data.end_time || data.end_time_str || '';
   const nextRun = data.next_run || data.next_run_at;
+
+  wiz.scheduler_enabled = isEnabled;
+  wiz.scheduler_range = data.range_human || (endTimeVal ? `${timeVal} a ${endTimeVal}` : timeVal);
 
   if (chk) chk.checked = isEnabled;
   if (inpTime) inpTime.value = timeVal;
@@ -2637,6 +2716,26 @@ function updateSchedulerUI(cfg) {
   if (inpWorkers && data.num_workers) inpWorkers.value = data.num_workers;
 
   toggleSchedulerUI(isEnabled);
+  updateStartButtonState();
+
+  if (data.timezone) {
+    startDeviceClock(data.timezone.description || data.timezone.tz_name);
+  } else {
+    startDeviceClock();
+  }
+
+  if (winStatusEl) {
+    if (!isEnabled) {
+      winStatusEl.textContent = 'Inactivo';
+      winStatusEl.style.color = 'var(--slate-500)';
+    } else if (data.is_in_window) {
+      winStatusEl.textContent = '🟢 Dentro de ventana de ejecución activa';
+      winStatusEl.style.color = '#15803d';
+    } else {
+      winStatusEl.textContent = '⚪ Fuera de ventana (esperando inicio programado)';
+      winStatusEl.style.color = '#b45309';
+    }
+  }
 
   if (badge) {
     if (isEnabled) {
@@ -2653,11 +2752,18 @@ function updateSchedulerUI(cfg) {
   }
 
   if (countdown) {
-    if (isEnabled && nextRun) {
-      const nextDate = new Date(nextRun);
-      const remaining = data.countdown_human ? ` (${data.countdown_human})` : '';
-      const endLabel = endTimeVal ? ` – ${endTimeVal} hrs` : '';
-      countdown.textContent = `Próxima ejecución: ${nextDate.toLocaleDateString()} a las ${timeVal}${endLabel}${remaining}`;
+    if (isEnabled) {
+      if (data.is_in_window) {
+        const untilEnd = endTimeVal ? ` (cierre: ${endTimeVal} hrs)` : '';
+        countdown.textContent = `⚡ Ejecución desatendida en curso dentro del horario permitido${untilEnd}`;
+      } else if (nextRun) {
+        const nextDate = new Date(nextRun);
+        const remaining = data.countdown_human ? ` (${data.countdown_human})` : '';
+        const endLabel = endTimeVal ? ` – ${endTimeVal} hrs` : '';
+        countdown.textContent = `Próxima ejecución: ${nextDate.toLocaleDateString()} a las ${timeVal}${endLabel}${remaining}`;
+      } else {
+        countdown.textContent = '';
+      }
     } else {
       countdown.textContent = '';
     }
@@ -2717,9 +2823,15 @@ async function saveSchedulerSettings() {
       return;
     }
     const updated = await res.json();
+    wiz.scheduler_enabled = enabled;
+    wiz.scheduler_range = enabled ? (endTimeStr ? `${scheduledTime} a ${endTimeStr}` : scheduledTime) : '';
     updateSchedulerUI(updated);
+    updateStartButtonState();
     const rangeLabel = enabled ? 'Activada: ' + scheduledTime + ' hrs' + (endTimeStr ? ' – ' + endTimeStr + ' hrs' : '') : 'Desactivada';
-    showModalAlert('Horario Guardado', `Programación guardada exitosamente: ${rangeLabel}.`, 'success');
+    const actionHint = enabled
+      ? ' El botón "Iniciar Normalización" ha sido bloqueado para respetar la ejecución automática.'
+      : ' El botón "Iniciar Normalización" ha sido habilitado para ejecución manual.';
+    showModalAlert('Horario Guardado', `Programación guardada exitosamente: ${rangeLabel}.${actionHint}`, 'success');
   } catch (err) {
     showModalAlert('Error de Conexión', 'No se pudo comunicar con el servidor para guardar la programación.', 'error');
   } finally {
@@ -2750,5 +2862,7 @@ async function triggerSchedulerNow() {
 // ── Inicialización al Cargar ────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   syncNumWorkers(wiz.num_workers);
+  startDeviceClock();
+  loadSchedulerConfig();
   checkInitialServerState();
 });

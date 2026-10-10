@@ -1840,8 +1840,13 @@
             </div>
             <div id="schedulerCountdownText" style="font-size:11.5px; color:#166534; font-weight:600;"></div>
           </div>
-          <div style="font-size:11.5px; color:var(--slate-500); margin:4px 0 10px 0;">
+          <div style="font-size:11.5px; color:var(--slate-500); margin:4px 0 6px 0;">
             Permite persistir un horario nocturno para que el servidor ejecute la normalización automáticamente cada día sin saturar la IA durante las horas de oficina compartidas con otros sistemas.
+          </div>
+          <div style="font-size:11.5px; color:var(--slate-600); margin:0 0 10px 0; display:flex; align-items:center; gap:16px; flex-wrap:wrap; background:#f1f5f9; padding:5px 10px; border-radius:4px; border:1px solid #e2e8f0;">
+            <span>🌐 <strong>Zona Horaria:</strong> <span id="schedulerTzText" style="color:var(--mpch-navy); font-weight:600;">Detectando...</span></span>
+            <span>🕒 <strong>Hora del Sistema:</strong> <span id="schedulerClockText" style="color:var(--mpch-navy); font-weight:600;">--:--:--</span></span>
+            <span>⏳ <strong>Estado de Ventana:</strong> <span id="schedulerWindowStatusText" style="font-weight:600; color:var(--slate-600);">Calculando...</span></span>
           </div>
           <div style="display:flex; gap:16px; align-items:center; flex-wrap:wrap;">
             <label style="display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; cursor:pointer; margin:0;">
@@ -1876,6 +1881,10 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               <span>Iniciar Normalización</span>
             </button>
+            <span id="lblSchedulerBlockWarning" style="display:none; font-size:11.5px; color:#b45309; background:#fef3c7; border:1px solid #fde68a; padding:4px 10px; border-radius:4px; font-weight:600; align-items:center; gap:6px;" title="Desactive la programación horaria en el panel inferior si desea iniciar manualmente">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span id="lblSchedulerBlockWarningText">Controlado por Programación Diaria (Inicio manual bloqueado)</span>
+            </span>
             <button class="btn btn-red" id="btnStop" onclick="stopETL()" disabled>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="6" width="12" height="12"/></svg>
               <span>Detener</span>
