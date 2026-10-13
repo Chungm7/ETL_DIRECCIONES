@@ -202,6 +202,10 @@ ETL_MIGRACION_MPCH/
 
 ## 🚀 Despliegue Rápido y Uso
 
+> [!TIP]
+> 📖 Para una guía detallada paso a paso desde la instalación de Python, Docker, Ollama, creación de entorno virtual (`venv`) hasta la ejecución en **Linux** y **Windows**, consulta:  
+> **👉 [Guía Paso a Paso en Linux y Windows (docs/GUIA_EJECUCION_LINUX_WINDOWS.md)](docs/GUIA_EJECUCION_LINUX_WINDOWS.md)**
+
 ### 1. Iniciar Base de Datos y pgAdmin con Docker:
 ```bash
 docker compose up -d
