@@ -296,6 +296,7 @@ class DatabaseExtractor(BaseExtractor):
                     "dire_tabla_id",
                     "dire_esquema",
                     "dire_tabla",
+                    "dire_columna",
                     "dire_es_procesado"
                 FROM {self._tb_direccion_ref}
                 {where_clause}
@@ -326,6 +327,7 @@ class DatabaseExtractor(BaseExtractor):
                                 dire_id=row.id_val,
                                 dire_esquema=row.dire_esquema,
                                 dire_tabla=row.dire_tabla,
+                                dire_columna=getattr(row, "dire_columna", None),
                                 dire_tabla_id=row.dire_tabla_id,
                                 dire_valor_origen=row.dir_val,
                                 es_procesado=bool(row.dire_es_procesado) if row.dire_es_procesado is not None else False,

@@ -1073,9 +1073,9 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS via_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS tivi_id BIGINT;
                 ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS via_nombre VARCHAR(250);
-                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS via_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS via_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_via" ALTER COLUMN via_nombre TYPE VARCHAR(250);
-                ALTER TABLE "{target_schema}"."tb_via" ALTER COLUMN via_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_via" ALTER COLUMN via_estado TYPE VARCHAR(1);
             END IF;
 
             -- tb_zona
@@ -1091,17 +1091,18 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS zona_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS tizo_id BIGINT;
                 ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS zona_nombre VARCHAR(250);
-                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS zona_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS zona_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_zona" ALTER COLUMN zona_nombre TYPE VARCHAR(250);
-                ALTER TABLE "{target_schema}"."tb_zona" ALTER COLUMN zona_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_zona" ALTER COLUMN zona_estado TYPE VARCHAR(1);
             END IF;
 
             -- tb_direccion
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion') THEN
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_referencia TEXT;
-                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_esquema VARCHAR(500);
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_tabla VARCHAR(500);
+                ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_columna VARCHAR(500);
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_tabla_id BIGINT;
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_valor_origen VARCHAR(500);
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS dire_es_procesado BOOLEAN;
@@ -1135,7 +1136,7 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_direccion" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_direccion" ALTER COLUMN dire_referencia TYPE TEXT;
-                ALTER TABLE "{target_schema}"."tb_direccion" ALTER COLUMN dire_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_direccion" ALTER COLUMN dire_estado TYPE VARCHAR(1);
             END IF;
 
             -- tb_direccion_via
@@ -1144,18 +1145,18 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_cuadra VARCHAR(20);
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_orden INTEGER DEFAULT 1;
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_es_principal BOOLEAN DEFAULT TRUE;
-                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ALTER COLUMN divi_numero TYPE VARCHAR(50);
-                ALTER TABLE "{target_schema}"."tb_direccion_via" ALTER COLUMN divi_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ALTER COLUMN divi_estado TYPE VARCHAR(1);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_via_lookup ON "{target_schema}"."tb_direccion_via" (dire_id, via_id);
             END IF;
 
             -- tb_componente_direccion
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_componente_direccion') THEN
                 ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS codi_abreviatura VARCHAR(20);
-                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS codi_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS codi_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_componente_direccion" ALTER COLUMN codi_nombre TYPE VARCHAR(100);
-                ALTER TABLE "{target_schema}"."tb_componente_direccion" ALTER COLUMN codi_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ALTER COLUMN codi_estado TYPE VARCHAR(1);
             END IF;
 
             -- tb_contenido_componente_direccion
@@ -1166,26 +1167,26 @@ class DatabaseService:
                 END IF;
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_valor VARCHAR(100);
-                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_valor TYPE VARCHAR(100);
-                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_estado TYPE VARCHAR(1);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON "{target_schema}"."tb_contenido_componente_direccion" (dire_id, codi_id);
             END IF;
 
             -- tb_tipo_modulo
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_tipo_modulo') THEN
                 ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS timo_abreviatura VARCHAR(20);
-                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS timo_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS timo_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_tipo_modulo" ALTER COLUMN timo_nombre TYPE VARCHAR(100);
-                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ALTER COLUMN timo_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ALTER COLUMN timo_estado TYPE VARCHAR(1);
             END IF;
 
             -- tb_direccion_tipo_modulo
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion_tipo_modulo') THEN
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_id BIGSERIAL;
-                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(3) DEFAULT 'ACT';
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_nombre TYPE VARCHAR(100);
-                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_estado TYPE VARCHAR(3);
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_estado TYPE VARCHAR(1);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON "{target_schema}"."tb_direccion_tipo_modulo" (dire_id, timo_id, ditm_nombre);
             END IF;
         END $$;
@@ -1278,7 +1279,7 @@ class DatabaseService:
                     tivi_id             BIGSERIAL NOT NULL,
                     tivi_nombre         VARCHAR(100) NOT NULL,
                     tivi_abreviatura    VARCHAR(20),
-                    tivi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tivi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    tivi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I')),
                     usua_id             BIGINT,
                     usua_nombre         VARCHAR(200),
                     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1290,13 +1291,14 @@ class DatabaseService:
                     CONSTRAINT pk_tb_tipo_via PRIMARY KEY (tivi_id),
                     CONSTRAINT uq_tb_tipo_via_nombre UNIQUE (tivi_nombre)
                 );
+                COMMENT ON COLUMN "{target_schema}"."tb_tipo_via".tivi_estado IS 'Estado del tipo de vía: A = Activo (vigente para catalogación y normalización), I = Inactivo (deshabilitado o histórico)';
             """,
             "tb_tipo_zona": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_tipo_zona" (
                     tizo_id             BIGSERIAL NOT NULL,
                     tizo_nombre         VARCHAR(100) NOT NULL,
                     tizo_abreviatura    VARCHAR(20),
-                    tizo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tizo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    tizo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I')),
                     usua_id             BIGINT,
                     usua_nombre         VARCHAR(200),
                     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1308,13 +1310,14 @@ class DatabaseService:
                     CONSTRAINT pk_tb_tipo_zona PRIMARY KEY (tizo_id),
                     CONSTRAINT uq_tb_tipo_zona_nombre UNIQUE (tizo_nombre)
                 );
+                COMMENT ON COLUMN "{target_schema}"."tb_tipo_zona".tizo_estado IS 'Estado del tipo de zona: A = Activo (vigente en la nomenclatura urbana), I = Inactivo (deshabilitado o en desuso)';
             """,
             "tb_via": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_via" (
                     via_id              BIGSERIAL NOT NULL,
                     tivi_id             BIGINT NOT NULL,
                     via_nombre          VARCHAR(250) NOT NULL,
-                    via_estado          VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (via_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    via_estado          VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (via_estado IN ('A', 'I')),
                     usua_id             BIGINT,
                     usua_nombre         VARCHAR(200),
                     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1328,13 +1331,14 @@ class DatabaseService:
                 );
                 CREATE INDEX IF NOT EXISTS idx_tb_via_nombre ON "{target_schema}"."tb_via" (via_nombre);
                 CREATE INDEX IF NOT EXISTS idx_tb_via_tipo_nombre ON "{target_schema}"."tb_via" (tivi_id, via_nombre);
+                COMMENT ON COLUMN "{target_schema}"."tb_via".via_estado IS 'Estado del registro de vía: A = Activo (vía urbana vigente en catastro), I = Inactivo (vía dada de baja, renombrada o deshabilitada)';
             """,
             "tb_zona": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_zona" (
                     zona_id             BIGSERIAL NOT NULL,
                     tizo_id             BIGINT NOT NULL,
                     zona_nombre         VARCHAR(250) NOT NULL,
-                    zona_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (zona_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    zona_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (zona_estado IN ('A', 'I')),
                     usua_id             BIGINT,
                     usua_nombre         VARCHAR(200),
                     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1348,15 +1352,17 @@ class DatabaseService:
                 );
                 CREATE INDEX IF NOT EXISTS idx_tb_zona_nombre ON "{target_schema}"."tb_zona" (zona_nombre);
                 CREATE INDEX IF NOT EXISTS idx_tb_zona_tipo_nombre ON "{target_schema}"."tb_zona" (tizo_id, zona_nombre);
+                COMMENT ON COLUMN "{target_schema}"."tb_zona".zona_estado IS 'Estado del registro de zona/urbanización: A = Activo (sector vigente), I = Inactivo (zona no vigente o fusionada)';
             """,
             "tb_direccion": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_direccion" (
                     dire_id             BIGSERIAL NOT NULL,
                     zona_id             BIGINT,
                     dire_referencia     TEXT,
-                    dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    dire_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (dire_estado IN ('A', 'I')),
                     dire_esquema        VARCHAR(500),
                     dire_tabla          VARCHAR(500),
+                    dire_columna        VARCHAR(500),
                     dire_tabla_id       BIGINT,
                     dire_valor_origen   VARCHAR(500),
                     dire_es_procesado   BOOLEAN,
@@ -1374,6 +1380,7 @@ class DatabaseService:
                 CREATE INDEX IF NOT EXISTS idx_tb_direccion_zona ON "{target_schema}"."tb_direccion" (zona_id);
                 CREATE INDEX IF NOT EXISTS idx_tb_direccion_proc ON "{target_schema}"."tb_direccion" (dire_esquema, dire_tabla, dire_es_procesado);
                 CREATE INDEX IF NOT EXISTS idx_tb_direccion_origen_lookup ON "{target_schema}"."tb_direccion" (dire_esquema, dire_tabla, dire_tabla_id);
+                COMMENT ON COLUMN "{target_schema}"."tb_direccion".dire_estado IS 'Estado de la dirección normalizada: A = Activo (dirección vigente y válida), I = Inactivo (dirección anulada o desestimada)';
             """,
             "tb_direccion_via": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_direccion_via" (
@@ -1384,7 +1391,7 @@ class DatabaseService:
                     divi_cuadra         VARCHAR(20),
                     divi_orden          INTEGER NOT NULL DEFAULT 1,
                     divi_es_principal   BOOLEAN NOT NULL DEFAULT TRUE,
-                    divi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (divi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    divi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I')),
                     CONSTRAINT pk_tb_direccion_via PRIMARY KEY (divi_id),
                     CONSTRAINT fk_tb_direccion_via_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_direccion_via_via FOREIGN KEY (via_id) REFERENCES "{target_schema}"."tb_via"(via_id) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1392,6 +1399,7 @@ class DatabaseService:
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_via_lookup ON "{target_schema}"."tb_direccion_via" (dire_id, via_id);
                 CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_lookup ON "{target_schema}"."tb_direccion_via" (dire_id, via_id);
                 CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_principal ON "{target_schema}"."tb_direccion_via" (divi_es_principal);
+                COMMENT ON COLUMN "{target_schema}"."tb_direccion_via".divi_estado IS 'Estado del enlace dirección-vía: A = Activo (relación vial vigente), I = Inactivo (relación vial histórica o desvinculada)';
             """,
             "tb_componente_direccion": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_componente_direccion" (
@@ -1399,7 +1407,7 @@ class DatabaseService:
                     codi_nombre         VARCHAR(100) NOT NULL,
                     codi_abreviatura    VARCHAR(20),
                     codi_es_urbano      BOOLEAN DEFAULT TRUE,
-                    codi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (codi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    codi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (codi_estado IN ('A', 'I')),
                     usua_id             BIGINT,
                     usua_nombre         VARCHAR(200),
                     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1411,6 +1419,7 @@ class DatabaseService:
                     CONSTRAINT pk_tb_componente_direccion PRIMARY KEY (codi_id),
                     CONSTRAINT uq_tb_componente_direccion_nombre UNIQUE (codi_nombre)
                 );
+                COMMENT ON COLUMN "{target_schema}"."tb_componente_direccion".codi_estado IS 'Estado del componente catastral: A = Activo (componente habilitado para estructuración), I = Inactivo (componente deshabilitado)';
             """,
             "tb_contenido_componente_direccion": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_contenido_componente_direccion" (
@@ -1418,20 +1427,21 @@ class DatabaseService:
                     dire_id             BIGINT NOT NULL,
                     codi_id             BIGINT NOT NULL,
                     diti_valor          VARCHAR(100) NOT NULL,
-                    diti_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (diti_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
                     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
                     CONSTRAINT fk_tb_contenido_componente_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_contenido_componente_codi FOREIGN KEY (codi_id) REFERENCES "{target_schema}"."tb_componente_direccion"(codi_id) ON UPDATE CASCADE ON DELETE CASCADE
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON "{target_schema}"."tb_contenido_componente_direccion" (dire_id, codi_id);
                 CREATE INDEX IF NOT EXISTS idx_tb_contenido_comp_lookup ON "{target_schema}"."tb_contenido_componente_direccion" (dire_id, codi_id);
+                COMMENT ON COLUMN "{target_schema}"."tb_contenido_componente_direccion".diti_estado IS 'Estado del contenido del componente: A = Activo (valor catastral vigente), I = Inactivo (valor histórico o descartado)';
             """,
             "tb_tipo_modulo": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_tipo_modulo" (
                     timo_id             BIGSERIAL NOT NULL,
                     timo_nombre         VARCHAR(100) NOT NULL,
                     timo_abreviatura    VARCHAR(20),
-                    timo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (timo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    timo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (timo_estado IN ('A', 'I')),
                     usua_id             BIGINT,
                     usua_nombre         VARCHAR(200),
                     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -1443,6 +1453,7 @@ class DatabaseService:
                     CONSTRAINT pk_tb_tipo_modulo PRIMARY KEY (timo_id),
                     CONSTRAINT uq_tb_tipo_modulo_nombre UNIQUE (timo_nombre)
                 );
+                COMMENT ON COLUMN "{target_schema}"."tb_tipo_modulo".timo_estado IS 'Estado del tipo de módulo: A = Activo (tipo inmobiliario admitido), I = Inactivo (deshabilitado)';
             """,
             "tb_direccion_tipo_modulo": f"""
                 CREATE TABLE IF NOT EXISTS "{target_schema}"."tb_direccion_tipo_modulo" (
@@ -1450,12 +1461,13 @@ class DatabaseService:
                     dire_id             BIGINT NOT NULL,
                     timo_id             BIGINT NOT NULL,
                     ditm_nombre         VARCHAR(100) NOT NULL,
-                    ditm_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (ditm_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+                    ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
                     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre),
                     CONSTRAINT fk_tb_direccion_modulo_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_direccion_modulo_timo FOREIGN KEY (timo_id) REFERENCES "{target_schema}"."tb_tipo_modulo"(timo_id) ON UPDATE CASCADE ON DELETE CASCADE
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON "{target_schema}"."tb_direccion_tipo_modulo" (dire_id, timo_id, ditm_nombre);
+                COMMENT ON COLUMN "{target_schema}"."tb_direccion_tipo_modulo".ditm_estado IS 'Estado de la asignación de módulo a la dirección: A = Activo (módulo vigente en el predio), I = Inactivo (módulo desestimado o histórico)';
             """
         }
 
@@ -1465,7 +1477,7 @@ class DatabaseService:
                     tivi_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tivi_nombre VARCHAR(100) NOT NULL UNIQUE,
                     tivi_abreviatura VARCHAR(20),
-                    tivi_estado VARCHAR(3) DEFAULT 'ACT',
+                    tivi_estado VARCHAR(1) DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I')),
                     usua_id INTEGER,
                     usua_nombre VARCHAR(200),
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1481,7 +1493,7 @@ class DatabaseService:
                     tizo_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tizo_nombre VARCHAR(100) NOT NULL UNIQUE,
                     tizo_abreviatura VARCHAR(20),
-                    tizo_estado VARCHAR(3) DEFAULT 'ACT',
+                    tizo_estado VARCHAR(1) DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I')),
                     usua_id INTEGER,
                     usua_nombre VARCHAR(200),
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1497,7 +1509,7 @@ class DatabaseService:
                     via_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tivi_id INTEGER NOT NULL,
                     via_nombre VARCHAR(250) NOT NULL,
-                    via_estado VARCHAR(3) DEFAULT 'ACT',
+                    via_estado VARCHAR(1) DEFAULT 'A' CHECK (via_estado IN ('A', 'I')),
                     usua_id INTEGER,
                     usua_nombre VARCHAR(200),
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1513,7 +1525,7 @@ class DatabaseService:
                     zona_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     tizo_id INTEGER NOT NULL,
                     zona_nombre VARCHAR(250) NOT NULL,
-                    zona_estado VARCHAR(3) DEFAULT 'ACT',
+                    zona_estado VARCHAR(1) DEFAULT 'A' CHECK (zona_estado IN ('A', 'I')),
                     usua_id INTEGER,
                     usua_nombre VARCHAR(200),
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1529,9 +1541,10 @@ class DatabaseService:
                     dire_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     zona_id INTEGER,
                     dire_referencia TEXT,
-                    dire_estado VARCHAR(3) DEFAULT 'ACT',
+                    dire_estado VARCHAR(1) DEFAULT 'A' CHECK (dire_estado IN ('A', 'I')),
                     dire_esquema VARCHAR(500),
                     dire_tabla VARCHAR(500),
+                    dire_columna VARCHAR(500),
                     dire_tabla_id INTEGER,
                     dire_valor_origen VARCHAR(500),
                     dire_es_procesado BOOLEAN,
@@ -1554,7 +1567,7 @@ class DatabaseService:
                     divi_cuadra VARCHAR(20),
                     divi_orden INTEGER DEFAULT 1,
                     divi_es_principal BOOLEAN DEFAULT 1,
-                    divi_estado VARCHAR(3) DEFAULT 'ACT',
+                    divi_estado VARCHAR(1) DEFAULT 'A' CHECK (divi_estado IN ('A', 'I')),
                     UNIQUE (dire_id, via_id)
                 );
             """,
@@ -1564,7 +1577,7 @@ class DatabaseService:
                     codi_nombre VARCHAR(100) NOT NULL UNIQUE,
                     codi_abreviatura VARCHAR(20),
                     codi_es_urbano BOOLEAN DEFAULT 1,
-                    codi_estado VARCHAR(3) DEFAULT 'ACT',
+                    codi_estado VARCHAR(1) DEFAULT 'A' CHECK (codi_estado IN ('A', 'I')),
                     usua_id INTEGER,
                     usua_nombre VARCHAR(200),
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1581,7 +1594,7 @@ class DatabaseService:
                     dire_id INTEGER NOT NULL,
                     codi_id INTEGER NOT NULL,
                     diti_valor VARCHAR(100) NOT NULL,
-                    diti_estado VARCHAR(3) DEFAULT 'ACT',
+                    diti_estado VARCHAR(1) DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
                     UNIQUE (dire_id, codi_id)
                 );
             """,
@@ -1590,7 +1603,7 @@ class DatabaseService:
                     timo_id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timo_nombre VARCHAR(100) NOT NULL UNIQUE,
                     timo_abreviatura VARCHAR(20),
-                    timo_estado VARCHAR(3) DEFAULT 'ACT',
+                    timo_estado VARCHAR(1) DEFAULT 'A' CHECK (timo_estado IN ('A', 'I')),
                     usua_id INTEGER,
                     usua_nombre VARCHAR(200),
                     create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1607,7 +1620,7 @@ class DatabaseService:
                     dire_id INTEGER NOT NULL,
                     timo_id INTEGER NOT NULL,
                     ditm_nombre VARCHAR(100) NOT NULL,
-                    ditm_estado VARCHAR(3) DEFAULT 'ACT',
+                    ditm_estado VARCHAR(1) DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
                     UNIQUE (dire_id, timo_id, ditm_nombre)
                 );
             """
@@ -1630,9 +1643,6 @@ class DatabaseService:
 
             # 5. Asegurar restricción PK compuesta en tb_direccion_tipo_modulo
             self.ensure_modulo_pk_constraint(target_schema)
-
-            # 6. Asegurar que todas las columnas *_estado sean VARCHAR(3)
-            self.ensure_estado_columns_varchar3(target_schema)
 
         # 7. Asegurar existencia y columnas de tb_direccion
         self.ensure_tb_direccion_exists(target_schema)
@@ -2290,7 +2300,7 @@ class DatabaseService:
                 # FAST-PATH: Si la tabla ya existe y contiene las columnas requeridas de negocio y auditoría
                 required_cols = {
                     "dire_id", "zona_id", "dire_referencia", "dire_estado",
-                    "dire_esquema", "dire_tabla", "dire_tabla_id", "dire_valor_origen",
+                    "dire_esquema", "dire_tabla", "dire_columna", "dire_tabla_id", "dire_valor_origen",
                     "dire_es_procesado", "create_at", "update_at", "audit_mac_address"
                 }
                 if table_already_exists and required_cols.issubset(existing_cols):
@@ -2306,9 +2316,10 @@ class DatabaseService:
                             dire_id             BIGSERIAL NOT NULL,
                             zona_id             BIGINT,
                             dire_referencia     TEXT,
-                            dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT',
+                            dire_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (dire_estado IN ('A', 'I')),
                             dire_esquema        VARCHAR(500),
                             dire_tabla          VARCHAR(500),
+                            dire_columna        VARCHAR(500),
                             dire_tabla_id       BIGINT,
                             dire_valor_origen   VARCHAR(500),
                             dire_es_procesado   BOOLEAN,
@@ -2329,9 +2340,10 @@ class DatabaseService:
                             dire_id             INTEGER PRIMARY KEY AUTOINCREMENT,
                             zona_id             INTEGER,
                             dire_referencia     TEXT,
-                            dire_estado         VARCHAR(3) DEFAULT 'ACT',
+                            dire_estado         VARCHAR(1) DEFAULT 'A' CHECK (dire_estado IN ('A', 'I')),
                             dire_esquema        VARCHAR(500),
                             dire_tabla          VARCHAR(500),
+                            dire_columna        VARCHAR(500),
                             dire_tabla_id       INTEGER,
                             dire_valor_origen   VARCHAR(500),
                             dire_es_procesado   BOOLEAN,
@@ -2403,9 +2415,10 @@ class DatabaseService:
                 cols_to_add = [
                     ("zona_id", "BIGINT" if is_postgres else "INTEGER"),
                     ("dire_referencia", "TEXT"),
-                    ("dire_estado", "VARCHAR(3) DEFAULT 'ACT'"),
+                    ("dire_estado", "VARCHAR(1) DEFAULT 'A'"),
                     ("dire_esquema", "VARCHAR(500)"),
                     ("dire_tabla", "VARCHAR(500)"),
+                    ("dire_columna", "VARCHAR(500)"),
                     ("dire_tabla_id", "BIGINT" if is_postgres else "INTEGER"),
                     ("dire_valor_origen", "VARCHAR(500)"),
                     ("dire_es_procesado", "BOOLEAN"),
@@ -2532,11 +2545,12 @@ class DatabaseService:
                     SELECT COUNT(*) FROM {src_table_ref};
                 """)).scalar() or 0
 
-                # 2. Conteo de registros que ya están presentes en tb_direccion para esta tabla
+                # 2. Conteo de registros que ya están presentes en tb_direccion para esta tabla y columna
                 already_in_dir = session.execute(text(f"""
                     SELECT COUNT(*) FROM {target_dir_ref}
-                    WHERE dire_esquema = :esq AND dire_tabla = :tab;
-                """), {"esq": source_schema or "public", "tab": source_table}).scalar() or 0
+                    WHERE dire_esquema = :esq AND dire_tabla = :tab
+                      AND (dire_columna = :col OR dire_columna IS NULL);
+                """), {"esq": source_schema or "public", "tab": source_table, "col": addr_col}).scalar() or 0
 
                 is_postgres = False
                 try:
@@ -2583,12 +2597,13 @@ class DatabaseService:
                         # Vía directa en una sola operación atómica (sin bucles)
                         insert_sql = text(f"""
                             INSERT INTO {target_dir_ref} (
-                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_esquema, dire_tabla, dire_columna, dire_tabla_id,
                                 dire_valor_origen, dire_es_procesado, dire_estado, update_at
                             )
                             SELECT
                                 :esq,
                                 :tab,
+                                :col,
                                 CASE 
                                     WHEN src."{id_col}" IS NULL THEN NULL
                                     WHEN CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' THEN CAST(src."{id_col}" AS BIGINT)
@@ -2596,25 +2611,27 @@ class DatabaseService:
                                 END,
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN NULL ELSE CAST(src."{addr_col}" AS TEXT) END,
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN FALSE ELSE NULL END,
-                                'ACT',
+                                'A',
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
                             FROM {src_table_ref} src;
                         """)
                         res = session.execute(insert_sql, {
                             "esq": source_schema or "public",
                             "tab": source_table,
+                            "col": addr_col,
                         })
                         migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else total_source
                     else:
                         # Vía incremental: insertar únicamente registros faltantes sin bucles infinitos
                         insert_sql = text(f"""
                             INSERT INTO {target_dir_ref} (
-                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_esquema, dire_tabla, dire_columna, dire_tabla_id,
                                 dire_valor_origen, dire_es_procesado, dire_estado, update_at
                             )
                             SELECT
                                 :esq,
                                 :tab,
+                                :col,
                                 CASE 
                                     WHEN src."{id_col}" IS NULL THEN NULL
                                     WHEN CAST(src."{id_col}" AS TEXT) ~ '^-?[0-9]+$' THEN CAST(src."{id_col}" AS BIGINT)
@@ -2622,13 +2639,14 @@ class DatabaseService:
                                 END,
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN NULL ELSE CAST(src."{addr_col}" AS TEXT) END,
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN FALSE ELSE NULL END,
-                                'ACT',
+                                'A',
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
                             FROM {src_table_ref} src
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM {target_dir_ref} d
                                 WHERE d.dire_esquema = :esq
                                   AND d.dire_tabla = :tab
+                                  AND (d.dire_columna = :col OR d.dire_columna IS NULL)
                                   AND (
                                       (
                                           src."{id_col}" IS NOT NULL 
@@ -2646,6 +2664,7 @@ class DatabaseService:
                         res = session.execute(insert_sql, {
                             "esq": source_schema or "public",
                             "tab": source_table,
+                            "col": addr_col,
                         })
                         migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else max(0, total_source - already_in_dir)
 
@@ -2656,43 +2675,47 @@ class DatabaseService:
                     if already_in_dir == 0:
                         insert_sql = text(f"""
                             INSERT INTO {target_dir_ref} (
-                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_esquema, dire_tabla, dire_columna, dire_tabla_id,
                                 dire_valor_origen, dire_es_procesado, dire_estado, update_at
                             )
                             SELECT
                                 :esq,
                                 :tab,
+                                :col,
                                 src."{id_col}",
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN NULL ELSE src."{addr_col}" END,
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN 0 ELSE NULL END,
-                                'ACT',
+                                'A',
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
                             FROM {src_table_ref} src;
                         """)
                         res = session.execute(insert_sql, {
                             "esq": source_schema or "public",
                             "tab": source_table,
+                            "col": addr_col,
                         })
                         migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else total_source
                     else:
                         insert_sql = text(f"""
                             INSERT INTO {target_dir_ref} (
-                                dire_esquema, dire_tabla, dire_tabla_id,
+                                dire_esquema, dire_tabla, dire_columna, dire_tabla_id,
                                 dire_valor_origen, dire_es_procesado, dire_estado, update_at
                             )
                             SELECT
                                 :esq,
                                 :tab,
+                                :col,
                                 src."{id_col}",
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN NULL ELSE src."{addr_col}" END,
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN 0 ELSE NULL END,
-                                'ACT',
+                                'A',
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
                             FROM {src_table_ref} src
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM {target_dir_ref} d
                                 WHERE d.dire_esquema = :esq
                                   AND d.dire_tabla = :tab
+                                  AND (d.dire_columna = :col OR d.dire_columna IS NULL)
                                   AND (
                                       (src."{id_col}" IS NOT NULL AND d.dire_tabla_id = src."{id_col}")
                                       OR (src."{id_col}" IS NULL AND d.dire_tabla_id IS NULL AND (d.dire_valor_origen IS src."{addr_col}" OR (d.dire_valor_origen IS NULL AND src."{addr_col}" IS NULL)))
@@ -2702,6 +2725,7 @@ class DatabaseService:
                         res = session.execute(insert_sql, {
                             "esq": source_schema or "public",
                             "tab": source_table,
+                            "col": addr_col,
                         })
                         migrated_count = res.rowcount if (res.rowcount and res.rowcount > 0) else max(0, total_source - already_in_dir)
 
@@ -2710,8 +2734,9 @@ class DatabaseService:
                 # 3. Conteo final en tb_direccion para esta fuente
                 total_in_dir_after = session.execute(text(f"""
                     SELECT COUNT(*) FROM {target_dir_ref}
-                    WHERE dire_esquema = :esq AND dire_tabla = :tab;
-                """), {"esq": source_schema or "public", "tab": source_table}).scalar() or 0
+                    WHERE dire_esquema = :esq AND dire_tabla = :tab
+                      AND (dire_columna = :col OR dire_columna IS NULL);
+                """), {"esq": source_schema or "public", "tab": source_table, "col": addr_col}).scalar() or 0
 
                 remaining_unlinked = max(0, total_source - total_in_dir_after)
 

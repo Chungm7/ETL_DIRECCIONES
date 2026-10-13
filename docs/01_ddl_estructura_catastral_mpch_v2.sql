@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS tb_tipo_via (
     tivi_id             BIGSERIAL NOT NULL,
     tivi_nombre         VARCHAR(100) NOT NULL,
     tivi_abreviatura    VARCHAR(20),
-    tivi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tivi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    tivi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I')),
     usua_id             BIGINT,
     usua_nombre         VARCHAR(200),
     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -50,7 +50,7 @@ COMMENT ON TABLE tb_tipo_via IS 'Catálogo maestro institucional de tipos de art
 COMMENT ON COLUMN tb_tipo_via.tivi_id IS 'Identificador numérico único del tipo de vía.';
 COMMENT ON COLUMN tb_tipo_via.tivi_nombre IS 'Nombre completo oficial del tipo de vía.';
 COMMENT ON COLUMN tb_tipo_via.tivi_abreviatura IS 'Abreviatura estándar oficial (AV., CA., JR., etc.).';
-COMMENT ON COLUMN tb_tipo_via.tivi_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
+COMMENT ON COLUMN tb_tipo_via.tivi_estado IS 'Estado del registro: A = Activo (tipo de vía vigente para normalización y uso oficial), I = Inactivo (deshabilitado o en desuso).';
 COMMENT ON COLUMN tb_tipo_via.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_tipo_via.usua_nombre IS 'Nombre o login del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_tipo_via.create_at IS 'Fecha y hora de creación del registro en el sistema.';
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS tb_via (
     via_id              BIGSERIAL NOT NULL,
     tivi_id             BIGINT NOT NULL,
     via_nombre          VARCHAR(250) NOT NULL,
-    via_estado          VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (via_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    via_estado          VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (via_estado IN ('A', 'I')),
     usua_id             BIGINT,
     usua_nombre         VARCHAR(200),
     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -89,7 +89,7 @@ COMMENT ON TABLE tb_via IS 'Catálogo maestro de vías públicas habilitadas de 
 COMMENT ON COLUMN tb_via.via_id IS 'Identificador secuencial único de la vía.';
 COMMENT ON COLUMN tb_via.tivi_id IS 'Clave foránea hacia tb_tipo_via.';
 COMMENT ON COLUMN tb_via.via_nombre IS 'Denominación oficial de la vía sin prefijo de tipo (ej. BALTA, LUIS GONZALES, 7 DE ENERO).';
-COMMENT ON COLUMN tb_via.via_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
+COMMENT ON COLUMN tb_via.via_estado IS 'Estado del registro: A = Activo (arteria vial vigente, habilitada y transitable), I = Inactivo (vía clausurada, renombrada históricamente o deshabilitada).';
 COMMENT ON COLUMN tb_via.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_via.usua_nombre IS 'Nombre o login del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_via.create_at IS 'Fecha y hora de creación del registro en el sistema.';
@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS tb_tipo_zona (
     tizo_id             BIGSERIAL NOT NULL,
     tizo_nombre         VARCHAR(100) NOT NULL,
     tizo_abreviatura    VARCHAR(20),
-    tizo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (tizo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    tizo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I')),
     usua_id             BIGINT,
     usua_nombre         VARCHAR(200),
     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -127,7 +127,7 @@ COMMENT ON TABLE tb_tipo_zona IS 'Catálogo maestro de los 28 tipos oficiales de
 COMMENT ON COLUMN tb_tipo_zona.tizo_id IS 'Identificador secuencial único del tipo de zona.';
 COMMENT ON COLUMN tb_tipo_zona.tizo_nombre IS 'Nombre oficial completo (URBANIZACION, PUEBLO JOVEN, ASOCIACION PRO VIVIENDA, etc.).';
 COMMENT ON COLUMN tb_tipo_zona.tizo_abreviatura IS 'Abreviatura oficial (URB., P.J., A.H., etc.).';
-COMMENT ON COLUMN tb_tipo_zona.tizo_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
+COMMENT ON COLUMN tb_tipo_zona.tizo_estado IS 'Estado del registro: A = Activo (tipo de habilitación urbana oficial vigente y aplicable), I = Inactivo (tipo deshabilitado o en desuso).';
 COMMENT ON COLUMN tb_tipo_zona.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_tipo_zona.usua_nombre IS 'Nombre o login del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_tipo_zona.create_at IS 'Fecha y hora de creación del registro en el sistema.';
@@ -144,7 +144,7 @@ CREATE TABLE IF NOT EXISTS tb_zona (
     zona_id             BIGSERIAL NOT NULL,
     tizo_id             BIGINT NOT NULL,
     zona_nombre         VARCHAR(250) NOT NULL,
-    zona_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (zona_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    zona_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (zona_estado IN ('A', 'I')),
     usua_id             BIGINT,
     usua_nombre         VARCHAR(200),
     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -166,7 +166,7 @@ COMMENT ON TABLE tb_zona IS 'Catálogo maestro de habilitaciones urbanas, sector
 COMMENT ON COLUMN tb_zona.zona_id IS 'Identificador secuencial único de la zona.';
 COMMENT ON COLUMN tb_zona.tizo_id IS 'Clave foránea hacia tb_tipo_zona.';
 COMMENT ON COLUMN tb_zona.zona_nombre IS 'Nombre oficial de la zona (ej. SANTA VICTORIA, 9 DE OCTUBRE, FEDERICO VILLARREAL).';
-COMMENT ON COLUMN tb_zona.zona_estado IS 'Estado del registro: ACT = Activo, INA = Inactivo, ELI = Eliminado.';
+COMMENT ON COLUMN tb_zona.zona_estado IS 'Estado del registro: A = Activo (sector o habilitación urbana formal vigente), I = Inactivo (zona histórica, fusionada o deshabilitada).';
 COMMENT ON COLUMN tb_zona.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_zona.usua_nombre IS 'Nombre o login del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_zona.create_at IS 'Fecha y hora de creación del registro en el sistema.';
@@ -186,9 +186,10 @@ CREATE TABLE IF NOT EXISTS tb_direccion (
     dire_id             BIGSERIAL NOT NULL,
     zona_id             BIGINT,
     dire_referencia     TEXT,
-    dire_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (dire_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    dire_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (dire_estado IN ('A', 'I')),
     dire_esquema        VARCHAR(500),
     dire_tabla          VARCHAR(500),
+    dire_columna        VARCHAR(500),
     dire_tabla_id       BIGINT,
     dire_valor_origen   VARCHAR(500),
     dire_es_procesado   BOOLEAN,
@@ -209,13 +210,14 @@ CREATE TABLE IF NOT EXISTS tb_direccion (
         ON DELETE SET NULL
 );
 
-COMMENT ON TABLE tb_direccion IS 'Entidad central polimórfica que consolida la dirección normalizada de múltiples esquemas institucionales (licencias, rentas, catastro, etc.) mediante referencia lógica (dire_esquema, dire_tabla, dire_tabla_id) sin alterar tablas de origen.';
+COMMENT ON TABLE tb_direccion IS 'Entidad central polimórfica que consolida la dirección normalizada de múltiples esquemas institucionales (licencias, rentas, catastro, etc.) mediante referencia lógica (dire_esquema, dire_tabla, dire_columna, dire_tabla_id) sin alterar tablas de origen.';
 COMMENT ON COLUMN tb_direccion.dire_id IS 'Identificador secuencial único de la dirección normalizada.';
 COMMENT ON COLUMN tb_direccion.zona_id IS 'Clave foránea hacia tb_zona. Permite NULL si el predio no posee zona registrada.';
 COMMENT ON COLUMN tb_direccion.dire_referencia IS 'Hito espacial o comercial de orientación urbana (ej. CERCA AL SENATI, FRENTE AL PARQUE).';
-COMMENT ON COLUMN tb_direccion.dire_estado IS 'Estado del registro: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_direccion.dire_estado IS 'Estado del registro: A = Activo (dirección normalizada vigente y válida para operaciones municipales), I = Inactivo (dirección dada de baja, reemplazada o anulada).';
 COMMENT ON COLUMN tb_direccion.dire_esquema IS 'Nombre del esquema emisor de origen (ej. sc_migracion_direcciones, rentas, catastro, public).';
 COMMENT ON COLUMN tb_direccion.dire_tabla IS 'Nombre de la tabla de negocio de origen.';
+COMMENT ON COLUMN tb_direccion.dire_columna IS 'Nombre de la columna del sistema de origen que contiene la dirección sin estructurar (ej. emp_direccion, direccion, etc.).';
 COMMENT ON COLUMN tb_direccion.dire_tabla_id IS 'Clave primaria del registro en la tabla de origen (referencia lógica polimórfica, sin FK rígida).';
 COMMENT ON COLUMN tb_direccion.dire_valor_origen IS 'Texto crudo original de la dirección extraída de la fuente; se conserva como referencia hasta validación física manual.';
 COMMENT ON COLUMN tb_direccion.dire_es_procesado IS 'Semántica Tri-State: NULL = Pendiente | TRUE = Normalizado 100% Certeza | FALSE = Rechazado / Incoherente.';
@@ -243,7 +245,7 @@ CREATE TABLE IF NOT EXISTS tb_direccion_via (
     divi_cuadra         VARCHAR(20),
     divi_orden          INTEGER NOT NULL DEFAULT 1,
     divi_es_principal   BOOLEAN NOT NULL DEFAULT TRUE,
-    divi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (divi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    divi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I')),
 
     CONSTRAINT pk_tb_direccion_via PRIMARY KEY (divi_id),
     CONSTRAINT fk_tb_direccion_via_dir 
@@ -266,7 +268,7 @@ COMMENT ON COLUMN tb_direccion_via.divi_numero IS 'Numeración municipal en esta
 COMMENT ON COLUMN tb_direccion_via.divi_cuadra IS 'Número de cuadra en la que se ubica la dirección (ej. CDA. 10).';
 COMMENT ON COLUMN tb_direccion_via.divi_orden IS 'Orden de prelación vial: 1 = Principal, 2 = Secundaria / Esquina, 3 = Intersección adicional.';
 COMMENT ON COLUMN tb_direccion_via.divi_es_principal IS 'Indica si es la vía principal (true) o una vía secundaria/intersección (false).';
-COMMENT ON COLUMN tb_direccion_via.divi_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_direccion_via.divi_estado IS 'Estado del registro: A = Activo (relación vial asociada vigente y vinculada a la dirección), I = Inactivo (relación vial desestimada o dada de baja).';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_via_lookup ON tb_direccion_via (dire_id, via_id);
 CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_lookup ON tb_direccion_via (dire_id, via_id);
@@ -280,7 +282,7 @@ CREATE TABLE IF NOT EXISTS tb_componente_direccion (
     codi_nombre         VARCHAR(100) NOT NULL,
     codi_abreviatura    VARCHAR(20),
     codi_es_urbano      BOOLEAN DEFAULT TRUE,
-    codi_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (codi_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    codi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (codi_estado IN ('A', 'I')),
     usua_id             BIGINT,
     usua_nombre         VARCHAR(200),
     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -299,7 +301,7 @@ COMMENT ON COLUMN tb_componente_direccion.codi_id IS 'Identificador único del t
 COMMENT ON COLUMN tb_componente_direccion.codi_nombre IS 'Nombre del componente (MANZANA, LOTE, SUBLOTE, PISO, BLOCK, etc.).';
 COMMENT ON COLUMN tb_componente_direccion.codi_abreviatura IS 'Abreviatura estandarizada (MZ., LT., SLT., PISO, BLK.).';
 COMMENT ON COLUMN tb_componente_direccion.codi_es_urbano IS 'True: Urbano, False: Rural.';
-COMMENT ON COLUMN tb_componente_direccion.codi_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_componente_direccion.codi_estado IS 'Estado del registro: A = Activo (tipo de componente predial habilitado para estructuración catastral), I = Inactivo (componente deshabilitado o no utilizado).';
 COMMENT ON COLUMN tb_componente_direccion.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_componente_direccion.usua_nombre IS 'Nombre o login del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_componente_direccion.create_at IS 'Fecha y hora de creación del registro en el sistema.';
@@ -317,7 +319,7 @@ CREATE TABLE IF NOT EXISTS tb_contenido_componente_direccion (
     dire_id             BIGINT NOT NULL,
     codi_id             BIGINT NOT NULL,
     diti_valor          VARCHAR(100) NOT NULL,
-    diti_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (diti_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
 
     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
     CONSTRAINT fk_tb_contenido_componente_dir 
@@ -337,7 +339,7 @@ COMMENT ON COLUMN tb_contenido_componente_direccion.diti_id IS 'Identificador se
 COMMENT ON COLUMN tb_contenido_componente_direccion.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_contenido_componente_direccion.codi_id IS 'Clave foránea hacia tb_componente_direccion.';
 COMMENT ON COLUMN tb_contenido_componente_direccion.diti_valor IS 'Valor asignado al componente (ej. A, 14, 2, B).';
-COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado del registro: A = Activo (valor del componente predial vigente y asignado al predio), I = Inactivo (valor corregido, anulado o dado de baja).';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
 CREATE INDEX IF NOT EXISTS idx_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
@@ -349,7 +351,7 @@ CREATE TABLE IF NOT EXISTS tb_tipo_modulo (
     timo_id             BIGSERIAL NOT NULL,
     timo_nombre         VARCHAR(100) NOT NULL,
     timo_abreviatura    VARCHAR(20),
-    timo_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (timo_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    timo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (timo_estado IN ('A', 'I')),
     usua_id             BIGINT,
     usua_nombre         VARCHAR(200),
     create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -367,7 +369,7 @@ COMMENT ON TABLE tb_tipo_modulo IS 'Catálogo de tipos de dependencias y subunid
 COMMENT ON COLUMN tb_tipo_modulo.timo_id IS 'Identificador único del tipo de modulo.';
 COMMENT ON COLUMN tb_tipo_modulo.timo_nombre IS 'Nombre del tipo de modulo (DEPARTAMENTO, INTERIOR, STAND, TIENDA, etc.).';
 COMMENT ON COLUMN tb_tipo_modulo.timo_abreviatura IS 'Abreviatura estandarizada (DPTO., INT., STD., TDA., OF.).';
-COMMENT ON COLUMN tb_tipo_modulo.timo_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_tipo_modulo.timo_estado IS 'Estado del registro: A = Activo (tipo de módulo o dependencia vigente y habilitada), I = Inactivo (tipo deshabilitado o en desuso).';
 COMMENT ON COLUMN tb_tipo_modulo.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_tipo_modulo.usua_nombre IS 'Nombre o login del usuario responsable de la operación.';
 COMMENT ON COLUMN tb_tipo_modulo.create_at IS 'Fecha y hora de creación del registro en el sistema.';
@@ -385,7 +387,7 @@ CREATE TABLE IF NOT EXISTS tb_direccion_tipo_modulo (
     dire_id             BIGINT NOT NULL,
     timo_id             BIGINT NOT NULL,
     ditm_nombre         VARCHAR(100) NOT NULL,
-    ditm_estado         VARCHAR(3) NOT NULL DEFAULT 'ACT' CHECK (ditm_estado IN ('A', 'I', 'E', 'ACT', 'INA', 'ELI')),
+    ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
 
     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (ditm_id),
     CONSTRAINT fk_tb_direccion_modulo_dir 
@@ -405,7 +407,7 @@ COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_id IS 'Identificador único de l
 COMMENT ON COLUMN tb_direccion_tipo_modulo.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.timo_id IS 'Clave foránea hacia tb_tipo_modulo.';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_nombre IS 'Identificador o número del módulo (ej. 402, 12, A-3).';
-COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_estado IS 'Estado: ACT (Activo), INA (Inactivo), ELI (Eliminado).';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_estado IS 'Estado del registro: A = Activo (módulo inmobiliario específico asociado y vigente), I = Inactivo (módulo deshabilitado o dado de baja).';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON tb_direccion_tipo_modulo (dire_id, timo_id, ditm_nombre);
 

@@ -163,37 +163,37 @@ class CatalogManager:
     def get_default_componentes_tuples(cls) -> List[Tuple[int, str, str, str]]:
         """Retorna [(codi_id, codi_nombre, codi_abreviatura, codi_estado), ...] para tb_componente_direccion."""
         return [
-            (1, "MANZANA", "MZ", "ACT"),
-            (2, "LOTE", "LT", "ACT"),
-            (3, "SUBLOTE", "SLT", "ACT"),
-            (4, "PISO", "PIS", "ACT"),
-            (5, "BLOCK", "BLK", "ACT"),
-            (6, "SECTOR", "SEC", "ACT"),
-            (7, "ETAPA", "ETP", "ACT"),
-            (8, "PREDIO", "PRD", "ACT"),
-            (9, "VALLE", "VAL", "ACT"),
-            (10, "UNIDAD CATASTRAL", "U.C.", "ACT"),
-            (11, "COORDENADA NORTE", "CN", "ACT"),
-            (12, "COORDENADA ESTE", "CE", "ACT"),
+            (1, "MANZANA", "MZ", "A"),
+            (2, "LOTE", "LT", "A"),
+            (3, "SUBLOTE", "SLT", "A"),
+            (4, "PISO", "PIS", "A"),
+            (5, "BLOCK", "BLK", "A"),
+            (6, "SECTOR", "SEC", "A"),
+            (7, "ETAPA", "ETP", "A"),
+            (8, "PREDIO", "PRD", "A"),
+            (9, "VALLE", "VAL", "A"),
+            (10, "UNIDAD CATASTRAL", "U.C.", "A"),
+            (11, "COORDENADA NORTE", "CN", "A"),
+            (12, "COORDENADA ESTE", "CE", "A"),
         ]
 
     @classmethod
     def get_default_tipo_modulo_tuples(cls) -> List[Tuple[int, str, str, str]]:
         """Retorna [(timo_id, timo_nombre, timo_abreviatura, timo_estado), ...] para tb_tipo_modulo."""
         return [
-            (1, "INTERIOR", "INT", "ACT"),
-            (2, "TIENDA", "TDA", "ACT"),
-            (3, "DEPARTAMENTO", "DPTO", "ACT"),
-            (4, "STAND", "STD", "ACT"),
-            (5, "OFICINA", "OF", "ACT"),
-            (6, "PUESTO", "PTO", "ACT"),
-            (7, "KIOSKO", "KSK", "ACT"),
-            (8, "DEPOSITO", "DEP", "ACT"),
-            (9, "ALMACEN", "ALM", "ACT"),
-            (10, "PUERTA", "PTA", "ACT"),
-            (11, "BLOCK", "BLK", "ACT"),
-            (12, "LOCAL", "LOC", "ACT"),
-            (13, "COCHERA", "CCH", "ACT"),
+            (1, "INTERIOR", "INT", "A"),
+            (2, "TIENDA", "TDA", "A"),
+            (3, "DEPARTAMENTO", "DPTO", "A"),
+            (4, "STAND", "STD", "A"),
+            (5, "OFICINA", "OF", "A"),
+            (6, "PUESTO", "PTO", "A"),
+            (7, "KIOSKO", "KSK", "A"),
+            (8, "DEPOSITO", "DEP", "A"),
+            (9, "ALMACEN", "ALM", "A"),
+            (10, "PUERTA", "PTA", "A"),
+            (11, "BLOCK", "BLK", "A"),
+            (12, "LOCAL", "LOC", "A"),
+            (13, "COCHERA", "CCH", "A"),
         ]
 
     CITY_DISTRICT_STOPWORDS: Set[str] = {

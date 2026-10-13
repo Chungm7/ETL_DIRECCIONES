@@ -51,35 +51,36 @@ erDiagram
         bigint tivi_id PK "Identificador único (1..12)"
         varchar tivi_nombre UK "Nombre oficial (AVENIDA, CALLE, etc.)"
         varchar tivi_abreviatura "Abreviatura oficial (AV., CA., JR.)"
-        varchar tivi_estado "Estado (ACT)"
+        varchar tivi_estado "Estado (A/I)"
     }
 
     tb_via {
         bigint via_id PK "ID único de vía oficial (1..2935)"
         bigint tivi_id FK "FK hacia tb_tipo_via"
         varchar via_nombre "Nombre de vía física (BALTA, SAN JOSE)"
-        varchar via_estado "Estado (ACT)"
+        varchar via_estado "Estado (A/I)"
     }
 
     tb_tipo_zona {
         bigint tizo_id PK "Identificador único (1..28 oficiales)"
         varchar tizo_nombre UK "Nombre oficial (URBANIZACION, P.J., etc.)"
         varchar tizo_abreviatura "Abreviatura oficial (URB., P.J., etc.)"
-        varchar tizo_estado "Estado (ACT)"
+        varchar tizo_estado "Estado (A/I)"
     }
 
     tb_zona {
         bigint zona_id PK "ID único de zona física (1..460)"
         bigint tizo_id FK "FK hacia tb_tipo_zona"
         varchar zona_nombre "Nombre oficial (SANTA VICTORIA, 9 DE OCTUBRE)"
-        varchar zona_estado "Estado (ACT)"
+        varchar zona_estado "Estado (A/I)"
     }
 
     tb_direccion {
         bigint dire_id PK "Identificador único de la dirección normalizada"
         bigint zona_id FK "FK hacia tb_zona (NULL si predio rural o sin zona)"
         varchar dire_referencia "Hitos espaciales y comerciales (Mall, Parque)"
-        varchar dire_estado "Estado (ACT)"
+        varchar dire_estado "Estado (A/I)"
+        varchar dire_columna "Columna de origen (emp_direccion, etc.)"
     }
 
     tb_direccion_via {
@@ -87,34 +88,34 @@ erDiagram
         bigint via_id PK,FK "FK hacia tb_via"
         varchar divi_numero "Número municipal o S/N (ej. 102, 801, S/N)"
         int divi_orden "1=Principal, 2=Intersección/Esquina/Cruce"
-        varchar divi_estado "Estado (ACT)"
+        varchar divi_estado "Estado (A/I)"
     }
 
     tb_componente_direccion {
         bigint codi_id PK "Identificador de componente catastral"
         varchar codi_nombre "MANZANA, LOTE, SUBLOTE, PISO, PREDIO, etc."
         boolean codi_es_urbano "TRUE = Urbano | FALSE = Rural"
-        varchar codi_estado "Estado (ACT)"
+        varchar codi_estado "Estado (A/I)"
     }
 
     tb_contenido_componente_direccion {
         bigint dire_id PK,FK "FK hacia tb_direccion"
         bigint codi_id PK,FK "FK hacia tb_componente_direccion"
         varchar diti_nombre "Valor del componente (ej. A, 14, 2, SECTOR 3)"
-        varchar diti_estado "Estado (ACT)"
+        varchar diti_estado "Estado (A/I)"
     }
 
     tb_tipo_modulo {
         bigint timo_id PK "Identificador de tipo de dependencia"
         varchar timo_nombre "INTERIOR, DPTO, STAND, PUERTA, BLOCK, etc."
-        varchar timo_estado "Estado (ACT)"
+        varchar timo_estado "Estado (A/I)"
     }
 
     tb_direccion_tipo_modulo {
         bigint dire_id PK,FK "FK hacia tb_direccion"
         bigint timo_id PK,FK "FK hacia tb_tipo_modulo"
         varchar ditm_nombre "Detalle del módulo (ej. 102, B, 14, STAND 4)"
-        varchar ditm_estado "Estado (ACT)"
+        varchar ditm_estado "Estado (A/I)"
     }
 
     tb_xxx {
@@ -138,35 +139,35 @@ Catálogo institucional que categoriza las arterias viales urbanas y periurbanas
 - **`tivi_id`** (`BIGSERIAL`, PK): Identificador único (1..12).
 - **`tivi_nombre`** (`VARCHAR(50)`, UNIQUE, NOT NULL): Nombre del tipo de arteria (`AVENIDA`, `CALLE`, `JIRON`, `PASAJE`, `PROLONGACION`, `CARRETERA`, `MALECON`, `ALAMEDA`, etc.).
 - **`tivi_abreviatura`** (`VARCHAR(10)`, NOT NULL): Abreviatura oficial (`AV.`, `CA.`, `JR.`, `PJ.`, `PR.`, `CT.`, etc.).
-- **`tivi_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`tivi_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 2. `tb_via`
 Catálogo maestro de vías públicas físicas codificadas de Chiclayo (2,935 vías).
 - **`via_id`** (`BIGSERIAL`, PK): Identificador de la vía física oficial.
 - **`tivi_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_tipo_via.tivi_id`.
 - **`via_nombre`** (`VARCHAR(255)`, NOT NULL): Denominación oficial de la vía (ej. `JOSE BALTA`, `LUIS GONZALES`, `PEDRO RUIZ GALLO`).
-- **`via_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`via_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 3. `tb_tipo_zona`
 Catálogo institucional cerrado de habilitaciones urbanas de Chiclayo (**estrictamente 28 tipos oficiales**).
 - **`tizo_id`** (`BIGSERIAL`, PK): Identificador único (1..28).
 - **`tizo_nombre`** (`VARCHAR(100)`, UNIQUE, NOT NULL): Denominación (`URBANIZACION`, `PUEBLO JOVEN`, `ASENTAMIENTO HUMANO`, `UNIDAD VECINAL`, `CONJ. HABITACIONAL`, `UPIS`, etc.).
 - **`tizo_abreviatura`** (`VARCHAR(10)`, NOT NULL): Abreviatura (`URB.`, `P.J.`, `A.H.`, `U.V.`, `C.H.`, `UPIS`, etc.).
-- **`tizo_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`tizo_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 4. `tb_zona`
 Catálogo maestro de habilitaciones urbanas, pueblos jóvenes y sectores físicos de Chiclayo (460 zonas).
 - **`zona_id`** (`BIGSERIAL`, PK): Identificador de la zona oficial.
 - **`tizo_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_tipo_zona.tizo_id`.
 - **`zona_nombre`** (`VARCHAR(255)`, NOT NULL): Nombre oficial de la habilitación (ej. `SANTA VICTORIA`, `9 DE OCTUBRE`, `DIEGO FERRE`).
-- **`zona_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`zona_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 5. `tb_direccion`
 Entidad central que consolida cada dirección normalizada y validada.
 - **`dire_id`** (`BIGSERIAL`, PK): Identificador único de la dirección física normalizada.
 - **`zona_id`** (`BIGINT`, FK, NULLABLE): Clave foránea a `tb_zona.zona_id`. Nulo si no posee zona o es rural.
 - **`dire_referencia`** (`VARCHAR(500)`, NULLABLE): Hitos espaciales y comerciales exclusivos de orientación (ej. `FRENTE A REAL PLAZA`, `A ESPALDAS DEL PARQUE PRINCIPAL`).
-- **`dire_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`dire_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 6. `tb_direccion_via`
 Tabla intermedia muchos a muchos que modela arterias viales, esquinas e intersecciones.
@@ -174,34 +175,34 @@ Tabla intermedia muchos a muchos que modela arterias viales, esquinas e intersec
 - **`via_id`** (`BIGINT`, PK, FK): Referencia a `tb_via.via_id`.
 - **`divi_numero`** (`VARCHAR(20)`, NULLABLE): Numeración municipal o `S/N` (ej. `102`, `801`, `S/N`).
 - **`divi_orden`** (`INT`, DEFAULT `1`): Orden de la arteria (`1` = Vía principal, `2` = Vía de intersección/esquina transversal).
-- **`divi_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`divi_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 7. `tb_componente_direccion`
 Catálogo de componentes catastrales urbanos y rurales.
 - **`codi_id`** (`BIGSERIAL`, PK): Identificador del componente.
 - **`codi_nombre`** (`VARCHAR(100)`, NOT NULL): Denominación (`MANZANA`, `LOTE`, `SUBLOTE`, `PISO`, `PREDIO`, `VALLE`, `SECTOR`, `UNIDAD CATASTRAL`, `COORDENADA NORTE`, `COORDENADA ESTE`).
 - **`codi_es_urbano`** (`BOOLEAN`, DEFAULT `TRUE`): Indicador de ámbito (`TRUE` para urbano, `FALSE` para rural/catastral extenso).
-- **`codi_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`codi_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 8. `tb_contenido_componente_direccion`
 Detalle de componentes catastrales asignados a cada dirección.
 - **`dire_id`** (`BIGINT`, PK, FK): Referencia a `tb_direccion.dire_id`.
 - **`codi_id`** (`BIGINT`, PK, FK): Referencia a `tb_componente_direccion.codi_id`.
 - **`diti_nombre`** (`VARCHAR(100)`, NULLABLE): Valor asignado (ej. `A`, `14`, `3`, `VALLE REQUE`).
-- **`diti_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`diti_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 9. `tb_tipo_modulo`
 Catálogo de dependencias habitacionales, comerciales e interiores.
 - **`timo_id`** (`BIGSERIAL`, PK): Identificador de módulo.
 - **`timo_nombre`** (`VARCHAR(100)`, NOT NULL): Denominación (`INTERIOR`, `DEPARTAMENTO`, `PUERTA`, `STAND`, `TIENDA`, `OFICINA`, `BLOCK`, `PUESTO`, `LOCAL`, `COCHERA`).
-- **`timo_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`timo_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 10. `tb_direccion_tipo_modulo`
 Detalle de dependencias y módulos interiores asignados a cada dirección.
 - **`dire_id`** (`BIGINT`, PK, FK): Referencia a `tb_direccion.dire_id`.
 - **`timo_id`** (`BIGINT`, PK, FK): Referencia a `tb_tipo_modulo.timo_id`.
 - **`ditm_nombre`** (`VARCHAR(100)`, NULLABLE): Valor o código interior (ej. `102`, `B`, `STAND 4`, `OF 201`).
-- **`ditm_estado`** (`VARCHAR(3)`, NOT NULL, DEFAULT `'ACT'`): Estado del registro.
+- **`ditm_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
 
 ### 11. `tb_xxx` (Arquetipo de Referencia / Tabla de Negocio Emisora)
 Representa cualquier tabla origen existente en los sistemas emisores de la MPCH (ej. `direcciones_actual`, `licencias_funcionamiento`, `catastro_predial`) que almacena la dirección original y recibe las columnas de vinculación normalizada (`dire_id`, `es_procesado`, `observacion_ia`).
@@ -287,13 +288,12 @@ SELECT
     ) AS modulos
 FROM public.tb_direccion d
 LEFT JOIN public.tb_zona z ON d.zona_id = z.zona_id
-LEFT JOIN public.tb_tipo_zona tz ON z.tizo_id = tz.tizo_id
-LEFT JOIN public.tb_direccion_via dv ON d.dire_id = dv.dire_id AND dv.divi_estado = 'ACT'
+LEFT JOIN public.tb_direccion_via dv ON d.dire_id = dv.dire_id AND dv.divi_estado = 'A'
 LEFT JOIN public.tb_via v ON dv.via_id = v.via_id
 LEFT JOIN public.tb_tipo_via tv ON v.tivi_id = tv.tivi_id
-LEFT JOIN public.tb_contenido_componente_direccion ccd ON d.dire_id = ccd.dire_id AND ccd.diti_estado = 'ACT'
+LEFT JOIN public.tb_contenido_componente_direccion ccd ON d.dire_id = ccd.dire_id AND ccd.diti_estado = 'A'
 LEFT JOIN public.tb_componente_direccion cd ON ccd.codi_id = cd.codi_id
-LEFT JOIN public.tb_direccion_tipo_modulo dtm ON d.dire_id = dtm.dire_id AND dtm.ditm_estado = 'ACT'
+LEFT JOIN public.tb_direccion_tipo_modulo dtm ON d.dire_id = dtm.dire_id AND dtm.ditm_estado = 'A'
 LEFT JOIN public.tb_tipo_modulo tm ON dtm.timo_id = tm.timo_id
 GROUP BY d.dire_id, d.dire_referencia, d.dire_estado, z.zona_id, z.zona_nombre, tz.tizo_id, tz.tizo_nombre, tz.tizo_abreviatura;
 ```

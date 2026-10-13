@@ -242,6 +242,22 @@ class ETLSettings(BaseSettings):
         description="Si es True, exige que Ollama esté operativo y detiene la ejecución si falla",
     )
 
+    filter_high_complexity: bool = Field(
+        default=True,
+        alias="ETL_FILTER_HIGH_COMPLEXITY",
+        description="Si es True, deriva direcciones sobrecargadas o con alto riesgo de error a Observadas (FALSE)",
+    )
+    complexity_threshold: float = Field(
+        default=65.0,
+        alias="ETL_COMPLEXITY_THRESHOLD",
+        description="Umbral de complejidad y riesgo (0 a 100) para derivar a Observadas",
+    )
+    max_address_length: int = Field(
+        default=110,
+        alias="ETL_MAX_ADDRESS_LENGTH",
+        description="Longitud máxima de caracteres permitida antes de penalizar por sobrecarga",
+    )
+
     path_codificador_vias: str = Field(
         default="docs/cod_vias_y_habilitaciones_urbanas/CODIFICADOR DE VIAS - CHICLAYO _ FINAL 26-02-2024 (1).xlsx",
         alias="PATH_CODIFICADOR_VIAS",

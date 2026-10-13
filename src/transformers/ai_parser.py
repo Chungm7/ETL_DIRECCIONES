@@ -11,6 +11,8 @@ from src.services.ollama_service import OllamaService
 from src.transformers.catalog_matcher import CatalogMatcher
 from src.transformers.text_cleaner import TextCleaner
 from src.catalogs.catalog_manager import CatalogManager
+from src.transformers.complexity_evaluator import AddressComplexityEvaluator
+from src.config.settings import get_settings
 
 logger = logging.getLogger("etl_mpch.ai_parser")
 
@@ -18,8 +20,30 @@ logger = logging.getLogger("etl_mpch.ai_parser")
 class AIAddressParser:
     """Utiliza Ollama para interpretar semánticamente la dirección cruda con respaldo heurístico."""
 
-    def __init__(self, ollama_service: Optional[OllamaService] = None):
+    def __init__(
+        self,
+        ollama_service: Optional[OllamaService] = None,
+        filter_high_complexity: Optional[bool] = None,
+        complexity_threshold: Optional[float] = None,
+        max_address_length: Optional[int] = None,
+    ):
+        settings = get_settings().etl
         self.ollama = ollama_service or OllamaService()
+        self.filter_high_complexity = (
+            filter_high_complexity
+            if filter_high_complexity is not None
+            else settings.filter_high_complexity
+        )
+        self.complexity_threshold = (
+            complexity_threshold
+            if complexity_threshold is not None
+            else settings.complexity_threshold
+        )
+        self.max_address_length = (
+            max_address_length
+            if max_address_length is not None
+            else settings.max_address_length
+        )
 
     def parse(self, record: DireccionOrigen) -> DireccionDestino:
         """Invoca al modelo local de Ollama para desglosar la dirección y aplica correcciones."""
@@ -37,6 +61,43 @@ class AIAddressParser:
             )
 
         raw_text = TextCleaner.sanitize(record.emp_direccion or "")
+
+        # 0. Evaluación de Alta Complejidad y Riesgo Catastral
+        if self.filter_high_complexity:
+            c_result = AddressComplexityEvaluator.evaluate(
+                raw_text,
+                threshold=self.complexity_threshold,
+                max_length=self.max_address_length,
+            )
+            if c_result.is_too_complex:
+                logger.info(
+                    "Dirección %d catalogada como ALTA COMPLEJIDAD (Score %.1f, Triggers: %s). Derivando a OBSERVADO (FALSE)",
+                    record.id_licencia,
+                    c_result.score,
+                    ", ".join(c_result.triggers or ["UMBRAL_EXCEDIDO"]),
+                )
+                return DireccionDestino(
+                    id_licencia=record.id_licencia,
+                    dire_id=record.dire_id,
+                    dire_esquema=record.dire_esquema,
+                    dire_tabla=record.dire_tabla,
+                    dire_tabla_id=record.dire_tabla_id,
+                    dire_valor_origen=record.dire_valor_origen,
+                    zona_id=None,
+                    dire_referencia=None,
+                    vias=[],
+                    componentes=[],
+                    modulos=[],
+                    manzana=None,
+                    lote=None,
+                    slote=None,
+                    piso=None,
+                    block=None,
+                    referencia=None,
+                    es_procesado=False,
+                    observacion=None,
+                    metodo_normalizacion="No normalizado (Alta Complejidad - Requiere Intervención Humana)",
+                )
 
         # 1. Inferencia semántica con Ollama
         extraction: Optional[OllamaAddressExtraction] = self.ollama.parse_address_with_ai(raw_text)

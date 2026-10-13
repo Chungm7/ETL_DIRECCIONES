@@ -5,13 +5,13 @@
   "max_records": null,
   "num_workers": 2,
   "batch_size": 50,
-  "target_schema": "public",
-  "target_table": "tb_direccion",
+  "target_schema": "sc_migracion_direcciones",
+  "target_table": "direcciones_licencias",
   "source_mode": "central_tb_direccion",
   "filter_mode": "pending",
   "require_ai": true,
-  "last_run_at": null,
-  "last_run_status": null,
-  "last_run_message": null,
+  "last_run_at": "2026-10-13T13:00:07.336072",
+  "last_run_status": "RUNNING",
+  "last_run_message": "Disparo forzado/manual de prueba iniciado.",
   "next_run_at": null
 }

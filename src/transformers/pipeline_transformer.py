@@ -20,10 +20,15 @@ class PipelineTransformer(BaseTransformer):
         self,
         ai_parser: Optional[AIAddressParser] = None,
         use_ai: Optional[bool] = None,
+        filter_high_complexity: Optional[bool] = None,
+        complexity_threshold: Optional[float] = None,
     ):
         settings = get_settings()
         self.use_ai = use_ai if use_ai is not None else settings.etl.use_ai_parser
-        self.ai_parser = ai_parser or AIAddressParser()
+        self.ai_parser = ai_parser or AIAddressParser(
+            filter_high_complexity=filter_high_complexity,
+            complexity_threshold=complexity_threshold,
+        )
 
     def transform_record(self, record: DireccionOrigen) -> DireccionDestino:
         """Paso a paso de la transformación de un registro individual:

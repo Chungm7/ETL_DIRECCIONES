@@ -144,7 +144,7 @@ class DatabaseLoader(BaseLoader):
             with self.db.get_session() as session:
                 for rec in records:
                     dire_id = rec.dire_id or rec.id_licencia
-                    clean_estado = "A" if (rec.dire_estado in ("A", "ACT") or not rec.dire_estado) else str(rec.dire_estado)[:3]
+                    clean_estado = "A" if (rec.dire_estado in ("A", "ACT") or not rec.dire_estado) else ("I" if rec.dire_estado in ("I", "INA") else "A")
 
                     if rec.es_procesado:
                         # 1. Actualizar tb_direccion como normalizado exitoso
@@ -159,6 +159,12 @@ class DatabaseLoader(BaseLoader):
                                         update_at = CURRENT_TIMESTAMP
                                     WHERE dire_id = :dire_id;
                                 """), {
+                                    "zona_id": rec.zona_id,
+                                    "dire_referencia": rec.dire_referencia,
+                                    "dire_estado": clean_estado,
+                                    "dire_id": dire_id,
+                                    "update_at": None,
+                                } if False else {
                                     "zona_id": rec.zona_id,
                                     "dire_referencia": rec.dire_referencia,
                                     "dire_estado": clean_estado,
@@ -206,7 +212,7 @@ class DatabaseLoader(BaseLoader):
                                         "divi_cuadra": str(v.get("divi_cuadra") or "").strip() or None,
                                         "divi_orden": via_ord,
                                         "divi_es_principal": (via_ord == 1 or idx == 1),
-                                        "divi_estado": "ACT",
+                                        "divi_estado": "A",
                                     }
                                     try:
                                         with session.begin_nested():
@@ -227,7 +233,7 @@ class DatabaseLoader(BaseLoader):
                                                     "dire_id": dire_id,
                                                     "via_id": via_id,
                                                     "divi_numero": str(v.get("divi_numero") or "").strip() or None,
-                                                    "divi_estado": "ACT",
+                                                    "divi_estado": "A",
                                                 })
                                         except Exception as ex_fb:
                                              logger.debug("Aviso al insertar vía con fallback en central: %s", ex_fb)
@@ -255,7 +261,7 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "codi_id": codi_id,
                                                 "diti_valor": clean_val,
-                                                "diti_estado": "ACT",
+                                                "diti_estado": "A",
                                             })
                                     except Exception:
                                         # Fallback legacy si la columna aún se llama diti_nombre
@@ -273,10 +279,10 @@ class DatabaseLoader(BaseLoader):
                                                     "dire_id": dire_id,
                                                     "codi_id": codi_id,
                                                     "diti_nombre": clean_val,
-                                                    "diti_estado": "ACT",
+                                                    "diti_estado": "A",
                                                 })
                                         except Exception as ex_cfb:
-                                            logger.debug("Aviso al insertar componente con fallback en central: %s", ex_cfb)
+                                             logger.debug("Aviso al insertar componente con fallback en central: %s", ex_cfb)
 
                         # 4. Insertar módulos inmobiliarios
                         if rec.modulos:
@@ -300,7 +306,7 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "timo_id": timo_id,
                                                 "ditm_nombre": clean_ditm,
-                                                "ditm_estado": "ACT",
+                                                "ditm_estado": "A",
                                             })
                                     except Exception as ex_mod:
                                         err_str = str(ex_mod)
@@ -317,7 +323,7 @@ class DatabaseLoader(BaseLoader):
                                                         "dire_id": dire_id,
                                                         "timo_id": timo_id,
                                                         "ditm_nombre": clean_ditm,
-                                                        "ditm_estado": "ACT",
+                                                        "ditm_estado": "A",
                                                     })
                                             except Exception as ex_mfb:
                                                 logger.debug("Aviso al reintentar inserción de modulo en central: %s", ex_mfb)
@@ -371,7 +377,7 @@ class DatabaseLoader(BaseLoader):
                                 :zona_id, :dire_referencia, :dire_estado
                             ) RETURNING dire_id;
                         """)
-                        clean_estado = "A" if (rec.dire_estado in ("A", "ACT") or not rec.dire_estado) else str(rec.dire_estado)[:3]
+                        clean_estado = "A" if (rec.dire_estado in ("A", "ACT") or not rec.dire_estado) else ("I" if rec.dire_estado in ("I", "INA") else "A")
                         dire_id = session.execute(ins_dir_sql, {
                             "zona_id": rec.zona_id,
                             "dire_referencia": rec.dire_referencia,
@@ -405,7 +411,7 @@ class DatabaseLoader(BaseLoader):
                                         "divi_cuadra": str(v.get("divi_cuadra") or "").strip() or None,
                                         "divi_orden": via_ord,
                                         "divi_es_principal": (via_ord == 1 or idx == 1),
-                                        "divi_estado": "ACT",
+                                        "divi_estado": "A",
                                     }
                                     try:
                                         with session.begin_nested():
@@ -427,7 +433,7 @@ class DatabaseLoader(BaseLoader):
                                                     "via_id": via_id,
                                                     "divi_numero": str(v.get("divi_numero") or "").strip() or None,
                                                     "divi_orden": via_ord,
-                                                    "divi_estado": "ACT",
+                                                    "divi_estado": "A",
                                                 })
                                         except Exception as ex_vfb:
                                             logger.debug("Aviso al insertar vía con fallback en _load_v2: %s", ex_vfb)
@@ -455,7 +461,7 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "codi_id": codi_id,
                                                 "diti_valor": clean_val,
-                                                "diti_estado": "ACT",
+                                                "diti_estado": "A",
                                             })
                                     except Exception:
                                         try:
@@ -472,7 +478,7 @@ class DatabaseLoader(BaseLoader):
                                                     "dire_id": dire_id,
                                                     "codi_id": codi_id,
                                                     "diti_nombre": clean_val,
-                                                    "diti_estado": "ACT",
+                                                    "diti_estado": "A",
                                                 })
                                         except Exception as ex_cfb:
                                             logger.debug("Aviso al insertar componente con fallback en _load_v2: %s", ex_cfb)
@@ -499,7 +505,7 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "timo_id": timo_id,
                                                 "ditm_nombre": clean_ditm,
-                                                "ditm_estado": "ACT",
+                                                "ditm_estado": "A",
                                             })
                                     except Exception as ex_mod:
                                         err_str = str(ex_mod)

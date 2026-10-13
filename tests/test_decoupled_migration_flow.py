@@ -33,6 +33,7 @@ class TestDecoupledModels:
             dire_estado="ACT",
             dire_esquema="licencias",
             dire_tabla="tb_licencia",
+            dire_columna="emp_direccion",
             dire_tabla_id=101,
             dire_valor_origen="AV. BALTA 450",
             es_procesado=True,
@@ -40,6 +41,7 @@ class TestDecoupledModels:
         )
         assert destino.dire_esquema == "licencias"
         assert destino.dire_tabla == "tb_licencia"
+        assert destino.dire_columna == "emp_direccion"
         assert destino.dire_tabla_id == 101
         assert destino.dire_valor_origen == "AV. BALTA 450"
         assert destino.es_procesado is True
@@ -53,6 +55,7 @@ class TestDecoupledModels:
             "dire_valor_origen": "CALLE SAN JOSE 120",
             "dire_esquema": "rentas",
             "dire_tabla": "tb_contribuyente",
+            "dire_columna": "contribuyente_dir",
             "dire_es_procesado": None,
         }
         origen = DireccionOrigen.model_validate(raw_row)
@@ -61,6 +64,7 @@ class TestDecoupledModels:
         assert origen.dire_id == 8800
         assert origen.dire_esquema == "rentas"
         assert origen.dire_tabla == "tb_contribuyente"
+        assert origen.dire_columna == "contribuyente_dir"
         assert origen.es_procesado is False  # None mapea a False en boolean flag local
 
 
@@ -86,6 +90,7 @@ class TestDecoupledDatabaseOperations:
                     dire_estado VARCHAR(3) DEFAULT 'ACT',
                     dire_esquema VARCHAR(500),
                     dire_tabla VARCHAR(500),
+                    dire_columna VARCHAR(500),
                     dire_tabla_id INTEGER,
                     dire_valor_origen VARCHAR(500),
                     dire_es_procesado BOOLEAN,
@@ -157,12 +162,13 @@ class TestDecoupledDatabaseOperations:
             assert res["migrated"] == 3
             assert res["total_in_tb_direccion"] == 3
 
-            # Validar que los 3 registros estén en tb_direccion con dire_es_procesado = NULL
+            # Validar que los 3 registros estén en tb_direccion con dire_es_procesado = NULL y dire_columna poblado
             with db_svc.get_session() as session:
-                dir_rows = session.execute(text("SELECT dire_id, dire_tabla_id, dire_valor_origen, dire_es_procesado FROM tb_direccion")).fetchall()
+                dir_rows = session.execute(text("SELECT dire_id, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_columna FROM tb_direccion")).fetchall()
                 assert len(dir_rows) == 3
                 for row in dir_rows:
                     assert row[3] is None  # dire_es_procesado is NULL
+                    assert row[4] == "direccion_raw"  # dire_columna registrado correctamente
 
                 # Validar que test_source conserve sus datos sin columnas impuestas
                 src_rows = session.execute(text("SELECT id_registro, direccion_raw FROM test_source")).fetchall()
@@ -548,7 +554,7 @@ class TestDecoupledDatabaseOperations:
         with svc.get_session() as session:
             session.execute(text("""
                 INSERT INTO tb_direccion (dire_id, dire_esquema, dire_tabla, dire_tabla_id, dire_valor_origen, dire_es_procesado, dire_estado)
-                VALUES (50, 'licencias', 'tb_licencia', 5050, 'AV. BALTA 550', NULL, 'ACT');
+                VALUES (50, 'licencias', 'tb_licencia', 5050, 'AV. BALTA 550', NULL, 'A');
             """))
 
         loader = DatabaseLoader(
@@ -564,7 +570,7 @@ class TestDecoupledDatabaseOperations:
             dire_id=50,
             zona_id=1,
             dire_referencia="FRENTE A BANCO DE LA NACION",
-            dire_estado="ACT",
+            dire_estado="A",
             es_procesado=True,
             vias=[{"via_id": 1, "divi_numero": "550", "divi_orden": 1}],
         )
@@ -610,7 +616,7 @@ class TestDecoupledDatabaseOperations:
             # Crear una dirección en tb_direccion y asociarla al pasaje duplicado 1269
             session.execute(text("""
                 INSERT OR REPLACE INTO tb_direccion (dire_id, dire_valor_origen, dire_es_procesado, dire_estado)
-                VALUES (1001, 'PSJ. SAN LUCAS 140', 1, 'ACT');
+                VALUES (1001, 'PSJ. SAN LUCAS 140', 1, 'A');
             """))
             session.execute(text("""
                 INSERT OR REPLACE INTO tb_direccion_via (divi_id, dire_id, via_id, divi_numero, divi_orden)
@@ -801,7 +807,7 @@ class TestEnsureCatalogsAuditColumns:
             # Insertar en tb_tipo_modulo sin columnas de auditoría (como hace el seed existente)
             session.execute(text(
                 "INSERT OR IGNORE INTO tb_tipo_modulo (timo_id, timo_nombre, timo_abreviatura, timo_estado) "
-                "VALUES (999, 'TEST_MODULO', 'TEST', 'ACT');"
+                "VALUES (999, 'TEST_MODULO', 'TEST', 'A');"
             ))
             row = session.execute(text(
                 "SELECT timo_id, create_at FROM tb_tipo_modulo WHERE timo_id = 999;"

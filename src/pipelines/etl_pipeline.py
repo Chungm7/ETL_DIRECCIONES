@@ -68,6 +68,8 @@ class ETLPipeline:
         on_progress_update: Optional[Callable[[Any], None]] = None,
         num_workers: Optional[int] = None,
         source_mode: str = "source_table",
+        filter_high_complexity: Optional[bool] = None,
+        complexity_threshold: Optional[float] = None,
     ):
         settings = get_settings()
         self.mode = "in_place"
@@ -86,6 +88,8 @@ class ETLPipeline:
         self._index_lock = threading.Lock()
         self._current_index = 0
         self._environment_prepared = False
+        self.filter_high_complexity = filter_high_complexity
+        self.complexity_threshold = complexity_threshold
 
         # Mapeo dinámico de configuración de base de datos
         db_settings = getattr(self.db, "settings", None) or settings.db
@@ -101,7 +105,10 @@ class ETLPipeline:
         )
 
         # Transformer
-        self.transformer = transformer or PipelineTransformer()
+        self.transformer = transformer or PipelineTransformer(
+            filter_high_complexity=filter_high_complexity,
+            complexity_threshold=complexity_threshold,
+        )
 
         # Loader (persiste sobre tb_direccion central o in-place en la tabla fuente)
         self.loader = loader or DatabaseLoader(

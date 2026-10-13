@@ -27,6 +27,7 @@ class DireccionOrigen(BaseModel):
     )
     dire_esquema: Optional[str] = Field(default=None, description="Esquema de origen registrado en tb_direccion")
     dire_tabla: Optional[str] = Field(default=None, description="Tabla de origen registrada en tb_direccion")
+    dire_columna: Optional[str] = Field(default=None, description="Columna de origen registrada en tb_direccion")
     dire_tabla_id: Optional[int] = Field(default=None, description="PK de la tabla origen registrada en tb_direccion")
     dire_valor_origen: Optional[str] = Field(default=None, description="Texto crudo almacenado en tb_direccion")
     valor_1: Optional[int] = Field(default=None, description="Parámetro referencial de negocio 1 (xxxx_valor_1)")

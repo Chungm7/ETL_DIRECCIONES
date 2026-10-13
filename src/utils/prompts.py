@@ -83,6 +83,10 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
 10. **Principio de Conservadurismo Catastral ("Mínima Incoherencia = Observar"):**
    - Si una dirección presenta dependencias interiores redactadas de forma confusa, ambigua o con marcas comerciales sin identificador unívoco de unidad catastral (ej. Tienda 1, Stand A), reporta la inconsistencia en el campo `observaciones` para que sea evaluada por el Juez Catastral.
 
+11. **Principio de Alta Complejidad y Sobrecarga (Derivación a Intervención Humana):**
+   - Si la dirección es excesivamente compleja, sobrecargada de datos contradictorios (ej. combina una vía actual con un alias de vía histórica 'EX-', tiene 3 o más módulos agrupados en lista o rango, predios rústicos desestructurados con U.C. o cruces hiper-descriptivos confusos), abstente de forzar una normalización dudosa.
+   - En estos casos con alto potencial de error, asigna `confianza: 0.0` y detalla en `observaciones: "ALTA COMPLEJIDAD: Dirección sobrecargada que requiere intervención humana"`. Es preferible derivarla a Observada antes que generar una normalización errónea.
+
 ### Ejemplos de referencia (Few-Shot V2):
 
 Entrada: "Ca. 7 de enero N129"

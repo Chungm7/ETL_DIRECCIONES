@@ -456,6 +456,8 @@ def cmd_run_etl(
     process_all: bool = False,
     reprocess_observed: bool = False,
     force: bool = False,
+    filter_high_complexity: Optional[bool] = None,
+    complexity_threshold: Optional[float] = None,
 ) -> None:
     """Ejecuta el pipeline ETL en su método único In-Place sobre el esquema seleccionado."""
     settings = get_settings()
@@ -484,6 +486,8 @@ def cmd_run_etl(
         table=active_table,
         batch_size=batch_size,
         require_ai=strict_ai,
+        filter_high_complexity=filter_high_complexity,
+        complexity_threshold=complexity_threshold,
     )
     try:
         summary = pipeline.run(max_records=limit, filter_mode=filter_mode, process_all=process_all)
@@ -723,6 +727,25 @@ def main() -> None:
         default=False,
         help="Fuerza el reprocesamiento de todos los registros ignorando el estado previo",
     )
+    run_parser.add_argument(
+        "--filter-complexity",
+        dest="filter_complexity",
+        action="store_true",
+        default=None,
+        help="Deriva direcciones sobrecargadas o complejas a Observadas (por defecto: activo)",
+    )
+    run_parser.add_argument(
+        "--no-filter-complexity",
+        dest="filter_complexity",
+        action="store_false",
+        help="Desactiva el filtro de alta complejidad e intenta normalizar todas las direcciones",
+    )
+    run_parser.add_argument(
+        "--complexity-threshold",
+        type=float,
+        default=None,
+        help="Umbral de complejidad (0 a 100) para derivar a Observadas (por defecto: 65.0)",
+    )
 
     args = parser.parse_args()
 
@@ -765,6 +788,8 @@ def main() -> None:
                 process_all=args.all,
                 reprocess_observed=args.reprocess_observed,
                 force=args.force,
+                filter_high_complexity=getattr(args, "filter_complexity", None),
+                complexity_threshold=getattr(args, "complexity_threshold", None),
             )
         elif args.command == "gui":
             cmd_run_gui(port=args.port, open_browser=not args.no_browser)

@@ -40,6 +40,11 @@ class DireccionDestino(BaseModel):
         max_length=500,
         description="Nombre de la tabla de origen (ej. tb_licencia, tb_contribuyente)",
     )
+    dire_columna: Optional[str] = Field(
+        default=None,
+        max_length=500,
+        description="Nombre de la columna de origen (ej. emp_direccion, direccion)",
+    )
     dire_tabla_id: Optional[int] = Field(
         default=None,
         description="Clave primaria del registro en la tabla de origen",

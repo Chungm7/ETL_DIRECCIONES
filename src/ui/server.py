@@ -407,6 +407,8 @@ class StartPipelineRequest(BaseModel):
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de peticiones concurrentes a Ollama")
     judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
     source_mode: Optional[str] = Field(default="central_tb_direccion", description="Modo de fuente: 'central_tb_direccion' o 'source_table'")
+    filter_high_complexity: Optional[bool] = Field(default=None, description="Deriva direcciones complejas a Observadas")
+    complexity_threshold: Optional[float] = Field(default=None, description="Umbral de complejidad (0 a 100)")
 
 
 @app.get("/", response_class=FileResponse)
@@ -1344,10 +1346,16 @@ def _run_pipeline_worker(req: StartPipelineRequest):
         )
 
         # Construir el transformador con el servicio de IA dinámico
-        custom_ai_parser = AIAddressParser(ollama_service=ollama_svc)
+        custom_ai_parser = AIAddressParser(
+            ollama_service=ollama_svc,
+            filter_high_complexity=req.filter_high_complexity,
+            complexity_threshold=req.complexity_threshold,
+        )
         custom_transformer = PipelineTransformer(
             ai_parser=custom_ai_parser,
             use_ai=req.require_ai,
+            filter_high_complexity=req.filter_high_complexity,
+            complexity_threshold=req.complexity_threshold,
         )
 
         # Construir el cargador con la configuración dinámica de columnas
@@ -1375,6 +1383,8 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             on_record_processed=state.add_record,
             num_workers=workers_count,
             source_mode=source_mode,
+            filter_high_complexity=req.filter_high_complexity,
+            complexity_threshold=req.complexity_threshold,
         )
         state.pipeline = pipeline
 
