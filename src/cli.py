@@ -496,6 +496,7 @@ def cmd_run_etl(
         print("  ✅ Los registros procesados hasta el momento fueron guardados exitosamente en la base de datos.")
         print("  ✅ Sistema cerrado correctamente.\n")
         return
+    total_proc = max(1, summary.processed_records)
     pct_ai = (summary.ai_records / total_proc) * 100
     pct_hybrid = (summary.hybrid_records / total_proc) * 100
     pct_heur = (summary.heuristic_records / total_proc) * 100

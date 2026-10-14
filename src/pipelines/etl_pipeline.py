@@ -22,6 +22,7 @@ except ImportError:
 
 from src.extractors.base_extractor import BaseExtractor
 from src.extractors.db_extractor import DatabaseExtractor
+from src.models.direccion_origen import DireccionOrigen
 from src.transformers.base_transformer import BaseTransformer
 from src.transformers.pipeline_transformer import PipelineTransformer
 from src.transformers.catalog_matcher import CatalogMatcher

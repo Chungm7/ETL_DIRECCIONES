@@ -391,6 +391,12 @@ class DatabaseLoader(BaseLoader):
         """Persistencia relacional V2 atómica en tb_direccion, tb_direccion_via,
         tb_contenido_componente_direccion, tb_direccion_tipo_modulo y actualización en tabla origen."""
         has_dire_id_col = "dire_id" in (self._target_cols or {})
+        is_sqlite = False
+        try:
+            if self.db._engine and hasattr(self.db._engine, "dialect"):
+                is_sqlite = (self.db._engine.dialect.name == "sqlite")
+        except Exception:
+            pass
 
         try:
             with self.db.get_session() as session:

@@ -1,7 +1,7 @@
 """Clase base abstracta para los extractores del proceso ETL."""
 
 from abc import ABC, abstractmethod
-from typing import Generator, List
+from typing import Generator, List, Optional
 
 from src.models.direccion_origen import DireccionOrigen
 
