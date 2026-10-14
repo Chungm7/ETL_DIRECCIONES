@@ -28,7 +28,6 @@ def find_free_port(start_port: int = 8080, max_attempts: int = 20) -> int:
 
 def launch_desktop_window(url: str) -> None:
     """Lanza la URL en modo ventana de aplicación independiente (estilo ejecutable de escritorio)."""
-    # 1. Intento Chrome / Chromium / Brave / Edge (soporta flag --app=URL para modo ventana limpia sin barra de URL)
     app_browsers = [
         "google-chrome",
         "google-chrome-stable",
@@ -36,16 +35,43 @@ def launch_desktop_window(url: str) -> None:
         "chromium-browser",
         "brave-browser",
         "microsoft-edge",
+        "msedge",
+        "chrome",
+        "brave",
     ]
+
+    # Rutas comunes en Windows
+    if sys.platform == "win32":
+        local_app_data = os.environ.get("LOCALAPPDATA", "")
+        program_files = os.environ.get("ProgramFiles", "C:\\Program Files")
+        program_files_x86 = os.environ.get("ProgramFiles(x86)", "C:\\Program Files (x86)")
+        windows_paths = [
+            os.path.join(program_files, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(program_files_x86, "Microsoft", "Edge", "Application", "msedge.exe"),
+            os.path.join(program_files, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(program_files_x86, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(local_app_data, "Google", "Chrome", "Application", "chrome.exe"),
+            os.path.join(local_app_data, "Microsoft", "Edge", "Application", "msedge.exe"),
+        ]
+        app_browsers.extend([p for p in windows_paths if os.path.exists(p)])
+
+    popen_kwargs = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if sys.platform == "win32":
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        popen_kwargs["start_new_session"] = True
+
+    # 1. Intento navegadores Chromium (Chrome / Edge / Brave) en modo --app
     for browser in app_browsers:
-        browser_path = shutil.which(browser)
+        browser_path = browser if os.path.isabs(browser) and os.path.exists(browser) else shutil.which(browser)
         if browser_path:
             try:
                 subprocess.Popen(
                     [browser_path, f"--app={url}", "--new-window", "--window-size=1540,920", "--start-maximized"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    start_new_session=True,
+                    **popen_kwargs,
                 )
                 logger.info("Ventana de aplicación lanzada con %s en modo --app.", browser)
                 return
@@ -53,19 +79,24 @@ def launch_desktop_window(url: str) -> None:
                 logger.debug("No se pudo iniciar %s en modo app: %s", browser, e)
 
     # 2. Intento Firefox en nueva ventana
-    firefox_path = shutil.which("firefox")
-    if firefox_path:
-        try:
-            subprocess.Popen(
-                [firefox_path, "--new-window", url],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True,
-            )
-            logger.info("Ventana de aplicación lanzada con Firefox.")
-            return
-        except Exception as e:
-            logger.debug("No se pudo iniciar Firefox: %s", e)
+    firefox_candidates = ["firefox"]
+    if sys.platform == "win32":
+        ff_win = os.path.join(os.environ.get("ProgramFiles", "C:\\Program Files"), "Mozilla Firefox", "firefox.exe")
+        if os.path.exists(ff_win):
+            firefox_candidates.append(ff_win)
+
+    for ff in firefox_candidates:
+        firefox_path = ff if os.path.isabs(ff) and os.path.exists(ff) else shutil.which(ff)
+        if firefox_path:
+            try:
+                subprocess.Popen(
+                    [firefox_path, "--new-window", url],
+                    **popen_kwargs,
+                )
+                logger.info("Ventana de aplicación lanzada con Firefox.")
+                return
+            except Exception as e:
+                logger.debug("No se pudo iniciar Firefox: %s", e)
 
     # 3. Fallback a navegador por defecto del sistema
     logger.info("Abriendo en navegador predeterminado del sistema...")
