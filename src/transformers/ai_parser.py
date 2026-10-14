@@ -12,6 +12,7 @@ from src.transformers.catalog_matcher import CatalogMatcher
 from src.transformers.text_cleaner import TextCleaner
 from src.catalogs.catalog_manager import CatalogManager
 from src.transformers.complexity_evaluator import AddressComplexityEvaluator
+from src.transformers.normalization_validator import AddressNormalizationValidator
 from src.config.settings import get_settings
 
 logger = logging.getLogger("etl_mpch.ai_parser")
@@ -26,6 +27,7 @@ class AIAddressParser:
         filter_high_complexity: Optional[bool] = None,
         complexity_threshold: Optional[float] = None,
         max_address_length: Optional[int] = None,
+        min_similarity_threshold: Optional[float] = None,
     ):
         settings = get_settings().etl
         self.ollama = ollama_service or OllamaService()
@@ -43,6 +45,11 @@ class AIAddressParser:
             max_address_length
             if max_address_length is not None
             else settings.max_address_length
+        )
+        self.min_similarity_threshold = (
+            min_similarity_threshold
+            if min_similarity_threshold is not None
+            else getattr(settings, "min_similarity_threshold", 0.85)
         )
 
     def parse(self, record: DireccionOrigen) -> DireccionDestino:
@@ -248,14 +255,19 @@ class AIAddressParser:
             # Caso 2: Nombre de calle precedido por la ciudad (ej. "CHICLAYO ALFREDO LAPOINT 882" o "CHICLAYO - LUIS GONZALES 839")
             if not nom_via:
                 match_city = re.search(
-                    r"^(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\s*(?:-\s*)?([A-ZÁÉÍÓÚÑ\s\.\-]+?)\s+(\d+|S/N)\b",
+                    r"^(?:CHICLAYO|LAMBAYEQUE|FERRENAFE|PIMENTEL|LA VICTORIA|JLO)\s*(?:-\s*)?([A-ZÁÉÍÓÚÑ\s\.\-]+?)\s+(\d+|S/N)(?:\s*(?:-|Y|\s)\s*(\d+))?\b",
                     raw_text,
                     re.IGNORECASE,
                 )
                 if match_city:
                     nom_via = match_city.group(1).strip(" ,.-")
                     if not num_via:
-                        num_via = match_city.group(2).strip()
+                        n1 = match_city.group(2).strip()
+                        n2 = match_city.group(3).strip() if match_city.group(3) else None
+                        if n2 and n1.isdigit() and n2.isdigit():
+                            num_via = f"{int(n1)}-{int(n2)}"
+                        else:
+                            num_via = n1
                     if not tipo_via_detectado:
                         tipo_via_detectado = "CALLE"
                     heuristica_aplicada = True
@@ -843,9 +855,12 @@ class AIAddressParser:
                 # NUNCA asignar módulos a slote; limpiar num_via_str para conservar solo la numeración
                 num_via_str = re.sub(re.escape(sub_val), "", num_via_str, flags=re.IGNORECASE).strip(" -/,.")
 
+            # Detectar rango de numeración municipal (ej. '1420-1440', '1420/1440')
+            m_range = re.search(r"^(\d+)\s*[-/]\s*(\d+)$", num_via_str)
+            if m_range:
+                num_via = f"{m_range.group(1).lstrip('0') or '0'}-{m_range.group(2).lstrip('0') or '0'}"
             # Detectar sufijo de letra de puerta (ej. '125-A', '125 A')
-            m_letter = re.search(r"^(\d+)\s*[-/]?\s*([A-Za-z])$", num_via_str)
-            if m_letter:
+            elif (m_letter := re.search(r"^(\d+)\s*[-/]?\s*([A-Za-z])$", num_via_str)):
                 num_via = m_letter.group(1).lstrip("0") or "S/N"
                 letter_val = m_letter.group(2).upper()
                 if not slote:
@@ -1057,15 +1072,17 @@ class AIAddressParser:
                         if has_mod or "PISO" in c_val_str.upper():
                             continue
                         c_val_str = clean_sub
+                    c_ord = getattr(c, "orden", None) or (len(componentes_result) + 1)
                     componentes_result.append({
                         "codi_id": mc[0],
                         "codi_nombre": mc[1],
                         "diti_nombre": c_val_str,
+                        "diti_orden": c_ord,
                     })
         if manzana and not any(cr["codi_nombre"] == "MANZANA" for cr in componentes_result):
-            componentes_result.append({"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": str(manzana).strip()})
+            componentes_result.append({"codi_id": 1, "codi_nombre": "MANZANA", "diti_nombre": str(manzana).strip(), "diti_orden": len(componentes_result) + 1})
         if lote and not any(cr["codi_nombre"] == "LOTE" for cr in componentes_result):
-            componentes_result.append({"codi_id": 2, "codi_nombre": "LOTE", "diti_nombre": str(lote).strip()})
+            componentes_result.append({"codi_id": 2, "codi_nombre": "LOTE", "diti_nombre": str(lote).strip(), "diti_orden": len(componentes_result) + 1})
 
         # Asegurar inclusión de PISO en componentes si fue detectado
         eff_piso = detected_piso or (getattr(extraction, "piso", None) if extraction else None)
@@ -1074,6 +1091,7 @@ class AIAddressParser:
                 "codi_id": 4,
                 "codi_nombre": "PISO",
                 "diti_nombre": str(eff_piso).strip(),
+                "diti_orden": len(componentes_result) + 1,
             })
 
         # Asegurar inclusión de BLOCK en componentes si fue detectado
@@ -1083,6 +1101,7 @@ class AIAddressParser:
                 "codi_id": 11,
                 "codi_nombre": "BLOCK",
                 "diti_nombre": str(eff_block).strip(),
+                "diti_orden": len(componentes_result) + 1,
             })
 
         # Construcción relacional V2 de Módulos (Interiores, Dpto, Puerta, Stand, Block, etc.)
@@ -1109,6 +1128,7 @@ class AIAddressParser:
             for m in extraction.modulos:
                 mm = CatalogMatcher.match_tipo_modulo(m.tipo_modulo)
                 if mm:
+                    m_ord = getattr(m, "orden", None) or (len(modulos_result) + 1)
                     val_str = str(m.valor).strip()
                     # 1. Limpieza de formato de lista o residuos de corchetes / comillas
                     val_str = re.sub(r"^[\[\(]+|[\]\)]+$", "", val_str).strip()
@@ -1156,6 +1176,7 @@ class AIAddressParser:
                                     "timo_id": mm[0],
                                     "timo_nombre": mm[1],
                                     "ditm_nombre": sp,
+                                    "ditm_orden": m_ord,
                                 })
                     else:
                         clean_single = re.sub(r"[\[\]'\" ]", "", val_str).strip(" ,.-")
@@ -1165,6 +1186,7 @@ class AIAddressParser:
                                     "timo_id": mm[0],
                                     "timo_nombre": mm[1],
                                     "ditm_nombre": clean_single,
+                                    "ditm_orden": m_ord,
                                 })
 
         if not modulos_result:
@@ -1217,15 +1239,33 @@ class AIAddressParser:
                             p_clean = p.lstrip("0") if p.isdigit() else p
                             p_clean = p_clean or "0"
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == p_clean for mr in modulos_result):
-                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": p_clean})
+                                modulos_result.append({
+                                    "timo_id": mm[0],
+                                    "timo_nombre": mm[1],
+                                    "ditm_nombre": p_clean,
+                                    "ditm_orden": len(modulos_result) + 1,
+                                })
                                 heuristica_aplicada = True
                     elif parts:
                         clean_v = parts[0].lstrip("0") if parts[0].isdigit() else parts[0]
                         clean_v = clean_v or "0"
                         if clean_v.upper() not in noise_tokens:
                             if not any(mr["timo_id"] == mm[0] and mr["ditm_nombre"] == clean_v for mr in modulos_result):
-                                modulos_result.append({"timo_id": mm[0], "timo_nombre": mm[1], "ditm_nombre": clean_v})
+                                modulos_result.append({
+                                    "timo_id": mm[0],
+                                    "timo_nombre": mm[1],
+                                    "ditm_nombre": clean_v,
+                                    "ditm_orden": len(modulos_result) + 1,
+                                })
                                 heuristica_aplicada = True
+
+        # Asegurar asignación correlativa de diti_orden y ditm_orden
+        for idx, cr in enumerate(componentes_result, start=1):
+            if "diti_orden" not in cr or cr["diti_orden"] is None:
+                cr["diti_orden"] = idx
+        for idx, mr in enumerate(modulos_result, start=1):
+            if "ditm_orden" not in mr or mr["ditm_orden"] is None:
+                mr["ditm_orden"] = idx
 
         # Verificación directa sobre raw_text para capturar módulos ambiguos con marcas comerciales
         if not modulo_ambiguo_detectado:
@@ -1318,7 +1358,16 @@ class AIAddressParser:
             is_module_noise = bool(re.search(r"\b(TIENDA|TDA|STAND|STD|INT(?:ERIOR)?|DPTO|DEP|EDIF|EDIFICIO|XXV|XXVI|PLANTA|PISO|PLAZA)\b", str(nom_zona), re.IGNORECASE))
             is_mall_noise = bool(re.search(r"\b(GRAN\s+PLAZA|REAL\s+PLAZA|AEROPUERTO|MERCADO|MDO|OPEN\s+PLAZA|MALL|GALERIA)\b", str(nom_zona), re.IGNORECASE))
             if is_digit_noise or is_module_noise or is_mall_noise:
-                if is_mall_noise:
+                if is_digit_noise and num_via and "-" not in str(num_via):
+                    try:
+                        clean_second_num = str(int(str(nom_zona).strip()))
+                        if clean_second_num != str(num_via):
+                            num_via = f"{num_via}-{clean_second_num}"
+                            if vias_result and len(vias_result) > 0:
+                                vias_result[0]["divi_numero"] = num_via
+                    except (ValueError, TypeError):
+                        pass
+                elif is_mall_noise:
                     mall_ref = f"C.C. {nom_zona}"
                     clean_referencia = f"{clean_referencia} - {mall_ref}".strip(" -") if clean_referencia else mall_ref
                 nom_zona = None
@@ -1480,7 +1529,7 @@ class AIAddressParser:
                 metodo_normalizacion="No normalizado (Incoherente / Incompleto)",
             )
         else:
-            # Caso exitoso: Asociado formalmente a las tablas maestras oficiales
+            # Caso exitoso preliminar: Asociado formalmente a las tablas maestras oficiales
             if ia_exitosa and heuristica_aplicada:
                 metodo = "Híbrido (IA + Heurística)"
             elif ia_exitosa and not heuristica_aplicada:
@@ -1488,7 +1537,7 @@ class AIAddressParser:
             else:
                 metodo = "Heurístico (Fallback - IA inactiva)"
 
-            return DireccionDestino(
+            candidate_destino = DireccionDestino(
                 id_licencia=record.id_licencia,
                 dire_id=record.dire_id,
                 dire_esquema=record.dire_esquema,
@@ -1515,3 +1564,43 @@ class AIAddressParser:
                 nom_zona=matched_zona["nom_zona"] if matched_zona else None,
                 metodo_normalizacion=metodo,
             )
+
+            # Validación Cruzada Post-Normalización por Similitud de Acierto Estricta (100% Certeza)
+            val_result = AddressNormalizationValidator.validate(
+                raw_text=raw_text,
+                destino=candidate_destino,
+                threshold=self.min_similarity_threshold,
+            )
+
+            if not val_result.is_valid:
+                logger.info(
+                    "Dirección %d vetada en validación post-normalización (Score: %.1f%%, Umbral: %.1f%%). Derivando a OBSERVADO (FALSE): %s",
+                    record.id_licencia,
+                    val_result.score * 100,
+                    self.min_similarity_threshold * 100,
+                    val_result.rejection_reason,
+                )
+                return DireccionDestino(
+                    id_licencia=record.id_licencia,
+                    dire_id=record.dire_id,
+                    dire_esquema=record.dire_esquema,
+                    dire_tabla=record.dire_tabla,
+                    dire_tabla_id=record.dire_tabla_id,
+                    dire_valor_origen=record.dire_valor_origen,
+                    zona_id=None,
+                    dire_referencia=None,
+                    vias=[],
+                    componentes=[],
+                    modulos=[],
+                    manzana=None,
+                    lote=None,
+                    slote=None,
+                    piso=None,
+                    block=None,
+                    referencia=None,
+                    es_procesado=False,
+                    observacion=None,
+                    metodo_normalizacion=f"No normalizado (Similitud insuficiente: {val_result.score * 100:.1f}%)",
+                )
+
+            return candidate_destino

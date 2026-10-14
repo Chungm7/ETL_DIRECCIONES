@@ -839,6 +839,16 @@ class DatabaseService:
         if not SQLALCHEMY_AVAILABLE or not self._engine:
             return False
 
+        is_sqlite = False
+        try:
+            if self._engine and hasattr(self._engine, "dialect"):
+                is_sqlite = (self._engine.dialect.name == "sqlite")
+        except Exception:
+            pass
+
+        if is_sqlite:
+            return True
+
         try:
             with self.get_session() as session:
                 # 1. Comprobar si la tabla existe en el esquema
@@ -1167,6 +1177,7 @@ class DatabaseService:
                 END IF;
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_valor VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_orden INTEGER DEFAULT 1;
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_valor TYPE VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_estado TYPE VARCHAR(1);
@@ -1184,6 +1195,7 @@ class DatabaseService:
             -- tb_direccion_tipo_modulo
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_direccion_tipo_modulo') THEN
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_id BIGSERIAL;
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_orden INTEGER DEFAULT 1;
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(1) DEFAULT 'A';
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_nombre TYPE VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_estado TYPE VARCHAR(1);
@@ -1427,6 +1439,7 @@ class DatabaseService:
                     dire_id             BIGINT NOT NULL,
                     codi_id             BIGINT NOT NULL,
                     diti_valor          VARCHAR(100) NOT NULL,
+                    diti_orden          INTEGER NOT NULL DEFAULT 1,
                     diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
                     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
                     CONSTRAINT fk_tb_contenido_componente_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -1461,6 +1474,7 @@ class DatabaseService:
                     dire_id             BIGINT NOT NULL,
                     timo_id             BIGINT NOT NULL,
                     ditm_nombre         VARCHAR(100) NOT NULL,
+                    ditm_orden          INTEGER NOT NULL DEFAULT 1,
                     ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
                     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre),
                     CONSTRAINT fk_tb_direccion_modulo_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
@@ -1594,6 +1608,7 @@ class DatabaseService:
                     dire_id INTEGER NOT NULL,
                     codi_id INTEGER NOT NULL,
                     diti_valor VARCHAR(100) NOT NULL,
+                    diti_orden INTEGER DEFAULT 1,
                     diti_estado VARCHAR(1) DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
                     UNIQUE (dire_id, codi_id)
                 );
@@ -1620,6 +1635,7 @@ class DatabaseService:
                     dire_id INTEGER NOT NULL,
                     timo_id INTEGER NOT NULL,
                     ditm_nombre VARCHAR(100) NOT NULL,
+                    ditm_orden INTEGER DEFAULT 1,
                     ditm_estado VARCHAR(1) DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
                     UNIQUE (dire_id, timo_id, ditm_nombre)
                 );

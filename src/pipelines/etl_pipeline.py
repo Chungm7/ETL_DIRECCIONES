@@ -70,6 +70,7 @@ class ETLPipeline:
         source_mode: str = "source_table",
         filter_high_complexity: Optional[bool] = None,
         complexity_threshold: Optional[float] = None,
+        min_similarity_threshold: Optional[float] = None,
     ):
         settings = get_settings()
         self.mode = "in_place"
@@ -90,6 +91,7 @@ class ETLPipeline:
         self._environment_prepared = False
         self.filter_high_complexity = filter_high_complexity
         self.complexity_threshold = complexity_threshold
+        self.min_similarity_threshold = min_similarity_threshold
 
         # Mapeo dinámico de configuración de base de datos
         db_settings = getattr(self.db, "settings", None) or settings.db
@@ -108,6 +110,7 @@ class ETLPipeline:
         self.transformer = transformer or PipelineTransformer(
             filter_high_complexity=filter_high_complexity,
             complexity_threshold=complexity_threshold,
+            min_similarity_threshold=min_similarity_threshold,
         )
 
         # Loader (persiste sobre tb_direccion central o in-place en la tabla fuente)

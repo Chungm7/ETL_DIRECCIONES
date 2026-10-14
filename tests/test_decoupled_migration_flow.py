@@ -115,6 +115,7 @@ class TestDecoupledDatabaseOperations:
                     dire_id INTEGER NOT NULL,
                     codi_id INTEGER NOT NULL,
                     diti_nombre VARCHAR(100) NOT NULL,
+                    diti_orden INTEGER DEFAULT 1,
                     diti_estado VARCHAR(3) DEFAULT 'ACT',
                     UNIQUE (dire_id, codi_id)
                 );
@@ -125,6 +126,7 @@ class TestDecoupledDatabaseOperations:
                     dire_id INTEGER NOT NULL,
                     timo_id INTEGER NOT NULL,
                     ditm_nombre VARCHAR(100) NOT NULL,
+                    ditm_orden INTEGER DEFAULT 1,
                     ditm_estado VARCHAR(3) DEFAULT 'ACT',
                     UNIQUE (dire_id, timo_id, ditm_nombre)
                 );

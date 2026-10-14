@@ -325,12 +325,16 @@ def test_generate_json_report_hierarchy(sample_v2_records):
     assert d1["vias"][1]["orden"] == 2
     assert d1["vias"][1]["nombre_via"] == "LUIS GONZALES"
     assert len(d1["componentes"]) == 5
+    assert d1["componentes"][0]["orden"] == 1
+    assert "diti_orden" in d1["componentes"][0]
     assert d1["catastro"]["manzana"] == "B"
     assert d1["catastro"]["piso"] == "3"
     assert d1["piso"] == "3"
     assert len(d1["modulos"]) == 2
     assert d1["modulos"][0]["tipo"] == "DEPARTAMENTO"
     assert d1["modulos"][0]["numero"] == "301"
+    assert d1["modulos"][0]["orden"] == 1
+    assert "ditm_orden" in d1["modulos"][0]
 
     # Retrocompatibilidad
     assert d1["nom_via"] == "SAN JOSE"

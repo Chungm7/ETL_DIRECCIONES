@@ -409,6 +409,7 @@ class StartPipelineRequest(BaseModel):
     source_mode: Optional[str] = Field(default="central_tb_direccion", description="Modo de fuente: 'central_tb_direccion' o 'source_table'")
     filter_high_complexity: Optional[bool] = Field(default=None, description="Deriva direcciones complejas a Observadas")
     complexity_threshold: Optional[float] = Field(default=None, description="Umbral de complejidad (0 a 100)")
+    min_similarity_threshold: Optional[float] = Field(default=None, description="Umbral de similitud mínima (0 a 1) para confirmar normalización exitosa")
 
 
 @app.get("/", response_class=FileResponse)
@@ -1350,12 +1351,14 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             ollama_service=ollama_svc,
             filter_high_complexity=req.filter_high_complexity,
             complexity_threshold=req.complexity_threshold,
+            min_similarity_threshold=req.min_similarity_threshold,
         )
         custom_transformer = PipelineTransformer(
             ai_parser=custom_ai_parser,
             use_ai=req.require_ai,
             filter_high_complexity=req.filter_high_complexity,
             complexity_threshold=req.complexity_threshold,
+            min_similarity_threshold=req.min_similarity_threshold,
         )
 
         # Construir el cargador con la configuración dinámica de columnas
@@ -1385,6 +1388,7 @@ def _run_pipeline_worker(req: StartPipelineRequest):
             source_mode=source_mode,
             filter_high_complexity=req.filter_high_complexity,
             complexity_threshold=req.complexity_threshold,
+            min_similarity_threshold=req.min_similarity_threshold,
         )
         state.pipeline = pipeline
 
@@ -1946,7 +1950,10 @@ def extract_v2_export_row(
     else:
         sl = clean_sl_val
 
-    raw_comps = r.get("componentes") or []
+    raw_comps = sorted(
+        r.get("componentes") or [],
+        key=lambda c: int(c.get("diti_orden") or c.get("orden") or 1)
+    )
     standard_names = {"MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO"}
     for c in raw_comps:
         c_nom = (c.get("codi_nombre") or "").upper().strip()
@@ -2006,7 +2013,10 @@ def extract_v2_export_row(
             row_comp_data[f"Componente_{k}_Tipo"] = ""
 
     # 22-24. Módulos Inmobiliarios (Tipo, Número, Resumen)
-    raw_mods = r.get("modulos") or []
+    raw_mods = sorted(
+        r.get("modulos") or [],
+        key=lambda m: int(m.get("ditm_orden") or m.get("orden") or 1)
+    )
     extracted_mods = []
     if raw_mods:
         for m in raw_mods:
@@ -2286,9 +2296,12 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
 
         # Desglose de Componentes anidados (lista de componentes relacionales tb_contenido_componente_direccion)
         componentes_nested = []
-        raw_comps = r.get("componentes") or []
+        raw_comps = sorted(
+            r.get("componentes") or [],
+            key=lambda c: int(c.get("diti_orden") or c.get("orden") or 1)
+        )
         if raw_comps:
-            for c in raw_comps:
+            for idx, c in enumerate(raw_comps, 1):
                 c_nom = str(c.get("codi_nombre") or c.get("tipo_componente") or c.get("nombre") or "").upper()
                 c_val = str(c.get("diti_nombre") or c.get("valor") or "").strip()
                 if "SUBLOTE" in c_nom:
@@ -2299,6 +2312,7 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
                     ))
                     if has_mod or "PISO" in c_val.upper():
                         continue
+                c_ord = c.get("diti_orden") or c.get("orden") or idx
                 componentes_nested.append({
                     "codi_id": c.get("codi_id") or None,
                     "tipo_componente": c.get("codi_nombre") or None,
@@ -2306,12 +2320,17 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
                     "codi_nombre": c.get("codi_nombre") or None,
                     "diti_nombre": c_val,
                     "valor": c_val,
+                    "diti_orden": int(c_ord),
+                    "orden": int(c_ord),
                 })
         else:
+            comp_idx = 1
             if row_dict["Manzana"]:
-                componentes_nested.append({"codi_id": 1, "tipo_componente": "MANZANA", "nombre": "MANZANA", "codi_nombre": "MANZANA", "valor": row_dict["Manzana"], "diti_nombre": row_dict["Manzana"]})
+                componentes_nested.append({"codi_id": 1, "tipo_componente": "MANZANA", "nombre": "MANZANA", "codi_nombre": "MANZANA", "valor": row_dict["Manzana"], "diti_nombre": row_dict["Manzana"], "diti_orden": comp_idx, "orden": comp_idx})
+                comp_idx += 1
             if row_dict["Lote"]:
-                componentes_nested.append({"codi_id": 2, "tipo_componente": "LOTE", "nombre": "LOTE", "codi_nombre": "LOTE", "valor": row_dict["Lote"], "diti_nombre": row_dict["Lote"]})
+                componentes_nested.append({"codi_id": 2, "tipo_componente": "LOTE", "nombre": "LOTE", "codi_nombre": "LOTE", "valor": row_dict["Lote"], "diti_nombre": row_dict["Lote"], "diti_orden": comp_idx, "orden": comp_idx})
+                comp_idx += 1
             if row_dict["Sublote"]:
                 has_mod = bool(re.search(
                     r"\b(INT(?:ERIOR(?:ES)?)?|DPTO|DEP(?:ARTAMENTO)?|PUERTA|PTA|STAND|STD|TIENDA|TDA|BLOCK|BLQ|OFICINA|OF|PUESTO|PTO|LOCAL|LOC)\b",
@@ -2319,23 +2338,32 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
                     re.IGNORECASE,
                 ))
                 if not has_mod and "PISO" not in row_dict["Sublote"].upper():
-                    componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"]})
+                    componentes_nested.append({"codi_id": 3, "tipo_componente": "SUBLOTE", "nombre": "SUBLOTE", "codi_nombre": "SUBLOTE", "valor": row_dict["Sublote"], "diti_nombre": row_dict["Sublote"], "diti_orden": comp_idx, "orden": comp_idx})
+                    comp_idx += 1
             if row_dict.get("Block"):
-                componentes_nested.append({"codi_id": 11, "tipo_componente": "BLOCK", "nombre": "BLOCK", "codi_nombre": "BLOCK", "valor": row_dict["Block"], "diti_nombre": row_dict["Block"]})
+                componentes_nested.append({"codi_id": 11, "tipo_componente": "BLOCK", "nombre": "BLOCK", "codi_nombre": "BLOCK", "valor": row_dict["Block"], "diti_nombre": row_dict["Block"], "diti_orden": comp_idx, "orden": comp_idx})
+                comp_idx += 1
             if row_dict["Piso"]:
-                componentes_nested.append({"codi_id": 4, "tipo_componente": "PISO", "nombre": "PISO", "codi_nombre": "PISO", "valor": row_dict["Piso"], "diti_nombre": row_dict["Piso"]})
+                componentes_nested.append({"codi_id": 4, "tipo_componente": "PISO", "nombre": "PISO", "codi_nombre": "PISO", "valor": row_dict["Piso"], "diti_nombre": row_dict["Piso"], "diti_orden": comp_idx, "orden": comp_idx})
+                comp_idx += 1
 
         # Desglose de Módulos anidados (lista de módulos relacionales tb_direccion_tipo_modulo)
         modulos_nested = []
-        raw_modulos = r.get("modulos") or []
+        raw_modulos = sorted(
+            r.get("modulos") or [],
+            key=lambda m: int(m.get("ditm_orden") or m.get("orden") or 1)
+        )
         if raw_modulos:
-            for m in raw_modulos:
+            for idx, m in enumerate(raw_modulos, 1):
+                m_ord = m.get("ditm_orden") or m.get("orden") or idx
                 modulos_nested.append({
                     "timo_id": m.get("timo_id") or None,
                     "tipo": m.get("timo_nombre") or None,
                     "timo_nombre": m.get("timo_nombre") or None,
                     "numero": m.get("ditm_nombre") or None,
                     "ditm_nombre": m.get("ditm_nombre") or None,
+                    "ditm_orden": int(m_ord),
+                    "orden": int(m_ord),
                 })
         elif row_dict["Tipo_Modulo"] or row_dict["Numero_Modulo"]:
             modulos_nested.append({
@@ -2344,6 +2372,8 @@ def generate_json_report(records: List[Dict[str, Any]]) -> Any:
                 "timo_nombre": row_dict["Tipo_Modulo"] or None,
                 "numero": row_dict["Numero_Modulo"] or None,
                 "ditm_nombre": row_dict["Numero_Modulo"] or None,
+                "ditm_orden": 1,
+                "orden": 1,
             })
 
         # Zona anidada
@@ -2476,6 +2506,23 @@ def fetch_db_records_for_export(
                     FROM sqlite_master 
                     WHERE type = 'table' AND name = :table;
                 """), {"table": t_name}).scalar())
+
+        def check_column_exists(t_name: str, col_name: str, t_schema: Optional[str] = None) -> bool:
+            t_sch = t_schema if t_schema is not None else schema
+            if is_postgres:
+                return bool(session.execute(sa_text("""
+                    SELECT COUNT(*) 
+                    FROM information_schema.columns 
+                    WHERE table_schema = :schema AND table_name = :table AND column_name = :column;
+                """), {"schema": t_sch, "table": t_name, "column": col_name}).scalar())
+            else:
+                try:
+                    pragma_cols = [
+                        row[1] for row in session.execute(sa_text(f'PRAGMA table_info("{t_name}")')).fetchall()
+                    ]
+                    return col_name in pragma_cols
+                except Exception:
+                    return False
 
         def cat_table_ref(t_name: str) -> str:
             if is_postgres and cat_schema:
@@ -2802,48 +2849,62 @@ def fetch_db_records_for_export(
             # 2. Enriquecer Componentes Catastrales (Mz, Lt, Piso, etc.) usando diti_valor
             comp_by_dire = {}
             if check_table_exists("tb_contenido_componente_direccion", cat_schema) and check_table_exists("tb_componente_direccion", cat_schema):
+                has_diti_orden = check_column_exists("tb_contenido_componente_direccion", "diti_orden", cat_schema)
+                orden_comp_col = "cd.diti_orden" if has_diti_orden else "1 AS diti_orden"
+                order_by_comp = "ORDER BY cd.dire_id, cd.diti_orden ASC, cd.codi_id ASC;" if has_diti_orden else "ORDER BY cd.dire_id, cd.codi_id ASC;"
                 for chunk in chunks:
                     id_list_str = ", ".join(str(did) for did in chunk)
                     cd_sql = f"""
                         SELECT 
                             cd.dire_id, cd.codi_id, cd.diti_valor,
-                            c.codi_nombre, c.codi_es_urbano
+                            c.codi_nombre, c.codi_es_urbano,
+                            {orden_comp_col}
                         FROM {cat_table_ref("tb_contenido_componente_direccion")} cd
                         JOIN {cat_table_ref("tb_componente_direccion")} c ON cd.codi_id = c.codi_id
                         WHERE cd.dire_id IN ({id_list_str})
-                        ORDER BY cd.dire_id, cd.codi_id ASC;
+                        {order_by_comp}
                     """
                     for row in session.execute(sa_text(cd_sql)).fetchall():
                         did = row[0]
+                        c_ord = row[5] if len(row) > 5 and row[5] is not None else 1
                         c_item = {
                             "codi_id": row[1],
                             "diti_valor": row[2] or "",
                             "diti_nombre": row[2] or "",
                             "codi_nombre": row[3] or "",
                             "codi_es_urbano": row[4],
+                            "diti_orden": int(c_ord),
+                            "orden": int(c_ord),
                         }
                         comp_by_dire.setdefault(did, []).append(c_item)
 
             # 3. Enriquecer Módulos Inmobiliarios
             mod_by_dire = {}
             if check_table_exists("tb_direccion_tipo_modulo", cat_schema) and check_table_exists("tb_tipo_modulo", cat_schema):
+                has_ditm_orden = check_column_exists("tb_direccion_tipo_modulo", "ditm_orden", cat_schema)
+                orden_mod_col = "dm.ditm_orden" if has_ditm_orden else "1 AS ditm_orden"
+                order_by_mod = "ORDER BY dm.dire_id, dm.ditm_orden ASC, dm.timo_id ASC;" if has_ditm_orden else "ORDER BY dm.dire_id, dm.timo_id ASC;"
                 for chunk in chunks:
                     id_list_str = ", ".join(str(did) for did in chunk)
                     dm_sql = f"""
                         SELECT 
                             dm.dire_id, dm.timo_id, dm.ditm_nombre,
-                            m.timo_nombre
+                            m.timo_nombre,
+                            {orden_mod_col}
                         FROM {cat_table_ref("tb_direccion_tipo_modulo")} dm
                         JOIN {cat_table_ref("tb_tipo_modulo")} m ON dm.timo_id = m.timo_id
                         WHERE dm.dire_id IN ({id_list_str})
-                        ORDER BY dm.dire_id, dm.timo_id ASC;
+                        {order_by_mod}
                     """
                     for row in session.execute(sa_text(dm_sql)).fetchall():
                         did = row[0]
+                        m_ord = row[4] if len(row) > 4 and row[4] is not None else 1
                         m_item = {
                             "timo_id": row[1],
                             "ditm_nombre": row[2] or "",
                             "timo_nombre": row[3] or "",
+                            "ditm_orden": int(m_ord),
+                            "orden": int(m_ord),
                         }
                         mod_by_dire.setdefault(did, []).append(m_item)
 

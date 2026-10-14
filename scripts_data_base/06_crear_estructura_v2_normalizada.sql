@@ -172,6 +172,7 @@ BEGIN
         END IF;
         ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_id BIGSERIAL;
         ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_valor VARCHAR(100);
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_orden INTEGER DEFAULT 1;
         ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(1) DEFAULT 'A';
         ALTER TABLE tb_contenido_componente_direccion ALTER COLUMN diti_valor TYPE VARCHAR(100);
         ALTER TABLE tb_contenido_componente_direccion ALTER COLUMN diti_estado TYPE VARCHAR(1);
@@ -188,6 +189,7 @@ BEGIN
     -- tb_direccion_tipo_modulo
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_direccion_tipo_modulo') THEN
         ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_id BIGSERIAL;
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_orden INTEGER DEFAULT 1;
         ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(1) DEFAULT 'A';
         ALTER TABLE tb_direccion_tipo_modulo ALTER COLUMN ditm_nombre TYPE VARCHAR(100);
         ALTER TABLE tb_direccion_tipo_modulo ALTER COLUMN ditm_estado TYPE VARCHAR(1);
@@ -467,6 +469,7 @@ CREATE TABLE IF NOT EXISTS tb_contenido_componente_direccion (
     dire_id             BIGINT NOT NULL,
     codi_id             BIGINT NOT NULL,
     diti_valor          VARCHAR(100) NOT NULL,
+    diti_orden          INTEGER NOT NULL DEFAULT 1,
     diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
 
     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
@@ -487,6 +490,7 @@ COMMENT ON COLUMN tb_contenido_componente_direccion.diti_id IS 'Identificador se
 COMMENT ON COLUMN tb_contenido_componente_direccion.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_contenido_componente_direccion.codi_id IS 'Clave foránea hacia tb_componente_direccion.';
 COMMENT ON COLUMN tb_contenido_componente_direccion.diti_valor IS 'Valor asignado al componente (ej. A, 14, 2, B).';
+COMMENT ON COLUMN tb_contenido_componente_direccion.diti_orden IS 'Orden secuencial de aparición o visualización del componente en la dirección (1, 2, ...).';
 COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado del registro: A = Activo (valor del componente predial vigente y asignado al predio), I = Inactivo (valor corregido, anulado o dado de baja).';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
@@ -519,6 +523,7 @@ CREATE TABLE IF NOT EXISTS tb_direccion_tipo_modulo (
     dire_id             BIGINT NOT NULL,
     timo_id             BIGINT NOT NULL,
     ditm_nombre         VARCHAR(100) NOT NULL,
+    ditm_orden          INTEGER NOT NULL DEFAULT 1,
     ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
 
     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (ditm_id),
@@ -539,6 +544,7 @@ COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_id IS 'Identificador único de l
 COMMENT ON COLUMN tb_direccion_tipo_modulo.dire_id IS 'Clave foránea hacia tb_direccion.';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.timo_id IS 'Clave foránea hacia tb_tipo_modulo.';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_nombre IS 'Identificador o número del módulo (ej. 402, 12, A-3).';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_orden IS 'Orden secuencial de aparición o jerarquía del módulo en la dirección (1 = Módulo principal, 2 = Submódulo, etc.).';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_estado IS 'Estado del registro: A = Activo (módulo inmobiliario específico asociado y vigente), I = Inactivo (módulo deshabilitado o dado de baja).';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON tb_direccion_tipo_modulo (dire_id, timo_id, ditm_nombre);
 

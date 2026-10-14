@@ -181,6 +181,7 @@ Table tb_contenido_componente_direccion {
   dire_id bigint [not null, ref: > tb_direccion.dire_id, note: 'FK hacia tb_direccion']
   codi_id bigint [not null, ref: > tb_componente_direccion.codi_id, note: 'FK hacia el tipo de componente']
   diti_valor varchar(100) [not null, note: 'Valor alfanumérico (ej. A, 14, 02, 3, B)']
+  diti_orden int [not null, default: 1, note: 'Orden de aparición o visualización del componente en la dirección']
   diti_estado varchar(1) [not null, default: 'A', note: 'Estado: A = Activo, I = Inactivo']
 
   indexes {
@@ -216,6 +217,7 @@ Table tb_direccion_tipo_modulo {
   dire_id bigint [not null, ref: > tb_direccion.dire_id, note: 'FK hacia tb_direccion']
   timo_id bigint [not null, ref: > tb_tipo_modulo.timo_id, note: 'FK hacia el tipo de módulo']
   ditm_nombre varchar(100) [not null, note: 'Identificador alfanumérico legítimo del módulo (ej. 1A, 204, 1116, B-3)']
+  ditm_orden int [not null, default: 1, note: 'Orden secuencial de aparición o jerarquía del módulo en la dirección']
   ditm_estado varchar(1) [not null, default: 'A', note: 'Estado: A = Activo, I = Inactivo']
 
   indexes {

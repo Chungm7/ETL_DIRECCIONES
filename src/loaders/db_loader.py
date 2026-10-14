@@ -242,17 +242,19 @@ class DatabaseLoader(BaseLoader):
                         if rec.componentes:
                             ins_comp_sql = text(f"""
                                 INSERT INTO {pfx}"tb_contenido_componente_direccion" (
-                                    dire_id, codi_id, diti_valor, diti_estado
+                                    dire_id, codi_id, diti_valor, diti_orden, diti_estado
                                 ) VALUES (
-                                    :dire_id, :codi_id, :diti_valor, :diti_estado
+                                    :dire_id, :codi_id, :diti_valor, :diti_orden, :diti_estado
                                 )
                                 ON CONFLICT (dire_id, codi_id) DO UPDATE SET
                                     diti_valor = EXCLUDED.diti_valor,
+                                    diti_orden = EXCLUDED.diti_orden,
                                     diti_estado = EXCLUDED.diti_estado;
                             """)
-                            for c in rec.componentes:
+                            for idx, c in enumerate(rec.componentes, start=1):
                                 codi_id = c.get("codi_id")
                                 val = c.get("diti_valor") or c.get("diti_nombre")
+                                comp_ord = c.get("diti_orden") or c.get("orden") or idx
                                 if codi_id is not None and val:
                                     clean_val = str(val).strip().upper()
                                     try:
@@ -261,6 +263,7 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "codi_id": codi_id,
                                                 "diti_valor": clean_val,
+                                                "diti_orden": comp_ord,
                                                 "diti_estado": "A",
                                             })
                                     except Exception:
@@ -269,16 +272,18 @@ class DatabaseLoader(BaseLoader):
                                             with session.begin_nested():
                                                 session.execute(text(f"""
                                                     INSERT INTO {pfx}"tb_contenido_componente_direccion" (
-                                                        dire_id, codi_id, diti_nombre, diti_estado
+                                                        dire_id, codi_id, diti_nombre, diti_orden, diti_estado
                                                     ) VALUES (
-                                                        :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                                        :dire_id, :codi_id, :diti_nombre, :diti_orden, :diti_estado
                                                     )
                                                     ON CONFLICT (dire_id, codi_id) DO UPDATE SET
-                                                        diti_nombre = EXCLUDED.diti_nombre;
+                                                        diti_nombre = EXCLUDED.diti_nombre,
+                                                        diti_orden = EXCLUDED.diti_orden;
                                                 """), {
                                                     "dire_id": dire_id,
                                                     "codi_id": codi_id,
                                                     "diti_nombre": clean_val,
+                                                    "diti_orden": comp_ord,
                                                     "diti_estado": "A",
                                                 })
                                         except Exception as ex_cfb:
@@ -288,16 +293,18 @@ class DatabaseLoader(BaseLoader):
                         if rec.modulos:
                             ins_mod_sql = text(f"""
                                 INSERT INTO {pfx}"tb_direccion_tipo_modulo" (
-                                    dire_id, timo_id, ditm_nombre, ditm_estado
+                                    dire_id, timo_id, ditm_nombre, ditm_orden, ditm_estado
                                 ) VALUES (
-                                    :dire_id, :timo_id, :ditm_nombre, :ditm_estado
+                                    :dire_id, :timo_id, :ditm_nombre, :ditm_orden, :ditm_estado
                                 )
                                 ON CONFLICT (dire_id, timo_id, ditm_nombre) DO UPDATE SET
+                                    ditm_orden = EXCLUDED.ditm_orden,
                                     ditm_estado = EXCLUDED.ditm_estado;
                             """)
-                            for m in rec.modulos:
+                            for idx, m in enumerate(rec.modulos, start=1):
                                 timo_id = m.get("timo_id")
                                 ditm_nombre = m.get("ditm_nombre")
+                                mod_ord = m.get("ditm_orden") or m.get("orden") or idx
                                 if timo_id is not None and ditm_nombre:
                                     clean_ditm = str(ditm_nombre).strip().upper()
                                     try:
@@ -306,29 +313,49 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "timo_id": timo_id,
                                                 "ditm_nombre": clean_ditm,
+                                                "ditm_orden": mod_ord,
                                                 "ditm_estado": "A",
                                             })
                                     except Exception as ex_mod:
-                                        err_str = str(ex_mod)
-                                        if "ON CONFLICT" in err_str or "InvalidColumnReference" in err_str:
-                                            logger.warning(
-                                                "Restricción única ausente en %s.tb_direccion_tipo_modulo. Migrando en caliente...",
-                                                self.target_catalog_schema,
+                                        # Fallback si ditm_orden no existe en esquemas previos
+                                        fb_mod_sql = text(f"""
+                                            INSERT INTO {pfx}"tb_direccion_tipo_modulo" (
+                                                dire_id, timo_id, ditm_nombre, ditm_estado
+                                            ) VALUES (
+                                                :dire_id, :timo_id, :ditm_nombre, :ditm_estado
                                             )
-                                            if hasattr(self.db, "ensure_modulo_pk_constraint"):
-                                                self.db.ensure_modulo_pk_constraint(self.target_catalog_schema)
-                                            try:
-                                                with session.begin_nested():
-                                                    session.execute(ins_mod_sql, {
-                                                        "dire_id": dire_id,
-                                                        "timo_id": timo_id,
-                                                        "ditm_nombre": clean_ditm,
-                                                        "ditm_estado": "A",
-                                                    })
-                                            except Exception as ex_mfb:
-                                                logger.debug("Aviso al reintentar inserción de modulo en central: %s", ex_mfb)
-                                        else:
-                                            logger.debug("Aviso al insertar modulo inmobiliario en central: %s", ex_mod)
+                                            ON CONFLICT (dire_id, timo_id, ditm_nombre) DO UPDATE SET
+                                                ditm_estado = EXCLUDED.ditm_estado;
+                                        """)
+                                        try:
+                                            with session.begin_nested():
+                                                session.execute(fb_mod_sql, {
+                                                    "dire_id": dire_id,
+                                                    "timo_id": timo_id,
+                                                    "ditm_nombre": clean_ditm,
+                                                    "ditm_estado": "A",
+                                                })
+                                        except Exception as ex_fb:
+                                            err_str = str(ex_fb)
+                                            if ("ON CONFLICT" in err_str or "InvalidColumnReference" in err_str) and not is_sqlite:
+                                                logger.warning(
+                                                    "Restricción única ausente en %s.tb_direccion_tipo_modulo. Migrando en caliente...",
+                                                    self.target_catalog_schema,
+                                                )
+                                                if hasattr(self.db, "ensure_modulo_pk_constraint"):
+                                                    self.db.ensure_modulo_pk_constraint(self.target_catalog_schema)
+                                                try:
+                                                    with session.begin_nested():
+                                                        session.execute(fb_mod_sql, {
+                                                            "dire_id": dire_id,
+                                                            "timo_id": timo_id,
+                                                            "ditm_nombre": clean_ditm,
+                                                            "ditm_estado": "A",
+                                                        })
+                                                except Exception as ex_mfb:
+                                                    logger.debug("Aviso al reintentar inserción de modulo en central: %s", ex_mfb)
+                                            else:
+                                                logger.debug("Aviso al insertar modulo inmobiliario en central: %s", ex_fb)
                     else:
                         # Rechazado / Incoherente: dire_es_procesado = FALSE, update_at = NOW(), sin componentes
                         try:
@@ -442,17 +469,19 @@ class DatabaseLoader(BaseLoader):
                         if rec.componentes:
                             ins_comp_sql = text(f"""
                                 INSERT INTO "{self.schema}"."tb_contenido_componente_direccion" (
-                                    dire_id, codi_id, diti_valor, diti_estado
+                                    dire_id, codi_id, diti_valor, diti_orden, diti_estado
                                 ) VALUES (
-                                    :dire_id, :codi_id, :diti_valor, :diti_estado
+                                    :dire_id, :codi_id, :diti_valor, :diti_orden, :diti_estado
                                 )
                                 ON CONFLICT (dire_id, codi_id) DO UPDATE SET
                                     diti_valor = EXCLUDED.diti_valor,
+                                    diti_orden = EXCLUDED.diti_orden,
                                     diti_estado = EXCLUDED.diti_estado;
                             """)
-                            for c in rec.componentes:
+                            for idx, c in enumerate(rec.componentes, start=1):
                                 codi_id = c.get("codi_id")
                                 val = c.get("diti_valor") or c.get("diti_nombre")
+                                comp_ord = c.get("diti_orden") or c.get("orden") or idx
                                 if codi_id is not None and val:
                                     clean_val = str(val).strip().upper()
                                     try:
@@ -461,6 +490,7 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "codi_id": codi_id,
                                                 "diti_valor": clean_val,
+                                                "diti_orden": comp_ord,
                                                 "diti_estado": "A",
                                             })
                                     except Exception:
@@ -468,16 +498,18 @@ class DatabaseLoader(BaseLoader):
                                             with session.begin_nested():
                                                 session.execute(text(f"""
                                                     INSERT INTO "{self.schema}"."tb_contenido_componente_direccion" (
-                                                        dire_id, codi_id, diti_nombre, diti_estado
+                                                        dire_id, codi_id, diti_nombre, diti_orden, diti_estado
                                                     ) VALUES (
-                                                        :dire_id, :codi_id, :diti_nombre, :diti_estado
+                                                        :dire_id, :codi_id, :diti_nombre, :diti_orden, :diti_estado
                                                     )
                                                     ON CONFLICT (dire_id, codi_id) DO UPDATE SET
-                                                        diti_nombre = EXCLUDED.diti_nombre;
+                                                        diti_nombre = EXCLUDED.diti_nombre,
+                                                        diti_orden = EXCLUDED.diti_orden;
                                                 """), {
                                                     "dire_id": dire_id,
                                                     "codi_id": codi_id,
                                                     "diti_nombre": clean_val,
+                                                    "diti_orden": comp_ord,
                                                     "diti_estado": "A",
                                                 })
                                         except Exception as ex_cfb:
@@ -487,16 +519,18 @@ class DatabaseLoader(BaseLoader):
                         if rec.modulos:
                             ins_mod_sql = text(f"""
                                 INSERT INTO "{self.schema}"."tb_direccion_tipo_modulo" (
-                                    dire_id, timo_id, ditm_nombre, ditm_estado
+                                    dire_id, timo_id, ditm_nombre, ditm_orden, ditm_estado
                                 ) VALUES (
-                                    :dire_id, :timo_id, :ditm_nombre, :ditm_estado
+                                    :dire_id, :timo_id, :ditm_nombre, :ditm_orden, :ditm_estado
                                 )
                                 ON CONFLICT (dire_id, timo_id, ditm_nombre) DO UPDATE SET
+                                    ditm_orden = EXCLUDED.ditm_orden,
                                     ditm_estado = EXCLUDED.ditm_estado;
                             """)
-                            for m in rec.modulos:
+                            for idx, m in enumerate(rec.modulos, start=1):
                                 timo_id = m.get("timo_id")
                                 ditm_nombre = m.get("ditm_nombre")
+                                mod_ord = m.get("ditm_orden") or m.get("orden") or idx
                                 if timo_id is not None and ditm_nombre:
                                     clean_ditm = str(ditm_nombre).strip().upper()
                                     try:
@@ -505,29 +539,49 @@ class DatabaseLoader(BaseLoader):
                                                 "dire_id": dire_id,
                                                 "timo_id": timo_id,
                                                 "ditm_nombre": clean_ditm,
+                                                "ditm_orden": mod_ord,
                                                 "ditm_estado": "A",
                                             })
                                     except Exception as ex_mod:
-                                        err_str = str(ex_mod)
-                                        if "ON CONFLICT" in err_str or "InvalidColumnReference" in err_str:
-                                            logger.warning(
-                                                "Restricción única ausente en %s.tb_direccion_tipo_modulo. Migrando en caliente...",
-                                                self.schema,
+                                        # Fallback si ditm_orden no existe en esquemas previos
+                                        fb_mod_sql = text(f"""
+                                            INSERT INTO "{self.schema}"."tb_direccion_tipo_modulo" (
+                                                dire_id, timo_id, ditm_nombre, ditm_estado
+                                            ) VALUES (
+                                                :dire_id, :timo_id, :ditm_nombre, :ditm_estado
                                             )
-                                            if hasattr(self.db, "ensure_modulo_pk_constraint"):
-                                                self.db.ensure_modulo_pk_constraint(self.schema)
-                                            try:
-                                                with session.begin_nested():
-                                                    session.execute(ins_mod_sql, {
-                                                        "dire_id": dire_id,
-                                                        "timo_id": timo_id,
-                                                        "ditm_nombre": clean_ditm,
-                                                        "ditm_estado": "A",
-                                                    })
-                                            except Exception as ex_mfb:
-                                                logger.debug("Aviso al reintentar modulo en _load_v2: %s", ex_mfb)
-                                        else:
-                                            logger.debug("Aviso al insertar modulo en _load_v2: %s", ex_mod)
+                                            ON CONFLICT (dire_id, timo_id, ditm_nombre) DO UPDATE SET
+                                                ditm_estado = EXCLUDED.ditm_estado;
+                                        """)
+                                        try:
+                                            with session.begin_nested():
+                                                session.execute(fb_mod_sql, {
+                                                    "dire_id": dire_id,
+                                                    "timo_id": timo_id,
+                                                    "ditm_nombre": clean_ditm,
+                                                    "ditm_estado": "A",
+                                                })
+                                        except Exception as ex_fb:
+                                            err_str = str(ex_fb)
+                                            if ("ON CONFLICT" in err_str or "InvalidColumnReference" in err_str) and not is_sqlite:
+                                                logger.warning(
+                                                    "Restricción única ausente en %s.tb_direccion_tipo_modulo. Migrando en caliente...",
+                                                    self.schema,
+                                                )
+                                                if hasattr(self.db, "ensure_modulo_pk_constraint"):
+                                                    self.db.ensure_modulo_pk_constraint(self.schema)
+                                                try:
+                                                    with session.begin_nested():
+                                                        session.execute(fb_mod_sql, {
+                                                            "dire_id": dire_id,
+                                                            "timo_id": timo_id,
+                                                            "ditm_nombre": clean_ditm,
+                                                            "ditm_estado": "A",
+                                                        })
+                                                except Exception as ex_mfb:
+                                                    logger.debug("Aviso al reintentar modulo en _load_v2: %s", ex_mfb)
+                                            else:
+                                                logger.debug("Aviso al insertar modulo en _load_v2: %s", ex_fb)
 
                         # 5. Actualizar la tabla origen vinculando dire_id
                         upd_params: Dict[str, Any] = {

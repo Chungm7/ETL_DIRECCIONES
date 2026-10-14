@@ -35,12 +35,14 @@ class ExtractedComponente(BaseModel):
     nombre: str = Field(description="Tipo de componente: MANZANA, LOTE, SUBLOTE, PISO, PREDIO, VALLE, SECTOR, etc.")
     valor: str = Field(description="Valor del componente (ej. A, 14, 2)")
     es_urbano: bool = Field(default=True, description="True si es urbano, False si es rural")
+    orden: int = Field(default=1, description="Orden correlativo de aparición del componente en la dirección")
 
 
 class ExtractedModulo(BaseModel):
     """Representa una dependencia o módulo inmobiliario interior (interior, dpto, puerta, stand, etc.)."""
     tipo_modulo: str = Field(description="INTERIOR, DEPARTAMENTO, PUERTA, STAND, TIENDA, OFICINA, BLOCK, etc.")
     valor: Any = Field(description="Detalle del módulo (ej. 102, B, 15, STAND 4)")
+    orden: int = Field(default=1, description="Orden correlativo de aparición del módulo en la dirección")
 
     @field_validator("valor", mode="before")
     @classmethod

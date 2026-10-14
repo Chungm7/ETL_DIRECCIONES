@@ -120,14 +120,14 @@ class DireccionDestino(BaseModel):
     )
 
     # Relación de Componentes Catastrales (Manzana, Lote, Sublote, Piso, etc.)
-    # Cada elemento es un dict: {"codi_id": int, "codi_nombre": str, "diti_nombre": str}
+    # Cada elemento es un dict: {"codi_id": int, "codi_nombre": str, "diti_nombre": str, "diti_orden": int}
     componentes: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="Lista de componentes catastrales en tb_contenido_componente_direccion",
     )
 
     # Relación de Módulos Inmobiliarios (Interior, Dpto, Puerta, Stand, Block, etc.)
-    # Cada elemento es un dict: {"timo_id": int, "timo_nombre": str, "ditm_nombre": str}
+    # Cada elemento es un dict: {"timo_id": int, "timo_nombre": str, "ditm_nombre": str, "ditm_orden": int}
     modulos: List[Dict[str, Any]] = Field(
         default_factory=list,
         description="Lista de dependencias y módulos en tb_direccion_tipo_modulo",

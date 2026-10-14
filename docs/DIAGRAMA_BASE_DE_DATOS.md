@@ -102,6 +102,7 @@ erDiagram
         bigint dire_id PK,FK "FK hacia tb_direccion"
         bigint codi_id PK,FK "FK hacia tb_componente_direccion"
         varchar diti_nombre "Valor del componente (ej. A, 14, 2, SECTOR 3)"
+        int diti_orden "Orden de aparición del componente en la dirección"
         varchar diti_estado "Estado (A/I)"
     }
 
@@ -115,6 +116,7 @@ erDiagram
         bigint dire_id PK,FK "FK hacia tb_direccion"
         bigint timo_id PK,FK "FK hacia tb_tipo_modulo"
         varchar ditm_nombre "Detalle del módulo (ej. 102, B, 14, STAND 4)"
+        int ditm_orden "Orden de aparición del módulo en la dirección"
         varchar ditm_estado "Estado (A/I)"
     }
 

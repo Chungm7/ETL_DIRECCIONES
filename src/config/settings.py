@@ -257,6 +257,11 @@ class ETLSettings(BaseSettings):
         alias="ETL_MAX_ADDRESS_LENGTH",
         description="Longitud máxima de caracteres permitida antes de penalizar por sobrecarga",
     )
+    min_similarity_threshold: float = Field(
+        default=0.85,
+        alias="ETL_MIN_SIMILARITY_THRESHOLD",
+        description="Umbral de similitud y certeza mínima (0 a 1) entre texto crudo y normalizado para confirmar es_procesado=True",
+    )
 
     path_codificador_vias: str = Field(
         default="docs/cod_vias_y_habilitaciones_urbanas/CODIFICADOR DE VIAS - CHICLAYO _ FINAL 26-02-2024 (1).xlsx",

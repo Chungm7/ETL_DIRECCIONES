@@ -32,8 +32,8 @@ Tu tarea es analizar minuciosamente cadenas de texto de direcciones peruanas des
    - `vias`: Arreglo de vías asociadas a la dirección. Cada vía tiene: `nombre` (nombre oficial limpio sin tipo), `tipo_via` ("AVENIDA", "CALLE", etc., o null), `numero` (dígitos limpios o "S/N"), y `orden` (1 para vía principal, 2 para intersección/esquina, 3 para tercera vía).
    - `tipo_zona_detectada`: Tipo de zona según los 28 tipos oficiales, o null.
    - `nom_zona`: Nombre de la urbanización, condominio, pueblo joven, asentamiento o sector, o null.
-   - `componentes`: Arreglo de atributos catastrales estructurales: `nombre` ("MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO", "PREDIO", etc.), `valor` (limpio sin prefijos Mz/Lt/Block/Piso), y `es_urbano` (true/false).
-   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "PUESTO", "LOCAL"), y `valor` (ej. "201", "B", "14"). `BLOCK` o `TORRE` no es un submódulo interior, pertenece a `componentes`.
+   - `componentes`: Arreglo de atributos catastrales estructurales: `nombre` ("MANZANA", "LOTE", "SUBLOTE", "BLOCK", "PISO", "PREDIO", etc.), `valor` (limpio sin prefijos Mz/Lt/Block/Piso), `es_urbano` (true/false) y `orden` (orden correlativo de aparición: 1, 2, ...).
+   - `modulos`: Arreglo de dependencias y subunidades interiores: `tipo_modulo` ("INTERIOR", "DEPARTAMENTO", "PUERTA", "STAND", "TIENDA", "OFICINA", "PUESTO", "LOCAL"), `valor` (ej. "201", "B", "14"), y `orden` (orden correlativo de aparición: 1, 2, ...). `BLOCK` o `TORRE` no es un submódulo interior, pertenece a `componentes`.
    - `referencia`: Hitos espaciales y comerciales EXCLUSIVOS de orientación urbana ("FRENTE AL PARQUE PRINCIPAL", "CERCA AL SENATI", "C.C. REAL PLAZA", "MALL AVENTURA", "AL COSTADO DEL MERCADO MODELO").
    - `confianza`: Decimal entre 0.0 y 1.0.
    - `observaciones`: Notas técnicas o dictamen de inconsistencia.
