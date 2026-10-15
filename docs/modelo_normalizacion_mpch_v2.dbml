@@ -146,6 +146,14 @@ Table tb_direccion_via {
   divi_orden int [not null, default: 1, note: 'Orden de prelación vial: 1 = Principal, 2 = Secundaria / Esquina, 3 = Intersección adicional']
   divi_es_principal boolean [not null, default: true, note: 'True si es la arteria principal; False para arteria secundaria en esquinas/intersecciones']
   divi_estado varchar(1) [not null, default: 'A', note: 'Estado: A = Activo, I = Inactivo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la relación vial']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   indexes {
     (dire_id, via_id) [name: 'idx_tb_direccion_via_lookup']
@@ -183,6 +191,14 @@ Table tb_contenido_componente_direccion {
   diti_valor varchar(100) [not null, note: 'Valor alfanumérico (ej. A, 14, 02, 3, B)']
   diti_orden int [not null, default: 1, note: 'Orden de aparición o visualización del componente en la dirección']
   diti_estado varchar(1) [not null, default: 'A', note: 'Estado: A = Activo, I = Inactivo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó el valor']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   indexes {
     (dire_id, codi_id) [name: 'idx_tb_contenido_comp_lookup']
@@ -219,6 +235,14 @@ Table tb_direccion_tipo_modulo {
   ditm_nombre varchar(100) [not null, note: 'Identificador alfanumérico legítimo del módulo (ej. 1A, 204, 1116, B-3)']
   ditm_orden int [not null, default: 1, note: 'Orden secuencial de aparición o jerarquía del módulo en la dirección']
   ditm_estado varchar(1) [not null, default: 'A', note: 'Estado: A = Activo, I = Inactivo']
+  usua_id bigint [note: 'Identificador del usuario que registró o modificó la relación del módulo']
+  usua_nombre varchar(200) [note: 'Nombre o login del usuario institucional']
+  create_at timestamp [default: `CURRENT_TIMESTAMP`, note: 'Fecha y hora de creación en el sistema']
+  update_at timestamp [note: 'Fecha y hora de última modificación en el sistema']
+  audit_user_pc varchar(100) [note: 'Usuario del sistema operativo cliente/auditoría']
+  audit_nombre_pc varchar(100) [note: 'Nombre o hostname de la estación cliente']
+  audit_ip varchar(50) [note: 'Dirección IP de la estación que ejecutó la operación']
+  audit_mac_address varchar(50) [note: 'Dirección MAC física de la estación cliente']
 
   indexes {
     (dire_id, timo_id) [name: 'idx_tb_direccion_modulo_lookup']

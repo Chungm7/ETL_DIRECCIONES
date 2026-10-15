@@ -84,10 +84,13 @@ erDiagram
     }
 
     tb_direccion_via {
-        bigint dire_id PK,FK "FK hacia tb_direccion"
-        bigint via_id PK,FK "FK hacia tb_via"
+        bigint divi_id PK "ID único de la arteria asociada"
+        bigint dire_id FK "FK hacia tb_direccion"
+        bigint via_id FK "FK hacia tb_via"
         varchar divi_numero "Número municipal o S/N (ej. 102, 801, S/N)"
+        varchar divi_cuadra "Número de cuadra (ej. CDA. 4)"
         int divi_orden "1=Principal, 2=Intersección/Esquina/Cruce"
+        boolean divi_es_principal "Indica arteria principal (true/false)"
         varchar divi_estado "Estado (A/I)"
     }
 
@@ -99,9 +102,10 @@ erDiagram
     }
 
     tb_contenido_componente_direccion {
-        bigint dire_id PK,FK "FK hacia tb_direccion"
-        bigint codi_id PK,FK "FK hacia tb_componente_direccion"
-        varchar diti_nombre "Valor del componente (ej. A, 14, 2, SECTOR 3)"
+        bigint diti_id PK "ID único del valor del componente"
+        bigint dire_id FK "FK hacia tb_direccion"
+        bigint codi_id FK "FK hacia tb_componente_direccion"
+        varchar diti_valor "Valor del componente (ej. A, 14, 2, SECTOR 3)"
         int diti_orden "Orden de aparición del componente en la dirección"
         varchar diti_estado "Estado (A/I)"
     }
@@ -113,8 +117,9 @@ erDiagram
     }
 
     tb_direccion_tipo_modulo {
-        bigint dire_id PK,FK "FK hacia tb_direccion"
-        bigint timo_id PK,FK "FK hacia tb_tipo_modulo"
+        bigint ditm_id PK "ID único del módulo asignado"
+        bigint dire_id FK "FK hacia tb_direccion"
+        bigint timo_id FK "FK hacia tb_tipo_modulo"
         varchar ditm_nombre "Detalle del módulo (ej. 102, B, 14, STAND 4)"
         int ditm_orden "Orden de aparición del módulo en la dirección"
         varchar ditm_estado "Estado (A/I)"
@@ -170,43 +175,75 @@ Entidad central que consolida cada dirección normalizada y validada.
 - **`zona_id`** (`BIGINT`, FK, NULLABLE): Clave foránea a `tb_zona.zona_id`. Nulo si no posee zona o es rural.
 - **`dire_referencia`** (`VARCHAR(500)`, NULLABLE): Hitos espaciales y comerciales exclusivos de orientación (ej. `FRENTE A REAL PLAZA`, `A ESPALDAS DEL PARQUE PRINCIPAL`).
 - **`dire_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
+- **`dire_esquema`** (`VARCHAR(500)`): Esquema de procedencia del registro de origen.
+- **`dire_tabla`** (`VARCHAR(500)`): Tabla emisora de negocio.
+- **`dire_columna`** (`VARCHAR(500)`): Nombre de la columna de origen (ej. `emp_direccion`).
+- **`dire_tabla_id`** (`BIGINT`): Clave primaria lógica del registro en la tabla emisora.
+- **`dire_valor_origen`** (`VARCHAR(500)`): Cadena de texto cruda original.
+- **`dire_es_procesado`** (`BOOLEAN`): Semántica Tri-State (NULL = Pendiente | TRUE = Éxito 100% Certeza | FALSE = Rechazado).
+- **Columnas de auditoría:** `usua_id`, `usua_nombre`, `create_at`, `update_at`, `audit_user_pc`, `audit_nombre_pc`, `audit_ip`, `audit_mac_address`.
 
 ### 6. `tb_direccion_via`
 Tabla intermedia muchos a muchos que modela arterias viales, esquinas e intersecciones.
-- **`dire_id`** (`BIGINT`, PK, FK): Referencia a `tb_direccion.dire_id`.
-- **`via_id`** (`BIGINT`, PK, FK): Referencia a `tb_via.via_id`.
-- **`divi_numero`** (`VARCHAR(20)`, NULLABLE): Numeración municipal o `S/N` (ej. `102`, `801`, `S/N`).
-- **`divi_orden`** (`INT`, DEFAULT `1`): Orden de la arteria (`1` = Vía principal, `2` = Vía de intersección/esquina transversal).
+- **`divi_id`** (`BIGSERIAL`, PK): Identificador secuencial único de la relación dirección-vía.
+- **`dire_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_direccion.dire_id`.
+- **`via_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_via.via_id`.
+- **`divi_numero`** (`VARCHAR(50)`, NULLABLE): Numeración municipal o `S/N` (ej. `102`, `801`, `S/N`).
+- **`divi_cuadra`** (`VARCHAR(20)`, NULLABLE): Cuadra de la arteria (ej. `CDA. 4`).
+- **`divi_orden`** (`INT`, NOT NULL, DEFAULT `1`): Orden de la arteria (`1` = Vía principal, `2` = Vía de intersección/esquina transversal).
+- **`divi_es_principal`** (`BOOLEAN`, NOT NULL, DEFAULT `TRUE`): Indica si es la arteria principal.
 - **`divi_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
+- **Columnas de auditoría:** `usua_id`, `usua_nombre`, `create_at`, `update_at`, `audit_user_pc`, `audit_nombre_pc`, `audit_ip`, `audit_mac_address`.
 
 ### 7. `tb_componente_direccion`
 Catálogo de componentes catastrales urbanos y rurales.
 - **`codi_id`** (`BIGSERIAL`, PK): Identificador del componente.
 - **`codi_nombre`** (`VARCHAR(100)`, NOT NULL): Denominación (`MANZANA`, `LOTE`, `SUBLOTE`, `PISO`, `PREDIO`, `VALLE`, `SECTOR`, `UNIDAD CATASTRAL`, `COORDENADA NORTE`, `COORDENADA ESTE`).
+- **`codi_abreviatura`** (`VARCHAR(20)`): Abreviatura oficial (`MZ.`, `LT.`, `PISO`, etc.).
 - **`codi_es_urbano`** (`BOOLEAN`, DEFAULT `TRUE`): Indicador de ámbito (`TRUE` para urbano, `FALSE` para rural/catastral extenso).
 - **`codi_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
+- **Columnas de auditoría:** `usua_id`, `usua_nombre`, `create_at`, `update_at`, `audit_user_pc`, `audit_nombre_pc`, `audit_ip`, `audit_mac_address`.
 
 ### 8. `tb_contenido_componente_direccion`
 Detalle de componentes catastrales asignados a cada dirección.
-- **`dire_id`** (`BIGINT`, PK, FK): Referencia a `tb_direccion.dire_id`.
-- **`codi_id`** (`BIGINT`, PK, FK): Referencia a `tb_componente_direccion.codi_id`.
-- **`diti_nombre`** (`VARCHAR(100)`, NULLABLE): Valor asignado (ej. `A`, `14`, `3`, `VALLE REQUE`).
+- **`diti_id`** (`BIGSERIAL`, PK): Identificador secuencial del contenido del componente.
+- **`dire_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_direccion.dire_id`.
+- **`codi_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_componente_direccion.codi_id`.
+- **`diti_valor`** (`VARCHAR(100)`, NOT NULL): Valor asignado (ej. `A`, `14`, `3`, `VALLE REQUE`).
+- **`diti_orden`** (`INT`, NOT NULL, DEFAULT `1`): Orden secuencial de aparición o visualización en la dirección.
 - **`diti_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
+- **Columnas de auditoría:** `usua_id`, `usua_nombre`, `create_at`, `update_at`, `audit_user_pc`, `audit_nombre_pc`, `audit_ip`, `audit_mac_address`.
 
 ### 9. `tb_tipo_modulo`
 Catálogo de dependencias habitacionales, comerciales e interiores.
 - **`timo_id`** (`BIGSERIAL`, PK): Identificador de módulo.
 - **`timo_nombre`** (`VARCHAR(100)`, NOT NULL): Denominación (`INTERIOR`, `DEPARTAMENTO`, `PUERTA`, `STAND`, `TIENDA`, `OFICINA`, `BLOCK`, `PUESTO`, `LOCAL`, `COCHERA`).
+- **`timo_abreviatura`** (`VARCHAR(20)`): Abreviatura estandarizada (`INT.`, `DPTO.`, `STD.`, `OF.`).
 - **`timo_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
+- **Columnas de auditoría:** `usua_id`, `usua_nombre`, `create_at`, `update_at`, `audit_user_pc`, `audit_nombre_pc`, `audit_ip`, `audit_mac_address`.
 
 ### 10. `tb_direccion_tipo_modulo`
 Detalle de dependencias y módulos interiores asignados a cada dirección.
-- **`dire_id`** (`BIGINT`, PK, FK): Referencia a `tb_direccion.dire_id`.
-- **`timo_id`** (`BIGINT`, PK, FK): Referencia a `tb_tipo_modulo.timo_id`.
-- **`ditm_nombre`** (`VARCHAR(100)`, NULLABLE): Valor o código interior (ej. `102`, `B`, `STAND 4`, `OF 201`).
+- **`ditm_id`** (`BIGSERIAL`, PK): Identificador secuencial único de la relación dirección-módulo.
+- **`dire_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_direccion.dire_id`.
+- **`timo_id`** (`BIGINT`, FK, NOT NULL): Referencia a `tb_tipo_modulo.timo_id`.
+- **`ditm_nombre`** (`VARCHAR(100)`, NOT NULL): Valor o código interior (ej. `102`, `B`, `STAND 4`, `OF 201`).
+- **`ditm_orden`** (`INT`, NOT NULL, DEFAULT `1`): Orden secuencial de aparición o jerarquía en la dirección.
 - **`ditm_estado`** (`VARCHAR(1)`, NOT NULL, DEFAULT `'A'`): Estado del registro (A = Activo, I = Inactivo).
+- **Columnas de auditoría:** `usua_id`, `usua_nombre`, `create_at`, `update_at`, `audit_user_pc`, `audit_nombre_pc`, `audit_ip`, `audit_mac_address`.
 
-### 11. `tb_xxx` (Arquetipo de Referencia / Tabla de Negocio Emisora)
+### 11. Columnas Institucionales de Auditoría (Presentes en las 10 tablas normalizadas excepto `tb_xxx`)
+Todas las 10 tablas del modelo normalizado (`tb_tipo_via`, `tb_via`, `tb_tipo_zona`, `tb_zona`, `tb_direccion`, `tb_direccion_via`, `tb_componente_direccion`, `tb_contenido_componente_direccion`, `tb_tipo_modulo`, `tb_direccion_tipo_modulo`) incorporan de manera homogénea las siguientes 8 columnas de auditoría:
+- **`usua_id`** (`BIGINT`): Identificador del usuario que registró o modificó el registro.
+- **`usua_nombre`** (`VARCHAR(200)`): Nombre o login del usuario institucional.
+- **`create_at`** (`TIMESTAMP WITHOUT TIME ZONE`, DEFAULT `CURRENT_TIMESTAMP`): Fecha y hora de creación en el sistema.
+- **`update_at`** (`TIMESTAMP WITHOUT TIME ZONE`): Fecha y hora de última modificación.
+- **`audit_user_pc`** (`VARCHAR(100)`): Nombre de usuario del sistema operativo cliente/auditoría.
+- **`audit_nombre_pc`** (`VARCHAR(100)`): Hostname o nombre del equipo cliente.
+- **`audit_ip`** (`VARCHAR(50)`): Dirección IP de la estación que ejecutó la transacción.
+- **`audit_mac_address`** (`VARCHAR(50)`): Dirección MAC física de la estación cliente.
+
+### 12. `tb_xxx` (Arquetipo de Referencia / Tabla de Negocio Emisora)
 Representa cualquier tabla origen existente en los sistemas emisores de la MPCH (ej. `direcciones_actual`, `licencias_funcionamiento`, `catastro_predial`) que almacena la dirección original y recibe las columnas de vinculación normalizada (`dire_id`, `es_procesado`, `observacion_ia`).
 
 > [!NOTE]

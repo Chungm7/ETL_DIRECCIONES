@@ -1043,7 +1043,16 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS tivi_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS tivi_nombre VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS tivi_abreviatura VARCHAR(20);
-                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS tivi_estado VARCHAR(3) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS tivi_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_tipo_via" ALTER COLUMN tivi_estado TYPE VARCHAR(1);
                 
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_tipo_via_nombre ON "{target_schema}"."tb_tipo_via" (tivi_nombre);
             END IF;
@@ -1065,7 +1074,16 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS tizo_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS tizo_nombre VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS tizo_abreviatura VARCHAR(20);
-                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS tizo_estado VARCHAR(3) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS tizo_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_tipo_zona" ALTER COLUMN tizo_estado TYPE VARCHAR(1);
 
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_tipo_zona_nombre ON "{target_schema}"."tb_tipo_zona" (tizo_nombre);
             END IF;
@@ -1084,6 +1102,14 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS tivi_id BIGINT;
                 ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS via_nombre VARCHAR(250);
                 ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS via_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_via" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_via" ALTER COLUMN via_nombre TYPE VARCHAR(250);
                 ALTER TABLE "{target_schema}"."tb_via" ALTER COLUMN via_estado TYPE VARCHAR(1);
             END IF;
@@ -1102,6 +1128,14 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS tizo_id BIGINT;
                 ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS zona_nombre VARCHAR(250);
                 ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS zona_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_zona" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_zona" ALTER COLUMN zona_nombre TYPE VARCHAR(250);
                 ALTER TABLE "{target_schema}"."tb_zona" ALTER COLUMN zona_estado TYPE VARCHAR(1);
             END IF;
@@ -1156,6 +1190,14 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_orden INTEGER DEFAULT 1;
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_es_principal BOOLEAN DEFAULT TRUE;
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS divi_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_direccion_via" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ALTER COLUMN divi_numero TYPE VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_direccion_via" ALTER COLUMN divi_estado TYPE VARCHAR(1);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_via_lookup ON "{target_schema}"."tb_direccion_via" (dire_id, via_id);
@@ -1164,7 +1206,16 @@ class DatabaseService:
             -- tb_componente_direccion
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_componente_direccion') THEN
                 ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS codi_abreviatura VARCHAR(20);
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS codi_es_urbano BOOLEAN DEFAULT TRUE;
                 ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS codi_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_componente_direccion" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_componente_direccion" ALTER COLUMN codi_nombre TYPE VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_componente_direccion" ALTER COLUMN codi_estado TYPE VARCHAR(1);
             END IF;
@@ -1179,6 +1230,14 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_valor VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_orden INTEGER DEFAULT 1;
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_valor TYPE VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_contenido_componente_direccion" ALTER COLUMN diti_estado TYPE VARCHAR(1);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON "{target_schema}"."tb_contenido_componente_direccion" (dire_id, codi_id);
@@ -1188,6 +1247,14 @@ class DatabaseService:
             IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = '{target_schema}' AND table_name = 'tb_tipo_modulo') THEN
                 ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS timo_abreviatura VARCHAR(20);
                 ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS timo_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_tipo_modulo" ALTER COLUMN timo_nombre TYPE VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_tipo_modulo" ALTER COLUMN timo_estado TYPE VARCHAR(1);
             END IF;
@@ -1197,6 +1264,14 @@ class DatabaseService:
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_id BIGSERIAL;
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_orden INTEGER DEFAULT 1;
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(1) DEFAULT 'A';
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+                ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_nombre TYPE VARCHAR(100);
                 ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo" ALTER COLUMN ditm_estado TYPE VARCHAR(1);
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON "{target_schema}"."tb_direccion_tipo_modulo" (dire_id, timo_id, ditm_nombre);
@@ -1404,6 +1479,14 @@ class DatabaseService:
                     divi_orden          INTEGER NOT NULL DEFAULT 1,
                     divi_es_principal   BOOLEAN NOT NULL DEFAULT TRUE,
                     divi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_direccion_via PRIMARY KEY (divi_id),
                     CONSTRAINT fk_tb_direccion_via_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_direccion_via_via FOREIGN KEY (via_id) REFERENCES "{target_schema}"."tb_via"(via_id) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1441,6 +1524,14 @@ class DatabaseService:
                     diti_valor          VARCHAR(100) NOT NULL,
                     diti_orden          INTEGER NOT NULL DEFAULT 1,
                     diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
                     CONSTRAINT fk_tb_contenido_componente_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_contenido_componente_codi FOREIGN KEY (codi_id) REFERENCES "{target_schema}"."tb_componente_direccion"(codi_id) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1476,6 +1567,14 @@ class DatabaseService:
                     ditm_nombre         VARCHAR(100) NOT NULL,
                     ditm_orden          INTEGER NOT NULL DEFAULT 1,
                     ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
+                    usua_id             BIGINT,
+                    usua_nombre         VARCHAR(200),
+                    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    update_at           TIMESTAMP WITHOUT TIME ZONE,
+                    audit_user_pc       VARCHAR(100),
+                    audit_nombre_pc     VARCHAR(100),
+                    audit_ip            VARCHAR(50),
+                    audit_mac_address   VARCHAR(50),
                     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (ditm_id),
                     CONSTRAINT fk_tb_direccion_modulo_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_direccion_modulo_timo FOREIGN KEY (timo_id) REFERENCES "{target_schema}"."tb_tipo_modulo"(timo_id) ON UPDATE CASCADE ON DELETE CASCADE
@@ -1583,6 +1682,14 @@ class DatabaseService:
                     divi_orden INTEGER DEFAULT 1,
                     divi_es_principal BOOLEAN DEFAULT 1,
                     divi_estado VARCHAR(1) DEFAULT 'A' CHECK (divi_estado IN ('A', 'I')),
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50),
                     UNIQUE (dire_id, via_id)
                 );
             """,
@@ -1611,6 +1718,14 @@ class DatabaseService:
                     diti_valor VARCHAR(100) NOT NULL,
                     diti_orden INTEGER DEFAULT 1,
                     diti_estado VARCHAR(1) DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50),
                     UNIQUE (dire_id, codi_id)
                 );
             """,
@@ -1638,6 +1753,14 @@ class DatabaseService:
                     ditm_nombre VARCHAR(100) NOT NULL,
                     ditm_orden INTEGER DEFAULT 1,
                     ditm_estado VARCHAR(1) DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
+                    usua_id INTEGER,
+                    usua_nombre VARCHAR(200),
+                    create_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    update_at TIMESTAMP,
+                    audit_user_pc VARCHAR(100),
+                    audit_nombre_pc VARCHAR(100),
+                    audit_ip VARCHAR(50),
+                    audit_mac_address VARCHAR(50),
                     UNIQUE (dire_id, timo_id, ditm_nombre)
                 );
             """

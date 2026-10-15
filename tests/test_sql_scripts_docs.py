@@ -87,19 +87,23 @@ def test_dml_contains_catalogs_and_sequences():
     assert not re.search(r"\bfecha_proceso\b", content, re.IGNORECASE)
 
 
-def test_ddl_catalog_tables_have_all_audit_columns():
-    """Verifica que las 6 tablas maestras de catálogos en el DDL oficial
-    contengan las 8 columnas de auditoría estándar requeridas por el plan."""
+def test_ddl_all_10_tables_have_all_audit_columns():
+    """Verifica que las 10 tablas normalizadas en el DDL oficial (docs/01_ddl_estructura_catastral_mpch_v2.sql)
+    contengan las 8 columnas de auditoría estándar requeridas."""
     with open(DDL_FILE, "r", encoding="utf-8") as f:
         content = f.read()
 
-    CATALOG_TABLES = [
+    ALL_NORMALIZED_TABLES = [
         "tb_tipo_via",
         "tb_via",
         "tb_tipo_zona",
         "tb_zona",
+        "tb_direccion",
+        "tb_direccion_via",
         "tb_componente_direccion",
+        "tb_contenido_componente_direccion",
         "tb_tipo_modulo",
+        "tb_direccion_tipo_modulo",
     ]
 
     AUDIT_COLUMNS = [
@@ -113,8 +117,7 @@ def test_ddl_catalog_tables_have_all_audit_columns():
         "audit_mac_address",
     ]
 
-    # Para cada tabla maestra extraer su bloque CREATE TABLE y verificar cada columna de auditoría
-    for table in CATALOG_TABLES:
+    for table in ALL_NORMALIZED_TABLES:
         pattern = rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?{table}\s*\((.+?)(?=CONSTRAINT\s+pk_|CONSTRAINT\s+fk_|\);)"
         match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
         assert match, f"No se encontró el bloque CREATE TABLE de {table} en el DDL"
@@ -128,7 +131,7 @@ def test_ddl_catalog_tables_have_all_audit_columns():
 
 def test_script_06_database_structure_integrity():
     """Valida que scripts_data_base/06_crear_estructura_v2_normalizada.sql contenga
-    las 8 columnas de auditoría en todas las tablas de catálogo y en tb_direccion,
+    las 8 columnas de auditoría en todas las 10 tablas normalizadas,
     dire_columna en tb_direccion y v_direcciones_v2, y orden en las tablas hijas."""
     script_path = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -146,8 +149,11 @@ def test_script_06_database_structure_integrity():
         "tb_tipo_zona",
         "tb_zona",
         "tb_direccion",
+        "tb_direccion_via",
         "tb_componente_direccion",
+        "tb_contenido_componente_direccion",
         "tb_tipo_modulo",
+        "tb_direccion_tipo_modulo",
     ]
 
     AUDIT_COLUMNS = [
@@ -180,4 +186,34 @@ def test_script_06_database_structure_integrity():
     assert "ditm_orden" in content
     # Validar que v_direcciones_v2 incluye d.dire_columna
     assert re.search(r"d\.dire_columna\b", content)
+
+
+def test_dbml_and_db_service_tertiary_tables_audit_columns():
+    """Valida que docs/modelo_normalizacion_mpch_v2.dbml y src/services/db_service.py
+    contengan las columnas de auditoría en las tablas terciarias."""
+    dbml_path = os.path.join(DOCS_DIR, "modelo_normalizacion_mpch_v2.dbml")
+    with open(dbml_path, "r", encoding="utf-8") as f:
+        dbml_content = f.read()
+
+    tertiary_tables = ["tb_direccion_via", "tb_contenido_componente_direccion", "tb_direccion_tipo_modulo"]
+    audit_cols = ["usua_id", "usua_nombre", "create_at", "update_at", "audit_user_pc", "audit_nombre_pc", "audit_ip", "audit_mac_address"]
+
+    for tbl in tertiary_tables:
+        pattern = rf"Table\s+{tbl}\s*\{{(.+?)\}}"
+        match = re.search(pattern, dbml_content, re.DOTALL)
+        assert match, f"No se encontró la definición de {tbl} en DBML"
+        body = match.group(1)
+        for col in audit_cols:
+            assert col in body, f"Columna {col} no encontrada en {tbl} de DBML"
+
+    # Verificar db_service.py
+    db_service_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "src", "services", "db_service.py"
+    )
+    with open(db_service_path, "r", encoding="utf-8") as f:
+        db_service_content = f.read()
+
+    for col in audit_cols:
+        assert col in db_service_content, f"Columna {col} no encontrada en db_service.py"
 

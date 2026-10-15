@@ -184,6 +184,14 @@ BEGIN
         ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_orden INTEGER DEFAULT 1;
         ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_es_principal BOOLEAN DEFAULT TRUE;
         ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS divi_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_direccion_via ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_direccion_via ALTER COLUMN divi_numero TYPE VARCHAR(50);
         ALTER TABLE tb_direccion_via ALTER COLUMN divi_estado TYPE VARCHAR(1);
     END IF;
@@ -215,6 +223,14 @@ BEGIN
         ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_valor VARCHAR(100);
         ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_orden INTEGER DEFAULT 1;
         ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS diti_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_contenido_componente_direccion ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_contenido_componente_direccion ALTER COLUMN diti_valor TYPE VARCHAR(100);
         ALTER TABLE tb_contenido_componente_direccion ALTER COLUMN diti_estado TYPE VARCHAR(1);
     END IF;
@@ -240,6 +256,14 @@ BEGIN
         ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_id BIGSERIAL;
         ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_orden INTEGER DEFAULT 1;
         ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS ditm_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_direccion_tipo_modulo ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_direccion_tipo_modulo ALTER COLUMN ditm_nombre TYPE VARCHAR(100);
         ALTER TABLE tb_direccion_tipo_modulo ALTER COLUMN ditm_estado TYPE VARCHAR(1);
     END IF;
@@ -525,6 +549,14 @@ CREATE TABLE IF NOT EXISTS tb_direccion_via (
     divi_orden          INTEGER NOT NULL DEFAULT 1,
     divi_es_principal   BOOLEAN NOT NULL DEFAULT TRUE,
     divi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (divi_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_direccion_via PRIMARY KEY (divi_id),
     CONSTRAINT fk_tb_direccion_via_dir 
@@ -548,6 +580,14 @@ COMMENT ON COLUMN tb_direccion_via.divi_cuadra IS 'Número de cuadra en la que s
 COMMENT ON COLUMN tb_direccion_via.divi_orden IS 'Orden de prelación vial: 1 = Principal, 2 = Secundaria / Esquina, 3 = Intersección adicional.';
 COMMENT ON COLUMN tb_direccion_via.divi_es_principal IS 'Indica si es la vía principal (true) o una vía secundaria/intersección (false).';
 COMMENT ON COLUMN tb_direccion_via.divi_estado IS 'Estado del registro: A = Activo (relación vial asociada vigente y vinculada a la dirección), I = Inactivo (relación vial desestimada o dada de baja).';
+COMMENT ON COLUMN tb_direccion_via.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_direccion_via.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_direccion_via.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_direccion_via.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_direccion_via.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_direccion_via.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_direccion_via.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_direccion_via.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_via_lookup ON tb_direccion_via (dire_id, via_id);
 CREATE INDEX IF NOT EXISTS idx_tb_direccion_via_lookup ON tb_direccion_via (dire_id, via_id);
@@ -600,6 +640,14 @@ CREATE TABLE IF NOT EXISTS tb_contenido_componente_direccion (
     diti_valor          VARCHAR(100) NOT NULL,
     diti_orden          INTEGER NOT NULL DEFAULT 1,
     diti_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (diti_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_contenido_componente_direccion PRIMARY KEY (diti_id),
     CONSTRAINT fk_tb_contenido_componente_dir 
@@ -621,6 +669,14 @@ COMMENT ON COLUMN tb_contenido_componente_direccion.codi_id IS 'Clave foránea h
 COMMENT ON COLUMN tb_contenido_componente_direccion.diti_valor IS 'Valor asignado al componente (ej. A, 14, 2, B).';
 COMMENT ON COLUMN tb_contenido_componente_direccion.diti_orden IS 'Orden secuencial de aparición o visualización del componente en la dirección (1, 2, ...).';
 COMMENT ON COLUMN tb_contenido_componente_direccion.diti_estado IS 'Estado del registro: A = Activo (valor del componente predial vigente y asignado al predio), I = Inactivo (valor corregido, anulado o dado de baja).';
+COMMENT ON COLUMN tb_contenido_componente_direccion.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_contenido_componente_direccion.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
 CREATE INDEX IF NOT EXISTS idx_tb_contenido_comp_lookup ON tb_contenido_componente_direccion (dire_id, codi_id);
@@ -670,6 +726,14 @@ CREATE TABLE IF NOT EXISTS tb_direccion_tipo_modulo (
     ditm_nombre         VARCHAR(100) NOT NULL,
     ditm_orden          INTEGER NOT NULL DEFAULT 1,
     ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (ditm_id),
     CONSTRAINT fk_tb_direccion_modulo_dir 
@@ -691,6 +755,14 @@ COMMENT ON COLUMN tb_direccion_tipo_modulo.timo_id IS 'Clave foránea hacia tb_t
 COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_nombre IS 'Identificador o número del módulo (ej. 402, 12, A-3).';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_orden IS 'Orden secuencial de aparición o jerarquía del módulo en la dirección (1 = Módulo principal, 2 = Submódulo, etc.).';
 COMMENT ON COLUMN tb_direccion_tipo_modulo.ditm_estado IS 'Estado del registro: A = Activo (módulo inmobiliario específico asociado y vigente), I = Inactivo (módulo deshabilitado o dado de baja).';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_direccion_tipo_modulo.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON tb_direccion_tipo_modulo (dire_id, timo_id, ditm_nombre);
 
 -- -----------------------------------------------------------------------------
