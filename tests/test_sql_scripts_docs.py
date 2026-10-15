@@ -115,7 +115,6 @@ def test_ddl_catalog_tables_have_all_audit_columns():
 
     # Para cada tabla maestra extraer su bloque CREATE TABLE y verificar cada columna de auditoría
     for table in CATALOG_TABLES:
-        # Buscar el bloque CREATE TABLE de esta tabla
         pattern = rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?{table}\s*\((.+?)(?=CONSTRAINT\s+pk_|CONSTRAINT\s+fk_|\);)"
         match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
         assert match, f"No se encontró el bloque CREATE TABLE de {table} en el DDL"
@@ -125,3 +124,60 @@ def test_ddl_catalog_tables_have_all_audit_columns():
             assert col in table_body, (
                 f"Columna de auditoría '{col}' faltante en la definición DDL de {table}"
             )
+
+
+def test_script_06_database_structure_integrity():
+    """Valida que scripts_data_base/06_crear_estructura_v2_normalizada.sql contenga
+    las 8 columnas de auditoría en todas las tablas de catálogo y en tb_direccion,
+    dire_columna en tb_direccion y v_direcciones_v2, y orden en las tablas hijas."""
+    script_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "scripts_data_base",
+        "06_crear_estructura_v2_normalizada.sql"
+    )
+    assert os.path.isfile(script_path), f"El archivo {script_path} no existe"
+
+    with open(script_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    AUDITED_TABLES = [
+        "tb_tipo_via",
+        "tb_via",
+        "tb_tipo_zona",
+        "tb_zona",
+        "tb_direccion",
+        "tb_componente_direccion",
+        "tb_tipo_modulo",
+    ]
+
+    AUDIT_COLUMNS = [
+        "usua_id",
+        "usua_nombre",
+        "create_at",
+        "update_at",
+        "audit_user_pc",
+        "audit_nombre_pc",
+        "audit_ip",
+        "audit_mac_address",
+    ]
+
+    for table in AUDITED_TABLES:
+        pattern = rf"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:\w+\.)?{table}\s*\((.+?)(?=CONSTRAINT\s+pk_|CONSTRAINT\s+fk_|\);)"
+        match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+        assert match, f"No se encontró el bloque CREATE TABLE de {table} en 06 script"
+
+        table_body = match.group(0)
+        for col in AUDIT_COLUMNS:
+            assert col in table_body, (
+                f"Columna de auditoría '{col}' faltante en la definición de {table} en script 06"
+            )
+
+    # Validar dire_columna
+    assert "dire_columna" in content
+    # Validar orden
+    assert "divi_orden" in content
+    assert "diti_orden" in content
+    assert "ditm_orden" in content
+    # Validar que v_direcciones_v2 incluye d.dire_columna
+    assert re.search(r"d\.dire_columna\b", content)
+

@@ -18,7 +18,7 @@ La **Versión 2.0** del sistema de normalización de la **Municipalidad Provinci
    - `tb_tipo_modulo` $\rightarrow$ `timo_`
    - `tb_direccion_tipo_modulo` $\rightarrow$ `ditm_`
    - Tabla fuente/negocio (`tb_xxx`) $\rightarrow$ `xxxx_`
-3. **Indicador de Estado:** Todos los catálogos y relaciones contienen un campo de estado `varchar(3) DEFAULT 'ACT'`.
+3. **Indicador de Estado:** Todos los catálogos y relaciones contienen un campo de estado `varchar(1) DEFAULT 'A' CHECK (*_estado IN ('A', 'I'))` (A = Activo, I = Inactivo).
 4. **Desacoplamiento Total de la Fuente y Semántica Tri-State Estricta:** La tabla de negocio (`tb_xxx`) preserva la cadena original intacta (`xxxx_direccion_original`) y opera bajo tres estados:
    - `xxxx_es_procesado = NULL`: Registro pendiente de evaluación por el pipeline.
    - `xxxx_es_procesado = TRUE`: Normalización 100% confirmada contra el catastro oficial de Chiclayo; almacena la clave foránea `dire_id` hacia `tb_direccion` y sus tablas hijas.

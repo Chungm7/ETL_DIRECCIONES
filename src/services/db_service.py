@@ -914,14 +914,14 @@ class DatabaseService:
                     ADD CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre);
                 """))
 
-                # 6. Asegurar que ditm_estado sea VARCHAR(3)
+                # 6. Asegurar que ditm_estado sea VARCHAR(1)
                 try:
                     session.execute(text(f"""
                         ALTER TABLE "{target_schema}"."tb_direccion_tipo_modulo"
-                        ALTER COLUMN ditm_estado TYPE VARCHAR(3);
+                        ALTER COLUMN ditm_estado TYPE VARCHAR(1);
                     """))
                 except Exception as ex_col:
-                    logger.debug("Aviso al asegurar VARCHAR(3) en ditm_estado: %s", ex_col)
+                    logger.debug("Aviso al asegurar VARCHAR(1) en ditm_estado: %s", ex_col)
 
                 # 7. Crear índice único de respaldo para ON CONFLICT
                 session.execute(text(f"""
@@ -1476,11 +1476,12 @@ class DatabaseService:
                     ditm_nombre         VARCHAR(100) NOT NULL,
                     ditm_orden          INTEGER NOT NULL DEFAULT 1,
                     ditm_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (ditm_estado IN ('A', 'I')),
-                    CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (dire_id, timo_id, ditm_nombre),
+                    CONSTRAINT pk_tb_direccion_tipo_modulo PRIMARY KEY (ditm_id),
                     CONSTRAINT fk_tb_direccion_modulo_dir FOREIGN KEY (dire_id) REFERENCES "{target_schema}"."tb_direccion"(dire_id) ON UPDATE CASCADE ON DELETE CASCADE,
                     CONSTRAINT fk_tb_direccion_modulo_timo FOREIGN KEY (timo_id) REFERENCES "{target_schema}"."tb_tipo_modulo"(timo_id) ON UPDATE CASCADE ON DELETE CASCADE
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS uq_tb_direccion_modulo_lookup ON "{target_schema}"."tb_direccion_tipo_modulo" (dire_id, timo_id, ditm_nombre);
+                CREATE INDEX IF NOT EXISTS idx_tb_direccion_modulo_lookup ON "{target_schema}"."tb_direccion_tipo_modulo" (dire_id, timo_id);
                 COMMENT ON COLUMN "{target_schema}"."tb_direccion_tipo_modulo".ditm_estado IS 'Estado de la asignación de módulo a la dirección: A = Activo (módulo vigente en el predio), I = Inactivo (módulo desestimado o histórico)';
             """
         }

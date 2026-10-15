@@ -426,6 +426,7 @@ SELECT
     d.dire_estado,
     d.dire_esquema,
     d.dire_tabla,
+    d.dire_columna,
     d.dire_tabla_id,
     d.dire_valor_origen,
     d.dire_es_procesado,

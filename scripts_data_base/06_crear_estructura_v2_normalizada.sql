@@ -38,6 +38,14 @@ BEGIN
         ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_nombre VARCHAR(100);
         ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_abreviatura VARCHAR(20);
         ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS tivi_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_tipo_via ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_tipo_via ALTER COLUMN tivi_nombre TYPE VARCHAR(100);
         ALTER TABLE tb_tipo_via ALTER COLUMN tivi_abreviatura TYPE VARCHAR(20);
         ALTER TABLE tb_tipo_via ALTER COLUMN tivi_estado TYPE VARCHAR(1);
@@ -61,6 +69,14 @@ BEGIN
         ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_nombre VARCHAR(100);
         ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_abreviatura VARCHAR(20);
         ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS tizo_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_tipo_zona ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_tipo_zona ALTER COLUMN tizo_nombre TYPE VARCHAR(100);
         ALTER TABLE tb_tipo_zona ALTER COLUMN tizo_abreviatura TYPE VARCHAR(20);
         ALTER TABLE tb_tipo_zona ALTER COLUMN tizo_estado TYPE VARCHAR(1);
@@ -80,6 +96,14 @@ BEGIN
         ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS tivi_id BIGINT;
         ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS via_nombre VARCHAR(250);
         ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS via_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_via ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_via ALTER COLUMN via_nombre TYPE VARCHAR(250);
         ALTER TABLE tb_via ALTER COLUMN via_estado TYPE VARCHAR(1);
     END IF;
@@ -98,6 +122,14 @@ BEGIN
         ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS tizo_id BIGINT;
         ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS zona_nombre VARCHAR(250);
         ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS zona_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_zona ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_zona ALTER COLUMN zona_nombre TYPE VARCHAR(250);
         ALTER TABLE tb_zona ALTER COLUMN zona_estado TYPE VARCHAR(1);
     END IF;
@@ -159,7 +191,16 @@ BEGIN
     -- tb_componente_direccion
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_componente_direccion') THEN
         ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS codi_abreviatura VARCHAR(20);
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS codi_es_urbano BOOLEAN DEFAULT TRUE;
         ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS codi_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_componente_direccion ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_componente_direccion ALTER COLUMN codi_nombre TYPE VARCHAR(100);
         ALTER TABLE tb_componente_direccion ALTER COLUMN codi_estado TYPE VARCHAR(1);
     END IF;
@@ -182,6 +223,14 @@ BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'tb_tipo_modulo') THEN
         ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS timo_abreviatura VARCHAR(20);
         ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS timo_estado VARCHAR(1) DEFAULT 'A';
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS usua_id BIGINT;
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS usua_nombre VARCHAR(200);
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS create_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP;
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS update_at TIMESTAMP WITHOUT TIME ZONE;
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS audit_user_pc VARCHAR(100);
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS audit_nombre_pc VARCHAR(100);
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS audit_ip VARCHAR(50);
+        ALTER TABLE tb_tipo_modulo ADD COLUMN IF NOT EXISTS audit_mac_address VARCHAR(50);
         ALTER TABLE tb_tipo_modulo ALTER COLUMN timo_nombre TYPE VARCHAR(100);
         ALTER TABLE tb_tipo_modulo ALTER COLUMN timo_estado TYPE VARCHAR(1);
     END IF;
@@ -263,6 +312,14 @@ CREATE TABLE IF NOT EXISTS tb_tipo_via (
     tivi_nombre         VARCHAR(100) NOT NULL,
     tivi_abreviatura    VARCHAR(20),
     tivi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tivi_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_tipo_via PRIMARY KEY (tivi_id),
     CONSTRAINT uq_tb_tipo_via_nombre UNIQUE (tivi_nombre)
@@ -273,6 +330,14 @@ COMMENT ON COLUMN tb_tipo_via.tivi_id IS 'Identificador numérico único del tip
 COMMENT ON COLUMN tb_tipo_via.tivi_nombre IS 'Nombre completo oficial del tipo de vía.';
 COMMENT ON COLUMN tb_tipo_via.tivi_abreviatura IS 'Abreviatura estándar oficial (AV., CA., JR., etc.).';
 COMMENT ON COLUMN tb_tipo_via.tivi_estado IS 'Estado del registro: A = Activo (tipo de vía vigente para normalización y uso oficial), I = Inactivo (deshabilitado o en desuso).';
+COMMENT ON COLUMN tb_tipo_via.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_tipo_via.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_tipo_via.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_tipo_via.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_tipo_via.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_tipo_via.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_tipo_via.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_tipo_via.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 -- -----------------------------------------------------------------------------
 -- 2. Tabla Maestra: VÍAS OFICIALES DE CHICLAYO (tb_via)
@@ -282,6 +347,14 @@ CREATE TABLE IF NOT EXISTS tb_via (
     tivi_id             BIGINT NOT NULL,
     via_nombre          VARCHAR(250) NOT NULL,
     via_estado          VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (via_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_via PRIMARY KEY (via_id),
     CONSTRAINT fk_tb_via_tipo_via 
@@ -294,8 +367,16 @@ CREATE TABLE IF NOT EXISTS tb_via (
 COMMENT ON TABLE tb_via IS 'Catálogo maestro de vías públicas habilitadas de la provincia de Chiclayo.';
 COMMENT ON COLUMN tb_via.via_id IS 'Identificador secuencial único de la vía.';
 COMMENT ON COLUMN tb_via.tivi_id IS 'Clave foránea hacia tb_tipo_via.';
-COMMENT ON COLUMN tb_via.via_nombre IS 'Denominación oficial de la vía (ej. BALTA, LUIS GONZALES, 7 DE ENERO).';
+COMMENT ON COLUMN tb_via.via_nombre IS 'Denominación oficial de la vía sin prefijo de tipo (ej. BALTA, LUIS GONZALES, 7 DE ENERO).';
 COMMENT ON COLUMN tb_via.via_estado IS 'Estado del registro: A = Activo (arteria vial vigente, habilitada y transitable), I = Inactivo (vía clausurada, renombrada históricamente o deshabilitada).';
+COMMENT ON COLUMN tb_via.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_via.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_via.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_via.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_via.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_via.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_via.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_via.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 CREATE INDEX IF NOT EXISTS idx_tb_via_nombre ON tb_via (via_nombre);
 CREATE INDEX IF NOT EXISTS idx_tb_via_tipo_nombre ON tb_via (tivi_id, via_nombre);
@@ -308,6 +389,14 @@ CREATE TABLE IF NOT EXISTS tb_tipo_zona (
     tizo_nombre         VARCHAR(100) NOT NULL,
     tizo_abreviatura    VARCHAR(20),
     tizo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (tizo_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_tipo_zona PRIMARY KEY (tizo_id),
     CONSTRAINT uq_tb_tipo_zona_nombre UNIQUE (tizo_nombre)
@@ -318,6 +407,14 @@ COMMENT ON COLUMN tb_tipo_zona.tizo_id IS 'Identificador secuencial único del t
 COMMENT ON COLUMN tb_tipo_zona.tizo_nombre IS 'Nombre oficial completo (URBANIZACION, PUEBLO JOVEN, etc.).';
 COMMENT ON COLUMN tb_tipo_zona.tizo_abreviatura IS 'Abreviatura oficial (URB., P.J., A.H., etc.).';
 COMMENT ON COLUMN tb_tipo_zona.tizo_estado IS 'Estado del registro: A = Activo (tipo de habilitación urbana oficial vigente y aplicable), I = Inactivo (tipo deshabilitado o en desuso).';
+COMMENT ON COLUMN tb_tipo_zona.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_tipo_zona.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_tipo_zona.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_tipo_zona.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_tipo_zona.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_tipo_zona.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_tipo_zona.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_tipo_zona.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 -- -----------------------------------------------------------------------------
 -- 4. Tabla Maestra: HABILITACIONES URBANAS Y ZONAS (tb_zona)
@@ -327,6 +424,14 @@ CREATE TABLE IF NOT EXISTS tb_zona (
     tizo_id             BIGINT NOT NULL,
     zona_nombre         VARCHAR(250) NOT NULL,
     zona_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (zona_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_zona PRIMARY KEY (zona_id),
     CONSTRAINT fk_tb_zona_tipo_zona 
@@ -341,6 +446,14 @@ COMMENT ON COLUMN tb_zona.zona_id IS 'Identificador secuencial único de la zona
 COMMENT ON COLUMN tb_zona.tizo_id IS 'Clave foránea hacia tb_tipo_zona.';
 COMMENT ON COLUMN tb_zona.zona_nombre IS 'Nombre oficial de la zona (ej. SANTA VICTORIA, 9 DE OCTUBRE, FEDERICO VILLARREAL).';
 COMMENT ON COLUMN tb_zona.zona_estado IS 'Estado del registro: A = Activo (sector o habilitación urbana formal vigente), I = Inactivo (zona histórica, fusionada o deshabilitada).';
+COMMENT ON COLUMN tb_zona.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_zona.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_zona.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_zona.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_zona.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_zona.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_zona.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_zona.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 CREATE INDEX IF NOT EXISTS idx_tb_zona_nombre ON tb_zona (zona_nombre);
 CREATE INDEX IF NOT EXISTS idx_tb_zona_tipo_nombre ON tb_zona (tizo_id, zona_nombre);
@@ -449,6 +562,14 @@ CREATE TABLE IF NOT EXISTS tb_componente_direccion (
     codi_abreviatura    VARCHAR(20),
     codi_es_urbano      BOOLEAN DEFAULT TRUE,
     codi_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (codi_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_componente_direccion PRIMARY KEY (codi_id),
     CONSTRAINT uq_tb_componente_direccion_nombre UNIQUE (codi_nombre)
@@ -460,6 +581,14 @@ COMMENT ON COLUMN tb_componente_direccion.codi_nombre IS 'Nombre del componente 
 COMMENT ON COLUMN tb_componente_direccion.codi_abreviatura IS 'Abreviatura estandarizada (MZ., LT., SLT., PISO, BLK.).';
 COMMENT ON COLUMN tb_componente_direccion.codi_es_urbano IS 'True: Urbano, False: Rural.';
 COMMENT ON COLUMN tb_componente_direccion.codi_estado IS 'Estado del registro: A = Activo (tipo de componente predial habilitado para estructuración catastral), I = Inactivo (componente deshabilitado o no utilizado).';
+COMMENT ON COLUMN tb_componente_direccion.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_componente_direccion.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_componente_direccion.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_componente_direccion.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_componente_direccion.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_componente_direccion.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_componente_direccion.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_componente_direccion.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 -- -----------------------------------------------------------------------------
 -- 8. Tabla Relacional: CONTENIDO DE COMPONENTES (tb_contenido_componente_direccion)
@@ -504,6 +633,14 @@ CREATE TABLE IF NOT EXISTS tb_tipo_modulo (
     timo_nombre         VARCHAR(100) NOT NULL,
     timo_abreviatura    VARCHAR(20),
     timo_estado         VARCHAR(1) NOT NULL DEFAULT 'A' CHECK (timo_estado IN ('A', 'I')),
+    usua_id             BIGINT,
+    usua_nombre         VARCHAR(200),
+    create_at           TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    update_at           TIMESTAMP WITHOUT TIME ZONE,
+    audit_user_pc       VARCHAR(100),
+    audit_nombre_pc     VARCHAR(100),
+    audit_ip            VARCHAR(50),
+    audit_mac_address   VARCHAR(50),
 
     CONSTRAINT pk_tb_tipo_modulo PRIMARY KEY (timo_id),
     CONSTRAINT uq_tb_tipo_modulo_nombre UNIQUE (timo_nombre)
@@ -514,6 +651,14 @@ COMMENT ON COLUMN tb_tipo_modulo.timo_id IS 'Identificador único del tipo de mo
 COMMENT ON COLUMN tb_tipo_modulo.timo_nombre IS 'Nombre del tipo de modulo (DEPARTAMENTO, INTERIOR, STAND, TIENDA, etc.).';
 COMMENT ON COLUMN tb_tipo_modulo.timo_abreviatura IS 'Abreviatura estandarizada (DPTO., INT., STD., TDA., OF.).';
 COMMENT ON COLUMN tb_tipo_modulo.timo_estado IS 'Estado del registro: A = Activo (tipo de módulo o dependencia vigente y habilitada), I = Inactivo (tipo deshabilitado o en desuso).';
+COMMENT ON COLUMN tb_tipo_modulo.usua_id IS 'Identificador numérico del usuario responsable de la operación.';
+COMMENT ON COLUMN tb_tipo_modulo.usua_nombre IS 'Nombre o login del usuario institucional.';
+COMMENT ON COLUMN tb_tipo_modulo.create_at IS 'Fecha y hora de creación del registro en el sistema.';
+COMMENT ON COLUMN tb_tipo_modulo.update_at IS 'Fecha y hora de última modificación en el sistema.';
+COMMENT ON COLUMN tb_tipo_modulo.audit_user_pc IS 'Nombre de usuario del sistema operativo cliente/auditoría.';
+COMMENT ON COLUMN tb_tipo_modulo.audit_nombre_pc IS 'Nombre de host o equipo de la estación cliente.';
+COMMENT ON COLUMN tb_tipo_modulo.audit_ip IS 'Dirección IP de la estación que ejecutó la transacción.';
+COMMENT ON COLUMN tb_tipo_modulo.audit_mac_address IS 'Dirección MAC física de la estación cliente.';
 
 -- -----------------------------------------------------------------------------
 -- 10. Tabla Relacional: DIRECCIÓN - TIPOS DE MÓDULO (tb_direccion_tipo_modulo)
@@ -3340,6 +3485,7 @@ SELECT
     d.dire_estado,
     d.dire_esquema,
     d.dire_tabla,
+    d.dire_columna,
     d.dire_tabla_id,
     d.dire_valor_origen,
     d.dire_es_procesado,
