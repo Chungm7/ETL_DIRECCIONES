@@ -324,6 +324,34 @@ function isCleanSublote(sl) {
 }
 
 // ── PASO 1: Motor IA (Ollama) ────────────────────────────────────────────────
+function getSelectedUIModel() {
+  const sel = document.getElementById('ai_model_select');
+  if (!sel) return (wiz.ai_model || '').trim();
+  const selVal = (sel.value || '').trim();
+  if (selVal === 'custom') {
+    return (document.getElementById('ai_model_custom')?.value || '').trim();
+  }
+  return selVal || (wiz.ai_model || '').trim();
+}
+
+async function syncSelectedModelWithServer(modelName) {
+  const model = (modelName || getSelectedUIModel() || '').trim();
+  if (!model || model === 'custom') return;
+  const host = (document.getElementById('ai_host')?.value || wiz.ai_host || 'localhost').trim();
+  const portStr = (document.getElementById('ai_port')?.value || '').trim();
+  const port = portStr ? parseInt(portStr) : (wiz.ai_port || 11434);
+  wiz.ai_host = host;
+  wiz.ai_port = port;
+  wiz.ai_model = model;
+  try {
+    await fetch('/api/connect-ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ host, port, model, num_workers: wiz.num_workers || 4 }),
+    });
+  } catch (_) {}
+}
+
 function onModelSelectChange() {
   const sel = document.getElementById('ai_model_select');
   const custom = document.getElementById('ai_model_custom');
@@ -331,8 +359,29 @@ function onModelSelectChange() {
   if (sel.value === 'custom') {
     custom.classList.remove('hidden');
     custom.focus();
+    const customVal = (custom.value || '').trim();
+    if (customVal) wiz.ai_model = customVal;
   } else {
     custom.classList.add('hidden');
+    if (sel.value) {
+      wiz.ai_model = sel.value.trim();
+      syncSelectedModelWithServer(wiz.ai_model);
+    }
+  }
+  const elAiModel = document.getElementById('summAiModel');
+  if (elAiModel && wiz.ai_model) {
+    elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
+  }
+}
+
+function onCustomModelInput() {
+  const custom = document.getElementById('ai_model_custom');
+  if (!custom) return;
+  const val = (custom.value || '').trim();
+  if (val) {
+    wiz.ai_model = val;
+    const elAiModel = document.getElementById('summAiModel');
+    if (elAiModel) elAiModel.textContent = `Extractor: ${wiz.ai_model}`;
   }
 }
 
@@ -370,6 +419,10 @@ async function detectAIModels() {
       const patrocloMatch = data.models.find(m => m.toLowerCase().includes('patroclo'));
       if (patrocloMatch) {
         sel.value = patrocloMatch;
+      } else if (wiz.ai_model && data.models.includes(wiz.ai_model)) {
+        sel.value = wiz.ai_model;
+      } else if (data.models.length > 0) {
+        sel.value = data.models[0];
       }
       onModelSelectChange();
       showDiag('diagAI', 'ok', 'Modelos Detectados', `Se encontraron ${data.models.length} modelo(s) disponibles en el servidor http://${host}:${port}. Presione "Verificar Conexión IA" para validar.`);
@@ -1156,6 +1209,9 @@ function resumeFromCentralSource(schema, table) {
   wiz.addr_col = 'dire_valor_origen';
   wiz.source_mode = 'central_tb_direccion';
 
+  const currentModel = getSelectedUIModel() || wiz.ai_model || 'Ollama';
+  wiz.ai_model = currentModel;
+
   document.getElementById('summSchema').textContent  = schema;
   document.getElementById('summTable').textContent   = table;
   document.getElementById('summId').textContent      = 'dire_id';
@@ -1182,6 +1238,9 @@ function resumeAllCentral() {
   wiz.id_col = 'dire_id';
   wiz.addr_col = 'dire_valor_origen';
   wiz.source_mode = 'central_tb_direccion';
+
+  const currentModel = getSelectedUIModel() || wiz.ai_model || 'Ollama';
+  wiz.ai_model = currentModel;
 
   const elSchema = document.getElementById('summSchema');
   const elTable  = document.getElementById('summTable');
@@ -1240,6 +1299,9 @@ function confirmTable() {
 // ── PASO 5: Ejecución y Monitoreo del Inspector Catastral ────────────────────
 async function initStep5() {
   try {
+    const selectedUiMdl = getSelectedUIModel();
+    if (selectedUiMdl) wiz.ai_model = selectedUiMdl;
+
     const res  = await fetch('/api/status');
     const data = await res.json();
     const ai   = data.ai || {};
@@ -1358,10 +1420,17 @@ function onInitSnapshot(payload) {
   }
   if (payload.active_table && !wiz.table) wiz.table = payload.active_table;
   if (payload.active_schema && !wiz.schema) wiz.schema = payload.active_schema;
-  if (payload.active_model) {
+  const selectedUiMdl = getSelectedUIModel();
+  if (payload.is_running && payload.active_model) {
     wiz.ai_model = payload.active_model;
+  } else if (selectedUiMdl) {
+    wiz.ai_model = selectedUiMdl;
+  } else if (payload.active_model) {
+    wiz.ai_model = payload.active_model;
+  }
+  if (wiz.ai_model) {
     const summAiModel = document.getElementById('summAiModel');
-    if (summAiModel) summAiModel.textContent = payload.active_model;
+    if (summAiModel) summAiModel.textContent = `Extractor: ${wiz.ai_model}`;
   }
   if (payload.stats) {
     updateStats(payload.stats);
@@ -2383,6 +2452,13 @@ async function startETL() {
   const btnStopSync = document.getElementById('btnStopSync');
   if (btnStopSync) btnStopSync.disabled = false;
 
+  const selectedModel = getSelectedUIModel() || wiz.ai_model || null;
+  const aiHost = (document.getElementById('ai_host')?.value || wiz.ai_host || 'localhost').trim();
+  const aiPort = parseInt(document.getElementById('ai_port')?.value) || wiz.ai_port || 11434;
+  if (selectedModel) wiz.ai_model = selectedModel;
+  wiz.ai_host = aiHost;
+  wiz.ai_port = aiPort;
+
   const body = {
     schema_name:  wiz.schema,
     table_name:   wiz.table,
@@ -2394,6 +2470,9 @@ async function startETL() {
     require_ai:   require_ai,
     limit,
     source_mode:  wiz.source_mode || "central_tb_direccion",
+    model:        selectedModel,
+    ai_host:      aiHost,
+    ai_port:      aiPort,
   };
 
   try {
@@ -2590,15 +2669,27 @@ async function checkInitialServerState() {
     }
     updateStartButtonState(data.is_running);
 
-    // 2. Pre-cargar estado verificado de IA si el servidor reporta conexión positiva
+    // 2. Pre-cargar estado verificado de IA solo si el modelo está realmente instalado en Ollama
     if (data.ai && data.ai.connected) {
+      const availModels = Array.isArray(data.ai.available_models) ? data.ai.available_models : [];
+      const sel = document.getElementById('ai_model_select');
+      if (sel && availModels.length > 0) {
+        sel.innerHTML = '';
+        availModels.forEach(m => {
+          const isPatroclo = m.toLowerCase().includes('patroclo');
+          const opt = new Option(isPatroclo ? `${m} (Recomendado)` : m, m);
+          sel.appendChild(opt);
+        });
+        sel.appendChild(new Option('Otro modelo (ingresar manualmente)...', 'custom'));
+      }
+
+      const isModelInstalled = Boolean(data.ai.installed || data.ai.model_available);
       const activeMdl = data.active_model || data.defaults?.ai_model;
-      if (activeMdl) {
+      if (activeMdl && isModelInstalled) {
         wiz.aiVerified = true;
         wiz.ai_model = activeMdl;
         wiz.maxStepUnlocked = Math.max(wiz.maxStepUnlocked, 2);
 
-        const sel = document.getElementById('ai_model_select');
         if (sel) {
           let found = false;
           for (let opt of sel.options) {
@@ -2614,6 +2705,14 @@ async function checkInitialServerState() {
         if (btnGo2) btnGo2.disabled = false;
         document.getElementById('tab2')?.classList.remove('locked');
         showDiag('diagAI', 'ok', 'Motor IA Verificado y Activo', `Conectado exitosamente con Ollama usando el modelo <strong>${escapeHtml(activeMdl)}</strong>.`);
+      } else if (availModels.length > 0) {
+        const preferred = availModels.find(m => m.toLowerCase().includes('patroclo')) || availModels[0];
+        if (sel && preferred) {
+          sel.value = preferred;
+          wiz.ai_model = preferred;
+        }
+        onModelSelectChange();
+        showDiag('diagAI', 'info', 'Modelos Detectados en Ollama', `Seleccione el modelo que desea utilizar y presione "Verificar Conexión IA" para continuar.`);
       }
     }
 

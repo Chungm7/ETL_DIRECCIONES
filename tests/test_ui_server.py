@@ -763,3 +763,94 @@ def test_execution_state_eta_and_time_metrics(client):
     assert 'id="elapsedLabel"' in res.text
     assert 'id="etaLabel"' in res.text
     assert "Restante:" in res.text
+
+
+def test_gui_selected_model_propagation_in_connect_and_start(client):
+    """Verifica que el modelo seleccionado en la GUI se propague en /api/connect-ai, /api/status y /api/start sin caer en llama3."""
+    from src.ui.server import _run_pipeline_worker, StartPipelineRequest, scheduler_service
+
+    old_ollama = state.dynamic_ollama_service
+    old_model = state.active_model
+    state.is_running = False
+    scheduler_service.config.enabled = False
+
+    try:
+        # 1. Simular estado previo con modelo por defecto 'llama3' y luego seleccionar otro modelo en /api/connect-ai
+        state.active_model = "llama3"
+        with patch("src.ui.server.OllamaService") as mock_ollama_cls:
+            mock_svc = MagicMock()
+            mock_svc.model_name = "qwen2.5:7b"
+            mock_svc.judge_model_name = "qwen2.5:7b"
+            mock_svc.check_connection.return_value = {
+                "connected": True,
+                "model": "qwen2.5:7b",
+                "model_available": True,
+                "available_models": ["qwen2.5:7b", "mistral:latest"],
+                "message": "OK",
+            }
+            mock_ollama_cls.return_value = mock_svc
+
+            res_conn = client.post(
+                "/api/connect-ai",
+                json={"host": "localhost", "port": 11434, "model": "qwen2.5:7b", "num_workers": 4},
+            )
+            assert res_conn.status_code == 200
+            assert state.active_model == "qwen2.5:7b"
+            assert state.dynamic_ollama_service.model_name == "qwen2.5:7b"
+
+        # 2. Verificar que /api/start sobrescriba cualquier modelo obsoleto con el modelo enviado desde la GUI
+        with patch("src.ui.server.threading.Thread"):
+            res_start = client.post(
+                "/api/start",
+                json={
+                    "schema_name": "public",
+                    "table_name": "direcciones_actual",
+                    "model": "mistral:latest",
+                    "ai_host": "localhost",
+                    "ai_port": 11434,
+                },
+            )
+            assert res_start.status_code == 200
+            assert state.active_model == "mistral:latest"
+            assert state.dynamic_ollama_service.model_name == "mistral:latest"
+
+        # 3. Verificar que _run_pipeline_worker instancie/actualice el servicio con el modelo del request
+        state.dynamic_ollama_service = None
+        state.active_model = "llama3"
+        with patch("src.ui.server.ETLPipeline") as mock_pipeline_cls, \
+             patch("src.ui.server.DatabaseService"), \
+             patch("src.ui.server.OllamaService") as mock_worker_ollama_cls:
+            mock_worker_svc = MagicMock()
+            mock_worker_svc.model_name = "gemma2:9b"
+            mock_worker_ollama_cls.return_value = mock_worker_svc
+
+            mock_pipe = MagicMock()
+            mock_summary = MagicMock(
+                total_records=0,
+                valid_processed_records=0,
+                observed_records=0,
+                failed_records=0,
+                duration_seconds=0.1,
+            )
+            mock_pipe.run.return_value = mock_summary
+            mock_pipeline_cls.return_value = mock_pipe
+
+            req = StartPipelineRequest(
+                schema_name="public",
+                table_name="direcciones_actual",
+                model="gemma2:9b",
+                ai_host="127.0.0.1",
+                ai_port=11434,
+            )
+            _run_pipeline_worker(req)
+
+            assert mock_worker_ollama_cls.call_count == 1
+            called_settings = mock_worker_ollama_cls.call_args.kwargs["settings"]
+            assert called_settings.base_url == "http://127.0.0.1:11434"
+            assert called_settings.model == "gemma2:9b"
+            assert state.active_model == "gemma2:9b"
+    finally:
+        state.dynamic_ollama_service = old_ollama
+        state.active_model = old_model
+        state.is_running = False
+

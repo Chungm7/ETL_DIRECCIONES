@@ -1325,7 +1325,7 @@
             <option value="" disabled selected>-- Presione "Detectar modelos" o ingrese uno manualmente --</option>
             <option value="custom">Ingresar nombre de modelo manualmente...</option>
           </select>
-          <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. patroclo-artesano-7b:latest o llama3:latest" />
+          <input type="text" id="ai_model_custom" class="hidden" style="margin-top:8px;" placeholder="Ej. patroclo-artesano-7b:latest o llama3:latest" oninput="onCustomModelInput()" onchange="onCustomModelInput()" />
         </div>
         <div class="field full">
           <label for="ai_num_workers" style="display:flex; justify-content:space-between; align-items:center;">

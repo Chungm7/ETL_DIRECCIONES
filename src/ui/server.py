@@ -405,6 +405,9 @@ class StartPipelineRequest(BaseModel):
     filter_mode: Optional[str] = Field(default="pending", description="Modo de filtro: pending, all, observed")
     require_ai: bool = Field(default=True, description="Si es True, falla de inmediato si Ollama no está operativo")
     num_workers: Optional[int] = Field(default=4, ge=1, le=16, description="Número de peticiones concurrentes a Ollama")
+    model: Optional[str] = Field(default=None, description="Nombre del modelo LLM Extractor seleccionado en la GUI (Modelo 1)")
+    ai_host: Optional[str] = Field(default=None, description="Host o IP del servidor Ollama seleccionado en la GUI")
+    ai_port: Optional[int] = Field(default=None, description="Puerto de conexión a Ollama seleccionado en la GUI")
     judge_model: Optional[str] = Field(default=None, description="Nombre del modelo Juez / Observador (Modelo 2)")
     source_mode: Optional[str] = Field(default="central_tb_direccion", description="Modo de fuente: 'central_tb_direccion' o 'source_table'")
     filter_high_complexity: Optional[bool] = Field(default=None, description="Deriva direcciones complejas a Observadas")
@@ -450,7 +453,14 @@ async def get_system_status():
         logger.debug("No se pudo obtener conteo de tabla: %s", e)
         table_counts = {"total": 0, "pendientes": 0, "validos": 0, "observados": 0}
 
-    current_model = state.active_model or (ai_health.get("target_model") or ai_health.get("model") or getattr(ollama_svc, "model_name", None) or settings.ollama.model)
+    current_model = (
+        getattr(state.dynamic_ollama_service, "model_name", None)
+        or state.active_model
+        or ai_health.get("target_model")
+        or ai_health.get("model")
+        or getattr(ollama_svc, "model_name", None)
+        or settings.ollama.model
+    )
     ollama_base_url = getattr(ollama_svc, "base_url", settings.ollama.base_url)
 
     # Extraer host y port de ollama_base_url para la UI
@@ -520,6 +530,7 @@ async def get_system_status():
             "model": current_model,
             "installed": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
             "model_available": ai_health.get("model_available", False) or ai_health.get("model_installed", False),
+            "available_models": ai_health.get("available_models", []),
             "base_url": ollama_base_url,
             "message": ai_health.get("message", ""),
         },
@@ -645,10 +656,13 @@ async def wizard_connect_ai(req: AIConnectRequest):
     # Guardar en estado compartido de la sesión
     state.dynamic_ollama_service = ollama_svc
     state.dynamic_ollama_settings = dyn_settings
+    state.active_model = req.model
     if req.judge_model:
         dyn_settings.judge_model = req.judge_model
         ollama_svc.judge_model_name = req.judge_model
         state.active_judge_model = req.judge_model
+    elif not state.active_judge_model:
+        ollama_svc.judge_model_name = req.model
     if req.num_workers:
         state.num_workers = max(1, min(16, int(req.num_workers)))
 
@@ -1292,12 +1306,53 @@ def _run_pipeline_worker(req: StartPipelineRequest):
     settings = get_settings()
     # Usar conexiones y configuraciones dinámicas del wizard si están disponibles
     db_svc = state.dynamic_db_service or DatabaseService()
-    ollama_svc = state.dynamic_ollama_service or OllamaService()
+
+    selected_model = (req.model or "").strip() or state.active_model
+    if req.ai_host and req.ai_host.strip():
+        target_base_url = f"http://{req.ai_host.strip()}:{req.ai_port or 11434}".rstrip("/")
+    elif state.dynamic_ollama_service and getattr(state.dynamic_ollama_service, "base_url", None):
+        target_base_url = state.dynamic_ollama_service.base_url
+    else:
+        target_base_url = settings.ollama.base_url.rstrip("/")
+
+    if state.dynamic_ollama_service is not None:
+        ollama_svc = state.dynamic_ollama_service
+        if selected_model:
+            ollama_svc.model_name = selected_model
+            if hasattr(ollama_svc, "settings") and ollama_svc.settings is not None:
+                try:
+                    ollama_svc.settings.model = selected_model
+                except Exception:
+                    pass
+        if req.ai_host and getattr(ollama_svc, "base_url", None) != target_base_url:
+            ollama_svc.base_url = target_base_url
+            if getattr(ollama_svc, "_client", None) is not None:
+                try:
+                    import ollama as _ollama_lib
+                    ollama_svc._client = _ollama_lib.Client(host=target_base_url, timeout=float(getattr(ollama_svc, "timeout", 60)))
+                except Exception:
+                    pass
+    elif selected_model or req.ai_host:
+        dyn_ollama_settings = OllamaSettings(
+            OLLAMA_BASE_URL=target_base_url,
+            OLLAMA_MODEL=selected_model or settings.ollama.model,
+        )
+        ollama_svc = OllamaService(settings=dyn_ollama_settings)
+        state.dynamic_ollama_service = ollama_svc
+        state.dynamic_ollama_settings = dyn_ollama_settings
+    else:
+        ollama_svc = OllamaService()
+
+    if selected_model:
+        state.active_model = selected_model
+
     if req.judge_model:
         ollama_svc.judge_model_name = req.judge_model
         state.active_judge_model = req.judge_model
     elif state.active_judge_model:
         ollama_svc.judge_model_name = state.active_judge_model
+    elif selected_model:
+        ollama_svc.judge_model_name = selected_model
 
     dynamic_db_settings = state.dynamic_db_settings or getattr(db_svc, "settings", None) or settings.db
 
@@ -1508,6 +1563,14 @@ async def start_pipeline(req: StartPipelineRequest):
     state.active_schema = req.schema_name
     state.active_table = req.table_name
     state.num_workers = max(1, min(16, int(req.num_workers or state.num_workers or 4)))
+    if req.model and req.model.strip():
+        req_model = req.model.strip()
+        state.active_model = req_model
+        if state.dynamic_ollama_service is not None:
+            old_m = getattr(state.dynamic_ollama_service, "model_name", None)
+            state.dynamic_ollama_service.model_name = req_model
+            if getattr(state.dynamic_ollama_service, "judge_model_name", None) in (None, "", old_m):
+                state.dynamic_ollama_service.judge_model_name = req_model
 
     worker = threading.Thread(
         target=_run_pipeline_worker,
