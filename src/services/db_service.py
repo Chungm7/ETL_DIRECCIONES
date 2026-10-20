@@ -2750,9 +2750,9 @@ class DatabaseService:
                                     ELSE NULL
                                 END,
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN NULL ELSE CAST(src."{addr_col}" AS TEXT) END,
-                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN FALSE ELSE NULL END,
+                                NULL,
                                 'A',
-                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                                NULL
                             FROM {src_table_ref} src;
                         """)
                         res = session.execute(insert_sql, {
@@ -2778,9 +2778,9 @@ class DatabaseService:
                                     ELSE NULL
                                 END,
                                 CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN NULL ELSE CAST(src."{addr_col}" AS TEXT) END,
-                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN FALSE ELSE NULL END,
+                                NULL,
                                 'A',
-                                CASE WHEN TRIM(COALESCE(CAST(src."{addr_col}" AS TEXT), '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                                NULL
                             FROM {src_table_ref} src
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM {target_dir_ref} d
@@ -2824,9 +2824,9 @@ class DatabaseService:
                                 :col,
                                 src."{id_col}",
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN NULL ELSE src."{addr_col}" END,
-                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN 0 ELSE NULL END,
+                                NULL,
                                 'A',
-                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                                NULL
                             FROM {src_table_ref} src;
                         """)
                         res = session.execute(insert_sql, {
@@ -2847,9 +2847,9 @@ class DatabaseService:
                                 :col,
                                 src."{id_col}",
                                 CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN NULL ELSE src."{addr_col}" END,
-                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN 0 ELSE NULL END,
+                                NULL,
                                 'A',
-                                CASE WHEN TRIM(COALESCE(src."{addr_col}", '')) = '' THEN CURRENT_TIMESTAMP ELSE NULL END
+                                NULL
                             FROM {src_table_ref} src
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM {target_dir_ref} d

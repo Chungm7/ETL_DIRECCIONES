@@ -383,11 +383,16 @@ class TestDecoupledDatabaseOperations:
                 count_src = session.execute(text("SELECT COUNT(*) FROM test_mixed")).scalar()
                 assert count_src == 5
 
-                # Verificar en tb_direccion cómo quedó el registro 34680 (migrado con éxito y dire_es_procesado = FALSE)
+                # Verificar en tb_direccion cómo quedó el registro 34680 (migrado con éxito y dire_es_procesado = NULL)
                 dir_row = session.execute(text("SELECT dire_id, dire_tabla_id, dire_es_procesado FROM tb_direccion WHERE dire_tabla_id = 34680")).fetchone()
                 assert dir_row is not None
                 assert dir_row[1] == 34680
-                assert dir_row[2] == 0  # Marcado como FALSE (no procesable / vacío)
+                assert dir_row[2] is None  # Marcado como NULL (pendiente de normalización con IA)
+
+                # Verificar que el 100% de los registros migrados tengan dire_es_procesado = NULL
+                all_migrated = session.execute(text("SELECT dire_es_procesado FROM tb_direccion")).fetchall()
+                assert len(all_migrated) == 5
+                assert all(r[0] is None for r in all_migrated)
 
     def test_pipeline_transformer_propagates_dire_id_and_metadata(self):
         """Valida que PipelineTransformer y AIAddressParser preserven dire_id y metadatos sin perderlos."""
